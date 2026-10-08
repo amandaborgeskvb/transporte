@@ -1,0 +1,17 @@
+{
+  "name": "controle-despesas-viagem",
+  "version": "1.0.0",
+  "description": "Sistema de controle de despesas de viagem",
+  "main": "src/server.js",
+  "private": true,
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1"
+  }
+}
