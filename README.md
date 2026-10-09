@@ -31,8 +31,8 @@ npm test
 ## Deploy no Render
 
 1. Envie este repositório para o GitHub.
-2. No [Render](https://dashboard.render.com): **New → Blueprint** e escolha o repositório. O `render.yaml` cria o web service e o banco PostgreSQL.
-3. Quando solicitado, informe o valor de `APP_PASSWORD` (a senha de acesso). `SESSION_SECRET` é gerada automaticamente.
+2. No [Render](https://dashboard.render.com): **New → Blueprint** e escolha o repositório. O `render.yaml` cria o web service. O banco PostgreSQL deve existir antes (**New → PostgreSQL**).
+3. Quando solicitado, informe `DATABASE_URL` (a *Internal Database URL* do PostgreSQL, na página do banco) e `APP_PASSWORD` (a senha de acesso). `SESSION_SECRET` é gerada automaticamente.
 4. Pronto: o Render faz o build e a URL `https://despesas-viagem.onrender.com` (ou similar) abre a tela de login.
 
 Para trocar usuário/senha depois: **Environment** do serviço → edite `APP_USER` / `APP_PASSWORD`.
