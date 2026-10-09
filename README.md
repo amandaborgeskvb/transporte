@@ -9,7 +9,7 @@ Sistema web para cadastrar viagens, lançar despesas e acompanhar o gasto contra
 - Exportação das despesas de cada viagem em CSV (abre direto no Excel)
 - Login com usuário e senha
 
-**Stack:** Node.js 20+ · Express · PostgreSQL · front-end em HTML/CSS/JS puro (sem build).
+**Stack:** Node.js 22 · Express · PostgreSQL · front-end em HTML/CSS/JS puro (sem build).
 
 ## Rodando localmente
 

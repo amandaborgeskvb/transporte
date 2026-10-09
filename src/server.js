@@ -5,7 +5,7 @@ const isProd = process.env.NODE_ENV === 'production';
 const { DATABASE_URL, APP_USER = 'admin', APP_PASSWORD, SESSION_SECRET } = process.env;
 
 if (!DATABASE_URL) {
-  console.error('Defina DATABASE_URL (veja .env.example).');
+  console.error('Defina DATABASE_URL. Local: veja .env.example. No Render: Environment do serviço → DATABASE_URL = Internal Database URL do PostgreSQL.');
   process.exit(1);
 }
 if (isProd && (!APP_PASSWORD || !SESSION_SECRET)) {
