@@ -8,9 +8,14 @@ if (!DATABASE_URL) {
   console.error('Defina DATABASE_URL. Local: veja .env.example. No Render: Environment do serviço → DATABASE_URL = Internal Database URL do PostgreSQL.');
   process.exit(1);
 }
-if (isProd && (!APP_PASSWORD || !SESSION_SECRET)) {
-  console.error('Em produção defina APP_PASSWORD e SESSION_SECRET.');
-  process.exit(1);
+if (isProd) {
+  const faltando = [['APP_PASSWORD', APP_PASSWORD], ['SESSION_SECRET', SESSION_SECRET]]
+    .filter(([, v]) => !v)
+    .map(([k]) => k);
+  if (faltando.length) {
+    console.error(`Em produção defina: ${faltando.join(', ')} (Environment do serviço no Render).`);
+    process.exit(1);
+  }
 }
 if (!isProd && !APP_PASSWORD) console.warn('APP_PASSWORD não definida: usando "admin" (apenas desenvolvimento).');
 
