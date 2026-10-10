@@ -287,8 +287,8 @@ function telaLogin(aviso) {
   const erro = h('div', { class: 'erro', role: 'alert' }, aviso || '');
   const entrar = h('button', { type: 'submit' }, 'Entrar');
   const form = h('form', { class: 'login-card' },
-    h('img', { class: 'logo logo-claro', src: '/img/crv-industrial-azul.png', alt: 'CRV Industrial — Açúcar, Etanol e Energia', width: 220, height: 71 }),
-    h('img', { class: 'logo logo-escuro', src: '/img/crv-industrial-branca.png', alt: 'CRV Industrial — Açúcar, Etanol e Energia', width: 220, height: 71 }),
+    h('img', { class: 'logo logo-claro', src: '/img/crv-industrial-azul.png?v=2', alt: 'CRV Industrial — Açúcar, Etanol e Energia', width: 260, height: 81 }),
+    h('img', { class: 'logo logo-escuro', src: '/img/crv-industrial-branca.png?v=2', alt: 'CRV Industrial — Açúcar, Etanol e Energia', width: 260, height: 81 }),
     h('h1', {}, 'TRANSPORTE - CTT'),
     h('p', { class: 'muted' }, 'Acesse com seu usuário e senha'),
     h('label', {}, 'Usuário', h('input', { name: 'usuario', autocomplete: 'username', required: true, autofocus: true })),
