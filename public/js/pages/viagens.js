@@ -143,6 +143,7 @@ export async function detalhe({ params, query, usuario, ir, recarregarPagina }) 
     tem('solicitar_adiantamento') && cmd('Solicitar adiantamento', 'adiantamento', () => solicitarAdiantamento(v, recarregarNaAba('adiantamentos'))),
     tem('lancar_despesa') && cmd('Lançar despesa', 'despesa', () => formDespesa({ viagem: v, depois: recarregarNaAba('despesas') })),
     tem('solicitar_reembolso') && cmd('Solicitar reembolso', 'reembolso', () => solicitarReembolso(v, recarregarNaAba('reembolsos'))),
+    tem('gerar_desconto') && cmd('Gerar autorização de desconto (RE. 0150.09)', 'documento', () => ir(`#/descontos/novo?viagem=${v.id}`)),
   ].filter(Boolean);
   const outras = [
     tem('editar') && cmd('Editar', 'editar', () => formViagem({ viagem: v, usuario, depois: recarregar })),
@@ -172,7 +173,7 @@ export async function detalhe({ params, query, usuario, ir, recarregarPagina }) 
     h('div', { class: 'kpis' },
       kpi('Adiantamento recebido', brl(v.adiantamento_pago), { sub: v.adiantamento_solicitado > v.adiantamento_pago ? `Solicitado: ${brl(v.adiantamento_solicitado)}` : undefined }),
       kpi('Despesas aprovadas', brl(v.despesas_aprovadas), { sub: v.despesas_pendentes ? `+ ${brl(v.despesas_pendentes)} em análise` : undefined }),
-      kpi('Saldo a devolver', brl(v.saldo_devolver), { tom: v.saldo_devolver ? 'alerta' : '' }),
+      kpi('Saldo a devolver', brl(v.saldo_devolver_restante), { tom: v.saldo_devolver_restante ? 'alerta' : '', sub: v.desconto_concluido ? `Descontado em folha: ${brl(v.desconto_concluido)}` : v.desconto_em_andamento ? `Desconto em andamento: ${brl(v.desconto_em_andamento)}` : undefined }),
       kpi('Reembolso devido', brl(v.reembolso_devido), { tom: v.reembolso_devido ? 'alerta' : '', sub: v.reembolso_pago ? `Pago: ${brl(v.reembolso_pago)}` : undefined }),
       kpi('Reembolso a pagar', brl(v.reembolso_a_pagar), { tom: v.reembolso_a_pagar ? 'alerta' : '' })),
     v.valor_estimado > 0 ? [h('p', { class: 'muted pequeno' }, `Gasto (aprovado + em análise) ${brl(gasto)} de ${brl(v.valor_estimado)} estimados`), barra(gasto, v.valor_estimado)] : null,
@@ -224,6 +225,17 @@ export async function detalhe({ params, query, usuario, ir, recarregarPagina }) 
       { t: '', f: (r) => botoesItem(r, ['aprovar', 'rejeitar', 'pagar'], acaoReembolso, R_REEMB) },
     ], v.reembolsos, { vazioMsg: 'Nenhum reembolso solicitado.' }));
 
+  const painelDesc = secao('Autorizações de desconto', tem('gerar_desconto') ? botao('Gerar autorização (RE. 0150.09)', () => ir(`#/descontos/novo?viagem=${v.id}`), { pequeno: true, icone: 'mais' }) : null,
+    tabela([
+      { t: 'Registro', cls: 'nowrap', f: (x) => h('a', { href: `#/descontos/${x.id}` }, x.numero) },
+      { t: 'Formulário', f: (x) => x.formulario },
+      { t: 'Valor', num: true, f: (x) => brl(x.valor) },
+      { t: 'Parcelas', f: (x) => `${x.parcelas}×` },
+      { t: 'Início', cls: 'nowrap', f: (x) => dataBR(x.data_inicio) },
+      { t: 'Referente a', f: (x) => x.referente },
+      { t: 'Situação', f: (x) => badgeSituacao('desconto', x.situacao) },
+    ], v.descontos, { vazioMsg: v.saldo_devolver > 0 ? 'Nenhuma autorização de desconto emitida para esta viagem.' : 'Nenhuma autorização de desconto. Só há desconto quando existe saldo a devolver.' }));
+
   const painelHist = secao('Histórico', null,
     v.historico.length
       ? h('ul', { class: 'historico' }, v.historico.map((e) => {
@@ -233,12 +245,14 @@ export async function detalhe({ params, query, usuario, ir, recarregarPagina }) 
       : vazio('Sem registros.'));
 
   // ----- Abas -----
-  const PAINEIS = { resumo: painelResumo, adiantamentos: painelAdiant, despesas: painelDesp, reembolsos: painelReemb, historico: painelHist };
+  const mostraDescontos = v.descontos.length > 0 || tem('gerar_desconto') || ['administrador', 'financeiro'].includes(usuario.perfil);
+  const PAINEIS = { resumo: painelResumo, adiantamentos: painelAdiant, despesas: painelDesp, reembolsos: painelReemb, ...(mostraDescontos ? { descontos: painelDesc } : {}), historico: painelHist };
   const itensAba = [
     { chave: 'resumo', texto: 'Resumo' },
     { chave: 'adiantamentos', texto: 'Adiantamentos', cont: v.adiantamentos.length },
     { chave: 'despesas', texto: 'Despesas', cont: v.despesas.length },
     { chave: 'reembolsos', texto: 'Reembolsos', cont: v.reembolsos.length },
+    ...(mostraDescontos ? [{ chave: 'descontos', texto: 'Descontos (RE)', cont: v.descontos.length }] : []),
     { chave: 'historico', texto: 'Histórico', cont: v.historico.length },
   ];
   let ativa = PAINEIS[query.aba] ? query.aba : 'resumo';

@@ -1,5 +1,5 @@
 const express = require('express');
-const { wrap, texto, idParam, inteiro, opcaoDe, erro400, erro403, erro404, erro409, auditar, diff } = require('../util');
+const { wrap, texto, data, idParam, inteiro, opcaoDe, erro400, erro403, erro404, erro409, auditar, diff } = require('../util');
 const { exigirPerfil, ADM } = require('../workflow');
 const { hashSenha, verificarSenha, validarSenhaNova, publico } = require('../auth');
 const { PERFIS } = require('../schema');
@@ -26,6 +26,23 @@ const CADASTROS = {
   categorias: {
     tabela: 'categorias_despesa', rotulo: 'Categoria', ordem: 'nome',
     ler: (b) => ({ nome: texto(b.nome, 80, { obrigatorio: true, rotulo: 'Nome' }), ativo: b.ativo === undefined ? true : bool(b.ativo) }),
+  },
+  // Cabeçalho de controle do formulário RE. 0150.09: o código é fixo; versão, data e responsável são editáveis.
+  documentos: {
+    tabela: 'documentos_re', rotulo: 'Formulário', ordem: 'codigo', fixo: true,
+    ler: (b) => ({
+      titulo: texto(b.titulo, 120, { obrigatorio: true, rotulo: 'Título' }),
+      sistema: texto(b.sistema, 120, { obrigatorio: true, rotulo: 'Sistema' }),
+      tipo_registro: texto(b.tipo_registro, 60, { obrigatorio: true, rotulo: 'Tipo' }),
+      versao: texto(b.versao, 10, { obrigatorio: true, rotulo: 'Versão' }),
+      data_versao: data(b.data_versao, 'Data da versão'),
+      periodicidade: texto(b.periodicidade, 120),
+      empresa: texto(b.empresa, 120, { obrigatorio: true, rotulo: 'Empresa' }),
+      cidade: texto(b.cidade, 80, { obrigatorio: true, rotulo: 'Cidade' }),
+      responsavel_nome: texto(b.responsavel_nome, 120),
+      responsavel_cargo: texto(b.responsavel_cargo, 80),
+      responsavel_matricula: texto(b.responsavel_matricula, 30),
+    }),
   },
   formas: {
     tabela: 'formas_pagamento', rotulo: 'Forma de pagamento', ordem: 'nome',
@@ -66,7 +83,7 @@ function criarCadastros({ pool }) {
       res.json(rows);
     }));
 
-    router.post(base, exigirPerfil(ADM), wrap(async (req, res) => {
+    if (!cfg.fixo) router.post(base, exigirPerfil(ADM), wrap(async (req, res) => {
       const d = cfg.ler(req.body);
       const cols = Object.keys(d);
       const { rows } = await pool.query(
@@ -91,7 +108,7 @@ function criarCadastros({ pool }) {
       res.json(rows[0]);
     }));
 
-    router.delete(`${base}/:id`, exigirPerfil(ADM), wrap(async (req, res) => {
+    if (!cfg.fixo) router.delete(`${base}/:id`, exigirPerfil(ADM), wrap(async (req, res) => {
       const id = idParam(req);
       const { rowCount } = await pool.query(`DELETE FROM ${cfg.tabela} WHERE id=$1`, [id]); // FK em uso -> 409 (handler)
       if (!rowCount) throw erro404(`${cfg.rotulo} não encontrado.`);

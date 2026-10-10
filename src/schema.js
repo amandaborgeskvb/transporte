@@ -164,6 +164,58 @@ CREATE TABLE IF NOT EXISTS auditoria (
 );
 CREATE INDEX IF NOT EXISTS auditoria_viagem_idx ON auditoria (viagem_id, criado_em);
 CREATE INDEX IF NOT EXISTS auditoria_criado_idx ON auditoria (criado_em DESC);
+
+CREATE TABLE IF NOT EXISTS documentos_re (
+  id                      SERIAL PRIMARY KEY,
+  codigo                  TEXT NOT NULL UNIQUE,
+  titulo                  TEXT NOT NULL,
+  sistema                 TEXT NOT NULL DEFAULT 'Sistema de Gestão Integrada',
+  tipo_registro           TEXT NOT NULL DEFAULT 'Registro',
+  versao                  TEXT NOT NULL,
+  data_versao             DATE NOT NULL,
+  periodicidade           TEXT NOT NULL DEFAULT '',
+  empresa                 TEXT NOT NULL DEFAULT '',
+  cidade                  TEXT NOT NULL DEFAULT '',
+  responsavel_nome        TEXT NOT NULL DEFAULT '',
+  responsavel_cargo       TEXT NOT NULL DEFAULT '',
+  responsavel_matricula   TEXT NOT NULL DEFAULT '',
+  atualizado_em           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE SEQUENCE IF NOT EXISTS autorizacoes_numero_seq;
+
+CREATE TABLE IF NOT EXISTS autorizacoes_desconto (
+  id                 SERIAL PRIMARY KEY,
+  numero             TEXT NOT NULL UNIQUE DEFAULT (
+    'AD-' || to_char(now() AT TIME ZONE 'America/Sao_Paulo', 'YYYY') || '-' || lpad(nextval('autorizacoes_numero_seq')::text, 4, '0')),
+  funcionario_id     INTEGER NOT NULL REFERENCES funcionarios(id),
+  func_nome          TEXT NOT NULL,
+  func_matricula     TEXT NOT NULL,
+  func_funcao        TEXT NOT NULL DEFAULT '',
+  func_setor         TEXT NOT NULL DEFAULT '',
+  viagem_id          INTEGER REFERENCES viagens(id) ON DELETE SET NULL,
+  valor              NUMERIC(12,2) NOT NULL CHECK (valor > 0),
+  parcelas           INTEGER NOT NULL CHECK (parcelas BETWEEN 1 AND 36),
+  data_inicio        DATE NOT NULL,
+  data_documento     DATE NOT NULL,
+  referente          TEXT NOT NULL,
+  motivos            TEXT[] NOT NULL,
+  situacao           TEXT NOT NULL DEFAULT 'emitida' CHECK (situacao IN ('emitida','assinada','concluida','cancelada')),
+  assinada_em        DATE,
+  concluida_em       DATE,
+  motivo_cancelamento TEXT NOT NULL DEFAULT '',
+  documento          JSONB NOT NULL,
+  criado_por         INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS autorizacoes_viagem_idx ON autorizacoes_desconto (viagem_id);
+CREATE INDEX IF NOT EXISTS autorizacoes_func_idx ON autorizacoes_desconto (funcionario_id);
+
+-- Comprovantes também podem pertencer a uma autorização de desconto (que pode não ter viagem)
+ALTER TABLE anexos ALTER COLUMN viagem_id DROP NOT NULL;
+ALTER TABLE anexos DROP CONSTRAINT IF EXISTS anexos_entidade_check;
+ALTER TABLE anexos ADD CONSTRAINT anexos_entidade_check CHECK (entidade IN ('despesa','adiantamento','reembolso','autorizacao'));
 `;
 
 const SEEDS = `
@@ -191,6 +243,13 @@ INSERT INTO formas_pagamento (nome, uso_adiantamento, uso_reembolso) VALUES
   ('Transferência',   true,  true),
   ('Outros',          false, true)
 ON CONFLICT (nome) DO NOTHING;
+
+-- Formulário padrão RE. 0150.09 (Autorização de Desconto), versão 02 de 03/02/2023.
+-- Os dados da pessoa responsável (RH) são preenchidos pelo administrador em Cadastros → Formulários (RE).
+INSERT INTO documentos_re (codigo, titulo, versao, data_versao, periodicidade, empresa, cidade, responsavel_cargo)
+VALUES ('RE. 0150.09', 'AUTORIZAÇÃO DE DESCONTO', '02', '2023-02-03', 'Sempre que houver desconto',
+        'CRV INDUSTRIAL LTDA', 'Capinópolis-MG', 'COORDENADORA DE RH')
+ON CONFLICT (codigo) DO NOTHING;
 `;
 
 module.exports = { SCHEMA, SEEDS, PERFIS };

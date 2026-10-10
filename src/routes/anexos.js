@@ -3,10 +3,11 @@ const express = require('express');
 const { tx } = require('../db');
 const { wrap, texto, idParam, opcaoDe, inteiro, auditar, erro400, erro403, erro404 } = require('../util');
 const { carregarViagem, acoesViagem, ADM, FIN } = require('../workflow');
+const { acoesDesconto, podeVer } = require('../descontos');
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const TIPOS_ACEITOS = ['application/pdf', 'image/png', 'image/jpeg'];
-const TABELA = { despesa: 'despesas', adiantamento: 'adiantamentos', reembolso: 'reembolsos' };
+const TABELA = { despesa: 'despesas', adiantamento: 'adiantamentos', reembolso: 'reembolsos', autorizacao: 'autorizacoes_desconto' };
 
 // O tipo real vem dos primeiros bytes, não do cabeçalho enviado pelo cliente.
 function detectarTipo(buf) {
@@ -17,6 +18,13 @@ function detectarTipo(buf) {
 }
 
 const nomeSeguro = (n) => texto(n, 120).replace(/[\\/\r\n"]/g, '_') || 'comprovante';
+
+// Autorização de desconto (RE. 0150.09): só financeiro/administrador anexam (ex.: cópia assinada); o funcionário só consulta.
+async function autorizacaoDoAnexo(db, id, usuario, { travar = false } = {}) {
+  const { rows } = await db.query(`SELECT id, funcionario_id, viagem_id, situacao FROM autorizacoes_desconto WHERE id=$1 ${travar ? 'FOR UPDATE' : ''}`, [id]);
+  if (!rows[0] || !podeVer(usuario, rows[0])) throw erro404('Autorização não encontrada.');
+  return rows[0];
+}
 
 function criarAnexos({ pool }) {
   const router = express.Router();
@@ -33,6 +41,18 @@ function criarAnexos({ pool }) {
       const nome = nomeSeguro(req.query.nome);
 
       const criado = await tx(pool, async (db) => {
+        if (entidade === 'autorizacao') {
+          const ad = await autorizacaoDoAnexo(db, entidadeId, req.usuario, { travar: true });
+          if (!acoesDesconto(req.usuario, ad).includes('anexar')) throw erro403('Você não pode anexar arquivos a esta autorização.');
+          const qtd = (await db.query('SELECT COUNT(*)::int AS n FROM anexos WHERE entidade=$1 AND entidade_id=$2', [entidade, entidadeId])).rows[0].n;
+          if (qtd >= 10) throw erro400('Limite de 10 arquivos por autorização.');
+          const { rows } = await db.query(
+            `INSERT INTO anexos (viagem_id, entidade, entidade_id, nome_arquivo, tipo_mime, tamanho, conteudo, enviado_por)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, nome_arquivo, tipo_mime, tamanho`,
+            [ad.viagem_id, entidade, entidadeId, nome, tipo, req.body.length, req.body, req.usuario.id]);
+          await auditar(db, req.usuario, 'anexar', 'autorizacao_desconto', entidadeId, { arquivo: nome, bytes: req.body.length }, ad.viagem_id);
+          return rows[0];
+        }
         const item = (await db.query(`SELECT viagem_id FROM ${TABELA[entidade]} WHERE id=$1`, [entidadeId])).rows[0];
         if (!item) throw erro404('Registro não encontrado.');
         const v = await carregarViagem(db, item.viagem_id, req.usuario, { travar: true });
@@ -56,7 +76,8 @@ function criarAnexos({ pool }) {
     const id = idParam(req);
     const a = (await pool.query('SELECT * FROM anexos WHERE id=$1', [id])).rows[0];
     if (!a) throw erro404('Comprovante não encontrado.');
-    await carregarViagem(pool, a.viagem_id, req.usuario); // respeita o escopo de visibilidade
+    if (a.entidade === 'autorizacao') await autorizacaoDoAnexo(pool, a.entidade_id, req.usuario);
+    else await carregarViagem(pool, a.viagem_id, req.usuario); // respeita o escopo de visibilidade
     res.set({
       'Content-Type': a.tipo_mime,
       'Content-Length': a.conteudo.length,
@@ -71,6 +92,13 @@ function criarAnexos({ pool }) {
     await tx(pool, async (db) => {
       const a = (await db.query('SELECT id, viagem_id, entidade, entidade_id, nome_arquivo, enviado_por FROM anexos WHERE id=$1', [id])).rows[0];
       if (!a) throw erro404('Comprovante não encontrado.');
+      if (a.entidade === 'autorizacao') {
+        const ad = await autorizacaoDoAnexo(db, a.entidade_id, req.usuario, { travar: true });
+        if (!acoesDesconto(req.usuario, ad).includes('anexar')) throw erro403('Você não pode remover arquivos desta autorização.');
+        await db.query('DELETE FROM anexos WHERE id=$1', [id]);
+        await auditar(db, req.usuario, 'remover_anexo', 'autorizacao_desconto', a.entidade_id, { arquivo: a.nome_arquivo }, ad.viagem_id);
+        return;
+      }
       const v = await carregarViagem(db, a.viagem_id, req.usuario, { travar: true });
       if (v.prestacao_situacao === 'aprovada') throw erro403('A prestação de contas já foi aprovada.');
       const pode = [ADM, FIN].includes(req.usuario.perfil) || a.enviado_por === req.usuario.id;

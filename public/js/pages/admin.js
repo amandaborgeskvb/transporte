@@ -88,7 +88,7 @@ export async function usuarios() {
   ];
 }
 
-const ENTIDADES = ['viagem', 'adiantamento', 'despesa', 'reembolso', 'usuarios', 'funcionarios', 'motivos_viagem', 'categorias_despesa', 'formas_pagamento', 'status_viagem'];
+const ENTIDADES = ['viagem', 'adiantamento', 'despesa', 'reembolso', 'autorizacao_desconto', 'usuarios', 'funcionarios', 'motivos_viagem', 'categorias_despesa', 'formas_pagamento', 'status_viagem', 'documentos_re'];
 
 export async function auditoria({ query, ir }) {
   const qs = new URLSearchParams(query).toString();

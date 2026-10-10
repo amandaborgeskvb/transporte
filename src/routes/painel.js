@@ -96,6 +96,12 @@ function criarPainel({ pool }) {
       () => cont(viagensQ(`v.prestacao_situacao = 'enviada'`)));
     await add([ADM, FIN], 'Reembolsos aprovados a pagar', '#/reembolsos?situacao=aprovado',
       () => cont(fromV('reembolsos', `x.situacao = 'aprovado'`, 'x.valor_aprovado')));
+    if ([ADM, FIN].includes(u.perfil)) {
+      const q = async (situacao) => (await pool.query(`SELECT COUNT(*)::int AS n, COALESCE(SUM(valor),0) AS valor FROM autorizacoes_desconto WHERE situacao = $1`, [situacao])).rows[0];
+      const [emitidas, assinadas] = await Promise.all([q('emitida'), q('assinada')]);
+      if (emitidas.n) itens.push({ rotulo: 'Autorizações de desconto aguardando assinatura', link: '#/descontos?situacao=emitida', qtd: emitidas.n, valor: round2(emitidas.valor) });
+      if (assinadas.n) itens.push({ rotulo: 'Descontos assinados a efetuar na folha', link: '#/descontos?situacao=assinada', qtd: assinadas.n, valor: round2(assinadas.valor) });
+    }
     await add([ADM, SOL], 'Viagens reprovadas (ajustar e reenviar)', '#/viagens?status=reprovada',
       () => cont(viagensQ(`s.codigo = 'reprovada'`)));
     await add([ADM, SOL], 'Prestações de contas a enviar', '#/viagens?prestacao=a_enviar',

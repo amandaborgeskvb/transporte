@@ -61,6 +61,8 @@ const ICONES = {
   polegar: '<path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"/>',
   setas: '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
   filtro: '<path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3Z"/>',
+  documento: '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/>',
+  impressora: '<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/>',
 };
 export function icone(nome, classe = '') {
   const el = svg('svg', { viewBox: '0 0 24 24', class: `ico ${classe}`.trim(), 'aria-hidden': 'true', focusable: 'false' });
@@ -86,6 +88,7 @@ const SITUACOES = {
   despesa: { pendente: ['Em análise', 'warn'], aprovada: ['Aprovada', 'ok'], rejeitada: ['Rejeitada', 'bad'] },
   reembolso: { pendente: ['Aguardando aprovação', 'warn'], aprovado: ['Aprovado (a pagar)', 'info'], reembolsado: ['Reembolsado', 'ok'], rejeitado: ['Rejeitado', 'bad'] },
   prestacao: { pendente: ['Não enviada', 'mute'], enviada: ['Em análise', 'info'], aprovada: ['Aprovada', 'ok'], devolvida: ['Devolvida', 'bad'] },
+  desconto: { emitida: ['Aguardando assinatura', 'warn'], assinada: ['Assinada', 'info'], concluida: ['Descontado', 'ok'], cancelada: ['Cancelada', 'mute'] },
 };
 export const situacaoRotulo = (tipo, k) => SITUACOES[tipo]?.[k]?.[0] || k;
 export const opcoesSituacao = (tipo) => Object.keys(SITUACOES[tipo]).map((k) => ({ valor: k, rotulo: situacaoRotulo(tipo, k) }));
@@ -284,10 +287,14 @@ const EVENTOS = {
   'anexar:despesa': 'anexou comprovante à despesa', 'anexar:adiantamento': 'anexou comprovante ao adiantamento', 'anexar:reembolso': 'anexou comprovante ao reembolso',
   'remover_anexo:despesa': 'removeu comprovante da despesa', 'remover_anexo:adiantamento': 'removeu comprovante do adiantamento', 'remover_anexo:reembolso': 'removeu comprovante do reembolso',
   'trocar_senha:usuarios': 'alterou a própria senha',
+  'emitir:autorizacao_desconto': 'emitiu a autorização de desconto', 'editar:autorizacao_desconto': 'editou a autorização de desconto',
+  'assinar:autorizacao_desconto': 'registrou a assinatura da autorização de desconto', 'concluir:autorizacao_desconto': 'concluiu o desconto em folha',
+  'cancelar:autorizacao_desconto': 'cancelou a autorização de desconto', 'anexar:autorizacao_desconto': 'anexou arquivo à autorização de desconto',
+  'remover_anexo:autorizacao_desconto': 'removeu arquivo da autorização de desconto',
 };
 const ENTIDADES_ROTULO = {
   viagem: 'viagem', adiantamento: 'adiantamento', despesa: 'despesa', reembolso: 'reembolso', usuarios: 'usuário', funcionarios: 'funcionário',
-  motivos_viagem: 'motivo de viagem', categorias_despesa: 'categoria de despesa', formas_pagamento: 'forma de pagamento', status_viagem: 'status de viagem',
+  motivos_viagem: 'motivo de viagem', autorizacao_desconto: 'autorização de desconto', documentos_re: 'formulário (RE)', categorias_despesa: 'categoria de despesa', formas_pagamento: 'forma de pagamento', status_viagem: 'status de viagem',
 };
 export const entidadeRotulo = (e) => ENTIDADES_ROTULO[e] || e.replaceAll('_', ' ');
 export function descreverEvento(e) {
@@ -295,7 +302,7 @@ export function descreverEvento(e) {
 }
 
 const CHAVES_DINHEIRO = new Set(['valor', 'valor_pago', 'valor_aprovado', 'valor_solicitado', 'valor_estimado']);
-const CHAVES_ROTULO = { valor: 'valor', valor_pago: 'pago', valor_aprovado: 'aprovado', valor_solicitado: 'solicitado', valor_estimado: 'estimado', descricao: 'descrição', justificativa: 'justificativa', motivo: 'motivo', obs: 'obs.', forma: 'forma', data: 'data', arquivo: 'arquivo', login: 'login', perfil: 'perfil', nome: 'nome' };
+const CHAVES_ROTULO = { formulario: 'formulário', funcionario: 'funcionário', parcelas: 'parcelas', func_nome: 'funcionário', valor: 'valor', valor_pago: 'pago', valor_aprovado: 'aprovado', valor_solicitado: 'solicitado', valor_estimado: 'estimado', descricao: 'descrição', justificativa: 'justificativa', motivo: 'motivo', obs: 'obs.', forma: 'forma', data: 'data', arquivo: 'arquivo', login: 'login', perfil: 'perfil', nome: 'nome' };
 const formatarValor = (k, v) => {
   if (v == null || v === '') return '—';
   if (CHAVES_DINHEIRO.has(k) && typeof v === 'number') return brl(v);

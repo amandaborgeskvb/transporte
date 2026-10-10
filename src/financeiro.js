@@ -11,13 +11,17 @@ const FIN_COLS = `
   COALESCE((SELECT SUM(valor) FROM despesas d WHERE d.viagem_id = v.id AND d.situacao = 'rejeitada'), 0) AS despesas_rejeitadas,
   COALESCE((SELECT SUM(valor_solicitado) FROM reembolsos r WHERE r.viagem_id = v.id AND r.situacao = 'pendente'), 0) AS reembolso_pendente_aprovacao,
   COALESCE((SELECT SUM(valor_aprovado)   FROM reembolsos r WHERE r.viagem_id = v.id AND r.situacao = 'aprovado'), 0) AS reembolso_aprovado_a_pagar,
-  COALESCE((SELECT SUM(valor_pago)       FROM reembolsos r WHERE r.viagem_id = v.id AND r.situacao = 'reembolsado'), 0) AS reembolso_pago`;
+  COALESCE((SELECT SUM(valor_pago)       FROM reembolsos r WHERE r.viagem_id = v.id AND r.situacao = 'reembolsado'), 0) AS reembolso_pago,
+  COALESCE((SELECT SUM(valor) FROM autorizacoes_desconto ad WHERE ad.viagem_id = v.id AND ad.situacao = 'concluida'), 0) AS desconto_concluido,
+  COALESCE((SELECT SUM(valor) FROM autorizacoes_desconto ad WHERE ad.viagem_id = v.id AND ad.situacao IN ('emitida','assinada')), 0) AS desconto_em_andamento`;
 
 // Acrescenta os campos derivados:
 //   resultado       = adiantado - despesas aprovadas
 //   saldo_devolver  = quanto o funcionário ainda deve devolver (resultado > 0)
 //   reembolso_devido= quanto a empresa deve ao funcionário (resultado < 0)
 //   reembolso_a_pagar = reembolso devido que ainda não foi pago
+//   saldo_devolver_restante = saldo a devolver menos o que já foi descontado em folha (autorizações concluídas)
+//   desconto_sugerido = saldo ainda sem autorização de desconto emitida (para gerar o RE. 0150.09)
 function enriquecer(v) {
   const resultado = round2(v.adiantamento_pago - v.despesas_aprovadas);
   const reembolso_devido = resultado < 0 ? round2(-resultado) : 0;
@@ -27,6 +31,8 @@ function enriquecer(v) {
     saldo_devolver: resultado > 0 ? resultado : 0,
     reembolso_devido,
     reembolso_a_pagar: Math.max(round2(reembolso_devido - v.reembolso_pago), 0),
+    saldo_devolver_restante: Math.max(round2(Math.max(resultado, 0) - v.desconto_concluido), 0),
+    desconto_sugerido: Math.max(round2(Math.max(resultado, 0) - v.desconto_concluido - v.desconto_em_andamento), 0),
   };
 }
 

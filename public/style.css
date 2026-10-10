@@ -360,3 +360,63 @@ dialog h2 { margin-bottom: 8px; font-family: var(--fonte-titulo); font-size: 1.4
   body { background: #fff; color: #000; }
 }
 .espaco { height: 12px; }
+
+/* ===== Formulário RE (Registro) — Autorização de Desconto: a folha é sempre branca, como o papel ===== */
+.truncar { display: inline-block; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.dados.um { grid-template-columns: 1fr; gap: 8px; }
+.anexos.coluna { flex-direction: column; align-items: flex-start; }
+.motivos-campo { border: 1px solid var(--linha); border-radius: 8px; margin: 0 0 10px; padding: 6px 12px 2px; display: flex; flex-wrap: wrap; gap: 0 18px; }
+.motivos-campo legend { font-size: .8rem; color: var(--muted); padding: 0 4px; font-weight: 500; }
+.motivos-campo label.check { margin-bottom: 6px; }
+.re-opcao { margin-bottom: 10px; }
+.re-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+.re-lateral { display: grid; gap: 14px; }
+.re-lateral .card { margin-bottom: 0; }
+.re-edicao { display: grid; grid-template-columns: minmax(340px, 440px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.re-edicao .card { margin-bottom: 0; }
+.re-previa { position: sticky; top: calc(var(--top-h) + 12px); }
+@media (max-width: 1100px) { .re-layout, .re-edicao { grid-template-columns: minmax(0, 1fr); } .re-previa { position: static; } }
+
+.re-mesa { background: #d6dbe3; border-radius: 10px; padding: 18px 12px; display: flex; flex-direction: column; align-items: center; gap: 18px; overflow-x: auto; }
+html[data-tema="escuro"] .re-mesa { background: #0a1120; }
+.re-reduzida .re-folha { zoom: var(--escala, 1); }
+.re-folha { width: 206mm; padding: 8mm; background: #fff; color: #000; box-shadow: 0 2px 12px rgba(0, 0, 0, .28); font-family: Arial, Helvetica, sans-serif; font-size: 10pt; line-height: 1.25; flex: none; }
+.re-cab { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.re-cab td { border: 1px solid #000; text-align: center; padding: 0 3px; height: 6.3mm; font-size: 10pt; }
+.re-cab .re-logo { width: 31%; padding: 1mm 2mm; }
+.re-cab .re-logo img { max-width: 100%; max-height: 22mm; display: block; margin: 0 auto; }
+.re-cab .re-dir { width: 24%; }
+.re-cab .re-titulo { background: #c0c0c0; font-weight: 700; }
+.re-corpo { border: 1px solid #000; margin-top: 4.5mm; padding: 2.5mm 4mm 5mm; font-family: "Trebuchet MS", Tahoma, Verdana, Arial, sans-serif; font-size: 11pt; }
+.re-linha { display: flex; align-items: center; gap: 4mm; min-height: 8mm; font-family: Arial, Helvetica, sans-serif; font-size: 10pt; }
+.re-linha .re-eu { flex: 1 1 auto; }
+.re-linha .re-eu b { margin-left: 2mm; }
+.re-linha .re-mat { flex: none; width: 44mm; }
+.re-linha .re-via { flex: none; border: 1px solid #000; padding: 1.8mm 4mm; font-weight: 700; text-align: center; }
+.re-linha2 { justify-content: flex-start; }
+.re-linha2 .re-setor { margin-left: auto; width: 44mm; }
+.re-texto { margin: 0; min-height: 8.2mm; display: flex; align-items: center; overflow-wrap: anywhere; }
+.re-centro { justify-content: center; text-align: center; }
+.re-parcelas { margin-top: 3mm; }
+.re-motivos { display: flex; justify-content: space-between; margin: 7mm 0 4mm; font-size: 10.5pt; }
+.re-marca { display: inline-block; width: 6mm; text-align: center; font-weight: 700; }
+.re-local { margin: 3mm 0 9mm; }
+.re-assinatura { text-align: center; padding-top: 3mm; }
+.re-traco { width: 56%; border-top: 1px solid #000; margin: 0 auto 1.2mm; }
+.re-rh { width: 52%; margin: 7mm auto 0; text-align: center; }
+.re-rh-nome { font-size: 10pt; }
+.re-rh-mat { font-size: 9pt; }
+.re-rh-cargo { font-size: 7.5pt; text-transform: uppercase; }
+
+@media print {
+  @page { size: A4 portrait; margin: 10mm; }
+  .nao-imprime, .toasts { display: none !important; }
+  .pagina { padding: 0; max-width: none; }
+  .re-layout { display: block; }
+  .re-mesa { background: none !important; padding: 0; gap: 0; display: block; overflow: visible; border-radius: 0; }
+  .re-folha { zoom: 1 !important; width: 190mm; padding: 0; margin: 0; box-shadow: none; break-after: page; page-break-after: always; }
+  .re-folha:last-child { break-after: auto; page-break-after: auto; }
+}
+
+.dicas-form { margin: -4px 0 10px; display: grid; gap: 2px; }
+.dicas-form .dica { margin: 0; }

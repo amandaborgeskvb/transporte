@@ -110,7 +110,8 @@ function criarViagens({ pool }) {
     await carregarViagem(pool, id, req.usuario); // 404 se não existir ou não for visível
     const viagem = enriquecer((await pool.query(`${SELECT_VIAGEM} WHERE v.id = $1`, [id])).rows[0]);
 
-    const [adiantamentos, despesas, reembolsos, anexos, historico] = await Promise.all([
+    const veDescontos = ['administrador', 'financeiro'].includes(req.usuario.perfil) || ehDono(req.usuario, viagem);
+    const [adiantamentos, despesas, reembolsos, anexos, historico, descontos] = await Promise.all([
       pool.query(
         `SELECT a.*, fp.nome AS forma_pagamento_nome, ua.nome AS aprovado_por_nome, up.nome AS pago_por_nome
          FROM adiantamentos a LEFT JOIN formas_pagamento fp ON fp.id = a.forma_pagamento_id
@@ -127,6 +128,9 @@ function criarViagens({ pool }) {
          WHERE r.viagem_id = $1 ORDER BY r.id`, [id]),
       pool.query('SELECT id, entidade, entidade_id, nome_arquivo, tipo_mime, tamanho, enviado_por, criado_em FROM anexos WHERE viagem_id = $1 ORDER BY id', [id]),
       pool.query('SELECT id, usuario_nome, acao, entidade, entidade_id, detalhes, criado_em FROM auditoria WHERE viagem_id = $1 ORDER BY id DESC LIMIT 200', [id]),
+      veDescontos
+        ? pool.query('SELECT id, numero, valor, parcelas, data_inicio, situacao, referente, documento FROM autorizacoes_desconto WHERE viagem_id = $1 ORDER BY id', [id])
+        : { rows: [] },
     ]);
 
     const porEntidade = (nome, lista, acoesDe) => lista.map((x) => ({
@@ -136,7 +140,9 @@ function criarViagens({ pool }) {
     }));
     res.json({
       ...viagem,
-      acoes: acoesViagem(req.usuario, viagem),
+      acoes: [...acoesViagem(req.usuario, viagem),
+        ...(['administrador', 'financeiro'].includes(req.usuario.perfil) && viagem.desconto_sugerido > 0 ? ['gerar_desconto'] : [])],
+      descontos: descontos.rows.map(({ documento, ...r }) => ({ ...r, formulario: `${documento.codigo} · v${documento.versao}` })),
       adiantamentos: porEntidade('adiantamento', adiantamentos.rows, acoesAdiantamento),
       despesas: porEntidade('despesa', despesas.rows, acoesDespesa),
       reembolsos: porEntidade('reembolso', reembolsos.rows, acoesReembolso),

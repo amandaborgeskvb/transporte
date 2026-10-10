@@ -16,6 +16,7 @@ PostgreSQL como banco. Sem etapa de build e sem frameworks de interface.
 | **Despesas** | Alimentação, combustível, hospedagem, pedágio, manutenção etc., com comprovantes e análise do financeiro |
 | **Reembolsos** | Solicitação, aprovação e pagamento (depósito em conta, transferência, outros) |
 | **Prestação de contas** | Envio pelo solicitante, aprovação ou devolução pelo financeiro; ao aprovar, a viagem é travada |
+| **Autorizações de desconto** | Formulário padrão **RE. 0150.09** (Autorização de Desconto) emitido a partir da viagem ou avulso, com prévia ao vivo, impressão em A4 e acompanhamento até o desconto em folha |
 | **Relatórios** | Filtros por período, funcionário, setor, motivo, destino, status, categoria e prestação; exportação em CSV |
 | **Cadastros** | Funcionários, motivos de viagem, status, categorias de despesa e formas de pagamento |
 | **Usuários e perfis** | Login individual e quatro perfis de acesso |
@@ -44,6 +45,39 @@ conceitos de ERPs e plataformas de operação agrícola:
 Para trocar a logo, substitua os arquivos de `public/img/` mantendo os nomes (`crv-industrial-azul.png`,
 `crv-industrial-branca.png`).
 
+## Autorização de desconto (RE. 0150.09)
+
+Formulário padrão da empresa para descontar do pagamento (ou rescisão) valores como o **saldo de um adiantamento não
+justificado**. O sistema reproduz o modelo original e mantém as características do registro:
+
+- **Controle do documento:** Sistema de Gestão Integrada · Registro · **Código RE. 0150.09 · Versão 02 · Data 03/02/2023** ·
+  "Periodicidade: Sempre que houver desconto" · "Página: 1 de 1", com a logo "CRV Industrial — Unidade Capinópolis".
+- **Texto e campos do original:** *Eu / Matrícula / Função / Setor*, "autorizo a empresa CRV INDUSTRIAL LTDA a descontar no meu
+  pagamento ou rescisão de contrato, o valor de R$ … (**valor por extenso**)", "PARCELAR EM n X DE … ( A PARTIR DE mês DE ano)",
+  "referente a: …", os quatro motivos (**Mau uso, Sumiço, Aquisição, Outros**), local e data por extenso e a linha
+  "Assinatura do funcionário" + bloco do RH. A **1ª Via : Empresa** é impressa como no modelo; a **2ª Via : Funcionário** pode
+  ser incluída na impressão (opção na tela, marcada por padrão).
+- **Entrada de dados no lugar da planilha:** a digitação da matrícula (que preenchia nome, função e setor), do valor, do nº de
+  parcelas, da data para começar a descontar, da data do documento e do motivo agora é um formulário com **prévia ao vivo** do
+  documento. O funcionário vem do cadastro (nada de base de funcionários dentro do arquivo).
+- **Competência impressa:** como na planilha, "A PARTIR DE" mostra o **mês anterior** à data informada para começar a descontar
+  (ex.: 01/10/2026 → SETEMBRO DE 2026).
+- **Versão do formulário:** o cabeçalho de controle fica em **Cadastros → Formulários (RE)** (versão, data, empresa, cidade e
+  responsável do RH). Cada autorização guarda a versão com que foi emitida — se o formulário for revisado (versão 03…), os
+  documentos já assinados continuam saindo na versão original ao reimprimir.
+- **Fluxo:** *Aguardando assinatura → Assinada → Descontado* (ou *Cancelada*, com motivo). Dá para anexar a **cópia assinada** (PDF/JPG/PNG).
+  Só é possível editar enquanto aguarda assinatura. Tudo fica na auditoria.
+- **Ligação com a viagem:** quando há **saldo a devolver**, a viagem mostra *Gerar autorização de desconto (RE. 0150.09)* já com o
+  funcionário, o valor (saldo sem autorização) e o texto "SALDO DE ADIANTAMENTO DA VIAGEM …". O desconto concluído abate o saldo a
+  devolver da viagem. Há também a aba **Descontos (RE)** na viagem.
+- **Folha de pagamento:** **Exportar CSV** na lista (matrícula, valor, parcelas, valor da parcela, competência inicial, situação…).
+
+Diferenças em relação à planilha (melhorias): valores com separador de milhar e centavos (R$ 1.000,00); o mês de "A PARTIR DE"
+é calculado só pelo mês (a planilha erra em datas dia 29–31); e o nome/matrícula do RH passa a ser configurável.
+
+> **Privacidade:** a planilha original contém abas ocultas com cadastros de funcionários. Esses dados **não** foram para o
+> repositório (que é público) — só a estrutura do formulário. Mantenha arquivos `.xlsx`/`.cdr` fora do Git (já ignorados).
+
 ## Perfis de acesso
 
 As permissões são validadas **no servidor** (a tela apenas esconde o que o perfil não pode fazer).
@@ -62,6 +96,8 @@ As permissões são validadas **no servidor** (a tela apenas esconde o que o per
 | Aprovar ou rejeitar despesas | | | ✔ | ✔ |
 | Enviar prestação de contas | ✔ | | | ✔ |
 | Aprovar ou devolver prestação de contas | | | ✔ | ✔ |
+| Emitir, editar e cancelar autorização de desconto (RE. 0150.09) | | | ✔ | ✔ |
+| Consultar e imprimir a própria autorização de desconto | ✔ | | ✔ | ✔ |
 | Cadastros, usuários e auditoria | | | | ✔ |
 
 **Segregação de funções:** ninguém aprova (viagem, adiantamento, reembolso, despesa ou prestação) o que ele mesmo
@@ -162,10 +198,11 @@ src/
   auth.js                  login, sessões, hash de senhas
   workflow.js              regras de perfil e de fluxo (fonte única de verdade das permissões)
   financeiro.js            cálculos financeiros por viagem
-  routes/                  cadastros, viagens, lancamentos, anexos, painel
+  descontos.js, extenso.js regras do formulário RE. 0150.09 e valor por extenso
+  routes/                  cadastros, viagens, lancamentos, anexos, descontos, painel
 public/
-  index.html, style.css, favicon.svg, img/ (logos), fonts/
-  js/                      main (casco, rotas, menu, busca), api, ui, acoes, charts, tema e pages/
+  index.html, style.css, favicon.svg, img/ (logos e logo do formulário RE), fonts/
+  js/                      main (casco, rotas, menu, busca), api, ui, acoes, charts, re (folha do RE), tema e pages/
 test/                      testes de API (perfis, fluxo, cálculos, comprovantes, migração)
 ```
 

@@ -4,6 +4,7 @@ import dashboard from './pages/dashboard.js';
 import { lista as listaViagens, detalhe as detalheViagem } from './pages/viagens.js';
 import { adiantamentos, despesas, reembolsos } from './pages/filas.js';
 import relatorios from './pages/relatorios.js';
+import { lista as listaDescontos, detalhe as detalheDesconto, formularioPagina as formDesconto } from './pages/descontos.js';
 import cadastrosPagina, { TIPOS_CADASTRO } from './pages/cadastros.js';
 import { usuarios, auditoria } from './pages/admin.js';
 
@@ -28,6 +29,11 @@ const ROTAS = {
   adiantamentos: { titulo: 'Adiantamentos', pagina: adiantamentos },
   despesas: { titulo: 'Despesas', pagina: despesas },
   reembolsos: { titulo: 'Reembolsos', pagina: reembolsos },
+  descontos: {
+    titulo: 'Autorizações de desconto', perfis: ['administrador', 'financeiro', 'solicitante'],
+    pagina: (c) => (!c.params.length ? listaDescontos(c) : c.params[0] === 'novo' || c.params[1] === 'editar' ? formDesconto(c) : detalheDesconto(c)),
+    voltar: (c) => (c.params.length ? '#/descontos' : null),
+  },
   relatorios: { titulo: 'Relatórios', pagina: relatorios },
   cadastros: { titulo: 'Cadastros', pagina: cadastrosPagina, perfis: ADMIN, voltar: () => '#/dashboard' },
   usuarios: { titulo: 'Usuários e perfis', pagina: usuarios, perfis: ADMIN, voltar: () => '#/dashboard' },
@@ -43,6 +49,7 @@ const MENU = [
   { rota: 'adiantamentos', titulo: 'Adiantamentos', icone: 'adiantamento' },
   { rota: 'despesas', titulo: 'Despesas', icone: 'despesa' },
   { rota: 'reembolsos', titulo: 'Reembolsos', icone: 'reembolso' },
+  { rota: 'descontos', titulo: 'Autorizações de desconto', icone: 'documento', perfis: ['administrador', 'financeiro', 'solicitante'] },
   { grupo: 'Análise' },
   { rota: 'relatorios', titulo: 'Relatórios', icone: 'relatorio' },
   { grupo: 'Configurações', perfis: ADMIN },
