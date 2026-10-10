@@ -88,7 +88,7 @@ const SITUACOES = {
   adiantamento: { aprovado: ['A pagar', 'info'], pago: ['Pago', 'ok'], rejeitado: ['Rejeitado', 'bad'], cancelado: ['Cancelado', 'mute'] },
   despesa: { pendente: ['Em análise', 'warn'], aprovada: ['Aprovada', 'ok'], rejeitada: ['Rejeitada', 'bad'] },
   reembolso: { aprovado: ['A pagar', 'info'], reembolsado: ['Reembolsado', 'ok'], cancelado: ['Cancelado', 'mute'] },
-  prestacao: { pendente: ['Não enviada', 'mute'], enviada: ['Em análise', 'info'], aprovada: ['Aprovada', 'ok'], devolvida: ['Devolvida', 'bad'] },
+  prestacao: { pendente: ['Em aberto', 'mute'], aprovada: ['Encerrada', 'ok'], devolvida: ['Reaberta', 'bad'] },
   desconto: { emitida: ['Aguardando assinatura', 'warn'], assinada: ['Assinada', 'info'], concluida: ['Descontado', 'ok'], cancelada: ['Cancelada', 'mute'] },
 };
 export const situacaoRotulo = (tipo, k) => SITUACOES[tipo]?.[k]?.[0] || k;
@@ -364,7 +364,7 @@ const EVENTOS = {
   'criar:viagem': 'solicitou a viagem', 'editar:viagem': 'editou a viagem', 'excluir:viagem': 'excluiu a viagem',
   'enviar:viagem': 'enviou a viagem para aprovação', 'aprovar:viagem': 'aprovou a viagem', 'reprovar:viagem': 'reprovou a viagem',
   'realizada:viagem': 'registrou a viagem como realizada', 'nao_realizada:viagem': 'marcou a viagem como não realizada', 'cancelar:viagem': 'cancelou a viagem',
-  'prestacao_enviar:viagem': 'enviou a prestação de contas', 'prestacao_aprovar:viagem': 'aprovou a prestação de contas', 'prestacao_devolver:viagem': 'devolveu a prestação de contas',
+  'prestacao_enviar:viagem': 'encerrou a prestação de contas', 'prestacao_reabrir:viagem': 'reabriu a prestação de contas', 'prestacao_aprovar:viagem': 'aprovou a prestação de contas', 'prestacao_devolver:viagem': 'devolveu a prestação de contas',
   'solicitar:adiantamento': 'solicitou adiantamento', 'aprovar:adiantamento': 'aprovou o adiantamento', 'rejeitar:adiantamento': 'rejeitou o adiantamento',
   'pagar:adiantamento': 'registrou o pagamento do adiantamento', 'cancelar:adiantamento': 'cancelou o adiantamento',
   'lancar:despesa': 'lançou despesa', 'editar:despesa': 'editou despesa', 'excluir:despesa': 'excluiu despesa',

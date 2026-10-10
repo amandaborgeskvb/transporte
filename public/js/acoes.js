@@ -64,16 +64,15 @@ export async function acaoViagem(viagem, acao, depois) {
 }
 
 const PRESTACAO = {
-  enviar_prestacao: { acao: 'enviar', titulo: 'Enviar prestação de contas', descricao: 'Confira se todas as despesas e comprovantes foram lançados. Depois do envio, o financeiro fará a análise.', obs: false, rotulo: 'Enviar prestação', msg: 'Prestação de contas enviada.' },
-  aprovar_prestacao: { acao: 'aprovar', titulo: 'Aprovar prestação de contas', descricao: 'Ao aprovar, as despesas ficam bloqueadas para edição.', obs: false, rotulo: 'Aprovar prestação', msg: 'Prestação de contas aprovada.' },
-  devolver_prestacao: { acao: 'devolver', titulo: 'Devolver prestação de contas', obs: true, rotulo: 'Devolver', perigo: true, msg: 'Prestação devolvida ao solicitante.' },
+  enviar_prestacao: { acao: 'enviar', titulo: 'Encerrar prestação de contas', descricao: 'Confira se todas as despesas e comprovantes foram lançados. Ao encerrar, a viagem é concluída: despesas e comprovantes ficam bloqueados e as despesas ainda em análise passam a valer.', obs: false, rotulo: 'Encerrar prestação', msg: 'Prestação de contas encerrada.' },
+  reabrir_prestacao: { acao: 'reabrir', titulo: 'Reabrir prestação de contas', descricao: 'A prestação volta a ficar aberta para novos lançamentos e ajustes.', obs: true, rotulo: 'Reabrir', perigo: true, msg: 'Prestação de contas reaberta.' },
 };
 
 export async function acaoPrestacao(viagem, chave, depois) {
   const cfg = PRESTACAO[chave];
   const s = await dialogo({
     titulo: cfg.titulo, descricao: cfg.descricao, confirmar: cfg.rotulo, perigo: cfg.perigo,
-    campos: [{ nome: 'obs', rotulo: cfg.obs ? 'Motivo da devolução' : 'Observação (opcional)', tipo: 'textarea', obrigatorio: cfg.obs, cheio: true }],
+    campos: [{ nome: 'obs', rotulo: cfg.obs ? 'Motivo da reabertura' : 'Observação (opcional)', tipo: 'textarea', obrigatorio: cfg.obs, cheio: true }],
     aoSalvar: (v) => post(`/viagens/${viagem.id}/prestacao`, { acao: cfg.acao, obs: v.obs }),
   });
   if (s) ok(cfg.msg, depois)();

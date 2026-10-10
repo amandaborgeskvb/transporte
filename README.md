@@ -15,7 +15,7 @@ PostgreSQL como banco. Sem etapa de build e sem frameworks de interface.
 | **Adiantamentos** | Solicitado já liberado para pagamento → pago, com forma (dinheiro, depósito, transferência…), data e comprovante |
 | **Despesas** | Alimentação, combustível, hospedagem, pedágio, manutenção etc., com comprovantes e análise do financeiro |
 | **Reembolsos** | Solicitação e pagamento direto (depósito em conta, transferência, outros) |
-| **Prestação de contas** | Envio pelo solicitante, aprovação ou devolução pelo financeiro; ao aprovar, a viagem é travada |
+| **Prestação de contas** | Com a viagem realizada, o solicitante encerra a prestação: a viagem é concluída e travada (sem etapa de análise); administrador/financeiro podem reabrir, com motivo |
 | **Autorizações de desconto** | Formulário padrão **RE. 0150.09** (Autorização de Desconto) emitido a partir da viagem ou avulso, com prévia ao vivo, impressão em A4 e acompanhamento até o desconto em folha |
 | **Importação** | Carga e atualização do cadastro de funcionários por até 3 arquivos do ERP (Ativos, Afastados, Demitidos), com situação, prévia, histórico e relatório |
 | **Relatórios** | Filtros por período, funcionário, setor, motivo, destino, status, categoria e prestação; exportação em CSV |
@@ -133,8 +133,8 @@ As permissões são validadas **no servidor** (a tela apenas esconde o que o per
 | Registrar pagamento de adiantamento e reembolso | | | ✔ | ✔ |
 | Lançar despesas e anexar comprovantes | ✔ | | ✔ | ✔ |
 | Aprovar ou rejeitar despesas | | | ✔ | ✔ |
-| Enviar prestação de contas | ✔ | | | ✔ |
-| Aprovar ou devolver prestação de contas | | | ✔ | ✔ |
+| Encerrar prestação de contas | ✔ | | | ✔ |
+| Reabrir prestação de contas encerrada (com motivo) | | | ✔ | ✔ |
 | Emitir, editar e cancelar autorização de desconto (RE. 0150.09) | | | ✔ | ✔ |
 | Excluir autorização de desconto (definitivo, exceto as já concluídas em folha) | | | ✔ | ✔ |
 | Consultar e imprimir a própria autorização de desconto | ✔ | | ✔ | ✔ |
@@ -167,7 +167,7 @@ R$ 580,00 → reembolso devido R$ 80,00. Uma viagem **não realizada** ou **canc
 devolver do valor integral.
 
 O **saldo pendente de prestação** do dashboard soma o saldo a devolver das viagens com adiantamento pago cuja
-prestação de contas ainda não foi aprovada.
+prestação de contas ainda não foi encerrada.
 
 ## Comprovantes
 

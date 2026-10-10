@@ -78,9 +78,8 @@ function acoesViagem(u, v) {
   if ((u.perfil === ADM || (u.perfil === SOL && dono)) && ['realizada', 'nao_realizada'].includes(v.status_codigo) && prestacaoAberta(v)) {
     acoes.push('enviar_prestacao');
   }
-  if (v.prestacao_situacao === 'enviada' && podeAnalisar(u, v, [ADM, FIN])) {
-    acoes.push('aprovar_prestacao', 'devolver_prestacao');
-  }
+  // Encerrada a prestação de contas, só administrador e financeiro podem reabri-la (com motivo)
+  if (v.prestacao_situacao === 'aprovada' && [ADM, FIN].includes(u.perfil)) acoes.push('reabrir_prestacao');
   return acoes;
 }
 

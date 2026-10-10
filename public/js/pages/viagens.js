@@ -83,7 +83,7 @@ function faixaEtapas(v) {
   const progresso = nivel === 1 && v.prestacao_situacao === 'aprovada' ? 3 : nivel;
   const detalhes = {
     1: v.status_codigo === 'nao_realizada' ? 'Não realizada' : v.realizada_em ? dataBR(v.realizada_em) : '',
-    2: ['realizada', 'nao_realizada'].includes(v.status_codigo) ? { pendente: 'Não enviada', enviada: 'Em análise', aprovada: 'Concluída', devolvida: 'Devolvida' }[v.prestacao_situacao] : '',
+    2: ['realizada', 'nao_realizada'].includes(v.status_codigo) ? { pendente: 'Em aberto', aprovada: 'Encerrada', devolvida: 'Reaberta' }[v.prestacao_situacao] : '',
   };
   return h('div', { class: 'fluxo', role: 'list', 'aria-label': 'Etapas da viagem' }, ETAPAS.map((nome, i) => {
     let tom = i < progresso ? 'feita' : i === progresso ? 'atual' : '';
@@ -129,8 +129,7 @@ export async function detalhe({ params, query, usuario, ir, recarregarPagina }) 
   const cmd = (texto, icn, fn, tom = '') => ({ texto, icone: icn, tom, aoClicar: fn });
   const principal = [
     tem('realizada') && cmd('Registrar como realizada', 'calendario', () => acaoViagem(v, 'realizada', apos), 'primario'),
-    tem('enviar_prestacao') && cmd('Enviar prestação de contas', 'prestacao', () => acaoPrestacao(v, 'enviar_prestacao', recarregar), 'primario'),
-    tem('aprovar_prestacao') && cmd('Aprovar prestação', 'ok', () => acaoPrestacao(v, 'aprovar_prestacao', recarregar), 'primario'),
+    tem('enviar_prestacao') && cmd('Encerrar prestação de contas', 'prestacao', () => acaoPrestacao(v, 'enviar_prestacao', recarregar), 'primario'),
   ].filter(Boolean);
   const lancamentos = [
     tem('solicitar_adiantamento') && cmd('Solicitar adiantamento', 'adiantamento', () => solicitarAdiantamento(v, recarregarNaAba('adiantamentos'))),
@@ -141,7 +140,7 @@ export async function detalhe({ params, query, usuario, ir, recarregarPagina }) 
   const outras = [
     tem('editar') && cmd('Editar', 'editar', () => formViagem({ viagem: v, usuario, depois: recarregar })),
     tem('nao_realizada') && cmd('Não realizada', 'proibido', () => acaoViagem(v, 'nao_realizada', apos)),
-    tem('devolver_prestacao') && cmd('Devolver prestação', 'voltar', () => acaoPrestacao(v, 'devolver_prestacao', recarregar), 'perigo'),
+    tem('reabrir_prestacao') && cmd('Reabrir prestação', 'voltar', () => acaoPrestacao(v, 'reabrir_prestacao', recarregar), 'perigo'),
     tem('cancelar') && cmd('Cancelar viagem', 'proibido', () => acaoViagem(v, 'cancelar', apos), 'perigo'),
     tem('excluir') && cmd('Excluir', 'lixeira', () => acaoViagem(v, 'excluir', apos), 'perigo'),
   ].filter(Boolean);

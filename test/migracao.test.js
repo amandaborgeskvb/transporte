@@ -59,3 +59,18 @@ test('o que aguardava aprovação (viagens, adiantamentos, reembolsos) passa a s
   assert.deepEqual((await q(`SELECT situacao, valor_aprovado::float AS v FROM adiantamentos WHERE viagem_id = $1`, [v1])).rows, [{ situacao: 'aprovado', v: 300 }]);
   assert.deepEqual((await q(`SELECT situacao, valor_aprovado::float AS v FROM reembolsos WHERE viagem_id = $1`, [v2])).rows, [{ situacao: 'aprovado', v: 50 }]);
 });
+
+test('prestações que estavam "enviadas" ficam encerradas e as despesas em análise passam a valer', async () => {
+  const { migrate } = require('../src/db');
+  const q = (sql, p) => t.pool.query(sql, p);
+  const f = (await q(`INSERT INTO funcionarios (nome, matricula) VALUES ('Teste Prestacao','9002') RETURNING id`)).rows[0].id;
+  const m = (await q('SELECT id FROM motivos_viagem LIMIT 1')).rows[0].id;
+  const c = (await q('SELECT id FROM categorias_despesa LIMIT 1')).rows[0].id;
+  const v = (await q(
+    `INSERT INTO viagens (funcionario_id, destino, motivo_id, data_saida, data_retorno, status_id, prestacao_situacao)
+     VALUES ($1,'Y',$2,'2026-01-01','2026-01-02',(SELECT id FROM status_viagem WHERE codigo='realizada'),'enviada') RETURNING id`, [f, m])).rows[0].id;
+  await q(`INSERT INTO despesas (viagem_id, categoria_id, descricao, valor, data, situacao) VALUES ($1,$2,'x',10,'2026-01-01','pendente')`, [v, c]);
+  await migrate(t.pool);
+  assert.equal((await q('SELECT prestacao_situacao FROM viagens WHERE id=$1', [v])).rows[0].prestacao_situacao, 'aprovada');
+  assert.equal((await q('SELECT situacao FROM despesas WHERE viagem_id=$1', [v])).rows[0].situacao, 'aprovada');
+});

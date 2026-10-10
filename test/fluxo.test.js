@@ -143,28 +143,35 @@ test('reembolso: solicitar e pagar por depósito (ou cancelar)', async () => {
   assert.equal(d.reembolsos[0].forma_pagamento_nome, 'Depósito em conta');
 });
 
-test('realização e prestação de contas', async () => {
+test('realização e prestação de contas: enviar encerra a viagem, sem etapa de análise', async () => {
   assert.equal((await trans(ana, ids.v, 'realizada', { data_realizacao: '2026-06-12' })).status, 200);
   assert.equal((await detalhe(ana, ids.v)).realizada_em, '2026-06-12');
-  assert.equal((await ana.post(`/api/viagens/${ids.v}/prestacao`, { acao: 'aprovar' })).status, 403);
-  assert.equal((await ana.post(`/api/viagens/${ids.v}/prestacao`, { acao: 'enviar', obs: 'Notas anexas' })).status, 200);
-  assert.equal((await ana.post(`/api/viagens/${ids.v}/despesas`, { categoria_id: ids.alim, descricao: 'x', valor: 1, data: '2026-06-12' })).status, 403); // em análise
   const pr = (c, corpo) => c.post(`/api/viagens/${ids.v}/prestacao`, corpo);
-  assert.equal((await pr(davi, { acao: 'aprovar' })).status, 409); // despesa "Com nota" ainda pendente
-  assert.equal((await pr(davi, { acao: 'devolver' })).status, 400); // exige motivo
-  assert.equal((await pr(davi, { acao: 'devolver', obs: 'Faltou o cupom' })).status, 200);
-  assert.equal((await detalhe(ana, ids.v)).prestacao_situacao, 'devolvida');
-  assert.equal((await davi.post(`/api/despesas/${ids.desp3}/acao`, { acao: 'aprovar' })).status, 200);
-  assert.equal((await pr(ana, { acao: 'enviar' })).status, 200);
-  assert.equal((await pr(davi, { acao: 'aprovar', obs: 'ok' })).status, 200);
+  assert.equal((await pr(ana, { acao: 'aprovar' })).status, 400); // não existe mais análise da prestação
+  assert.equal((await pr(davi, { acao: 'enviar' })).status, 403); // quem encerra é o solicitante (ou administrador)
+  // a despesa "Com nota" ainda está em análise: ao encerrar, passa a valer
+  assert.equal((await detalhe(ana, ids.v)).despesas_pendentes, 99.9);
+  assert.equal((await pr(ana, { acao: 'enviar', obs: 'Notas anexas' })).status, 200);
   const d = await detalhe(ana, ids.v);
-  assert.equal(d.prestacao_situacao, 'aprovada');
-  // depois de aprovada a prestação, tudo fica travado (inclusive comprovantes)
+  assert.equal(d.prestacao_situacao, 'aprovada'); // encerrada
+  assert.equal(d.despesas_pendentes, 0);
+  assert.equal(d.despesas_aprovadas, 679.9);
+  assert.ok(d.despesas.every((x) => x.situacao !== 'pendente'));
+  assert.ok(!d.acoes.includes('enviar_prestacao') && !d.acoes.includes('lancar_despesa'));
+  assert.deepEqual(d.acoes.includes('reabrir_prestacao'), false); // solicitante não reabre
+  // depois de encerrada, tudo fica travado (inclusive comprovantes)
   const pdf = Buffer.from('%PDF-1.4\nx');
   assert.equal((await davi.req('POST', `/api/anexos?entidade=despesa&id=${ids.desp1}&nome=a.pdf`, undefined, { bruto: pdf, tipo: 'application/pdf' })).status, 403);
   assert.equal((await ana.post(`/api/viagens/${ids.v}/despesas`, { categoria_id: ids.alim, descricao: 'x', valor: 1, data: '2026-06-12' })).status, 403);
   assert.equal((await ana.put(`/api/despesas/${ids.desp3}`, { categoria_id: ids.alim, descricao: 'y', valor: 1, data: '2026-06-12' })).status, 403);
   assert.equal((await ana.del(`/api/despesas/${ids.desp1}`)).status, 403);
+  // reabertura: só administrador/financeiro, com motivo
+  assert.equal((await pr(ana, { acao: 'reabrir', obs: 'x' })).status, 403);
+  assert.equal((await pr(davi, { acao: 'reabrir' })).status, 400);
+  assert.equal((await pr(davi, { acao: 'reabrir', obs: 'Faltou um comprovante' })).status, 200);
+  assert.equal((await detalhe(ana, ids.v)).prestacao_situacao, 'devolvida');
+  assert.equal((await pr(ana, { acao: 'enviar' })).status, 200); // encerra de novo
+  assert.equal((await detalhe(ana, ids.v)).prestacao_situacao, 'aprovada');
 });
 
 test('comprovantes: formatos, tamanho, visibilidade e remoção', async () => {
@@ -248,7 +255,7 @@ test('dashboard, pendências, relatórios e CSV', async () => {
 test('auditoria registra quem fez o quê, e o histórico aparece na viagem', async () => {
   const d = await detalhe(ana, ids.v);
   const acoes = d.historico.map((h) => `${h.usuario_nome}:${h.acao}:${h.entidade}`);
-  for (const esperado of ['ana:criar:viagem', 'ana:realizada:viagem', 'davi:pagar:adiantamento', 'davi:aprovar:despesa', 'davi:pagar:reembolso', 'davi:prestacao_aprovar:viagem']) {
+  for (const esperado of ['ana:criar:viagem', 'ana:realizada:viagem', 'davi:pagar:adiantamento', 'davi:aprovar:despesa', 'davi:pagar:reembolso', 'ana:prestacao_enviar:viagem', 'davi:prestacao_reabrir:viagem']) {
     assert.ok(acoes.includes(esperado), `faltou no histórico: ${esperado}`);
   }
   const pagto = d.historico.find((h) => h.acao === 'pagar' && h.entidade === 'adiantamento');
@@ -280,10 +287,7 @@ test('atalhos de prestação de contas: a_enviar e em_aberto só consideram viag
   assert.ok((await numeros(ana, 'em_aberto')).includes(v));
   assert.ok(!(await numeros(bruno, 'a_enviar')).includes(v)); // escopo do solicitante
 
-  await ana.post(`/api/viagens/${v}/prestacao`, { acao: 'enviar' });
+  await ana.post(`/api/viagens/${v}/prestacao`, { acao: 'enviar' }); // encerra
   assert.ok(!(await numeros(ana, 'a_enviar')).includes(v));
-  assert.ok((await numeros(davi, 'em_aberto')).includes(v)); // financeiro enxerga para analisar
-
-  await davi.post(`/api/viagens/${v}/prestacao`, { acao: 'aprovar' });
   assert.ok(!(await numeros(davi, 'em_aberto')).includes(v));
 });

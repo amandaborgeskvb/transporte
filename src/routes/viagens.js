@@ -195,32 +195,33 @@ function criarViagens({ pool }) {
     res.json({ ok: true });
   }));
 
-  // Prestação de contas: enviar (dono), aprovar/devolver (financeiro/administrador)
+  // Prestação de contas: enviar encerra a viagem (sem etapa de análise); só administrador/financeiro reabrem, com motivo
   router.post('/viagens/:id/prestacao', wrap(async (req, res) => {
     const id = idParam(req);
-    const acao = opcaoDe(req.body.acao, ['enviar', 'aprovar', 'devolver'], 'Ação');
+    const acao = opcaoDe(req.body.acao, ['enviar', 'reabrir'], 'Ação');
     const obs = texto(req.body.obs, 500);
     await tx(pool, async (db) => {
       const v = await carregarViagem(db, id, req.usuario, { travar: true });
       const permitidas = acoesViagem(req.usuario, v);
-      const chave = { enviar: 'enviar_prestacao', aprovar: 'aprovar_prestacao', devolver: 'devolver_prestacao' }[acao];
+      const chave = { enviar: 'enviar_prestacao', reabrir: 'reabrir_prestacao' }[acao];
       if (!permitidas.includes(chave)) throw erro403('Ação não permitida para este perfil ou estado da prestação de contas.');
 
+      let detalhes = { obs };
       if (acao === 'enviar') {
-        await db.query(`UPDATE viagens SET prestacao_situacao='enviada', prestacao_enviada_em=now(), prestacao_obs=$1, atualizado_em=now() WHERE id=$2`, [obs, id]);
-      } else {
-        if (acao === 'aprovar') {
-          const pend = await db.query(`SELECT COUNT(*)::int AS n FROM despesas WHERE viagem_id=$1 AND situacao='pendente'`, [id]);
-          if (pend.rows[0].n) throw erro409('Há despesas aguardando análise. Aprove ou rejeite todas antes de aprovar a prestação de contas.');
-        } else if (!obs) {
-          throw erro400('Informe o motivo da devolução.');
-        }
+        // Encerra: o que ainda estava em análise passa a valer e tudo fica travado
+        const auto = await db.query(
+          `UPDATE despesas SET situacao='aprovada', analisada_por=$2, analisada_em=now() WHERE viagem_id=$1 AND situacao='pendente'`, [id, req.usuario.id]);
         await db.query(
-          `UPDATE viagens SET prestacao_situacao=$1, prestacao_analisada_por=$2, prestacao_analisada_em=now(), prestacao_obs=$3, atualizado_em=now() WHERE id=$4`,
-          [acao === 'aprovar' ? 'aprovada' : 'devolvida', req.usuario.id, obs, id],
-        );
+          `UPDATE viagens SET prestacao_situacao='aprovada', prestacao_enviada_em=now(), prestacao_analisada_por=$1, prestacao_analisada_em=now(), prestacao_obs=$2, atualizado_em=now() WHERE id=$3`,
+          [req.usuario.id, obs, id]);
+        detalhes = { obs, despesas_aprovadas_automaticamente: auto.rowCount };
+      } else {
+        if (!obs) throw erro400('Informe o motivo da reabertura.');
+        await db.query(
+          `UPDATE viagens SET prestacao_situacao='devolvida', prestacao_analisada_por=$1, prestacao_analisada_em=now(), prestacao_obs=$2, atualizado_em=now() WHERE id=$3`,
+          [req.usuario.id, obs, id]);
       }
-      await auditar(db, req.usuario, `prestacao_${acao}`, 'viagem', id, { obs }, id);
+      await auditar(db, req.usuario, `prestacao_${acao}`, 'viagem', id, detalhes, id);
     });
     res.json({ ok: true });
   }));

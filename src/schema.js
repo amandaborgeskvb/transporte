@@ -247,6 +247,11 @@ ALTER TABLE reembolsos DROP CONSTRAINT IF EXISTS reembolsos_situacao_check;
 ALTER TABLE reembolsos ADD CONSTRAINT reembolsos_situacao_check CHECK (situacao IN ('pendente','aprovado','reembolsado','rejeitado','cancelado'));
 UPDATE reembolsos SET situacao = 'aprovado', valor_aprovado = COALESCE(valor_aprovado, valor_solicitado) WHERE situacao = 'pendente';
 
+-- Prestação de contas sem etapa de análise: enviar encerra (idempotente)
+UPDATE despesas SET situacao = 'aprovada', analisada_em = now()
+  WHERE situacao = 'pendente' AND viagem_id IN (SELECT id FROM viagens WHERE prestacao_situacao = 'enviada');
+UPDATE viagens SET prestacao_situacao = 'aprovada', prestacao_analisada_em = COALESCE(prestacao_analisada_em, now()) WHERE prestacao_situacao = 'enviada';
+
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,
   tipo         TEXT NOT NULL,

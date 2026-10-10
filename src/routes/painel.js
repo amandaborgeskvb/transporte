@@ -84,8 +84,6 @@ function criarPainel({ pool }) {
       () => cont(fromV('adiantamentos', `x.situacao = 'aprovado'`, 'x.valor_aprovado')));
     await add([ADM, FIN], 'Despesas aguardando análise', '#/despesas?situacao=pendente',
       () => cont(fromV('despesas', `x.situacao = 'pendente'`, 'x.valor')));
-    await add([ADM, FIN], 'Prestações de contas para análise', '#/viagens?prestacao=enviada',
-      () => cont(viagensQ(`v.prestacao_situacao = 'enviada'`)));
     await add([ADM, FIN], 'Reembolsos a pagar', '#/reembolsos?situacao=aprovado',
       () => cont(fromV('reembolsos', `x.situacao = 'aprovado'`, 'x.valor_aprovado')));
     if ([ADM, FIN].includes(u.perfil)) {
