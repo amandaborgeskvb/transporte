@@ -1,7 +1,6 @@
 // Gráficos simples em SVG/DOM, sem dependências externas.
 import { h, svg, brl, mesBR } from './ui.js';
 
-const CORES = { despesas: '#163b7a', adiantado: '#7aa7e8', reembolsado: '#f59e0b' };
 
 const compacto = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)} mi` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)} mil` : String(Math.round(n)));
 
@@ -28,13 +27,13 @@ export function colunasMensais(dados) {
     const x0 = m.l + i * larguraGrupo + larguraGrupo / 2;
     [['adiantado', -larguraBarra - 1], ['despesas', 1]].forEach(([chave, dx]) => {
       const alt = (d[chave] / max) * alturaUtil;
-      const r = svg('rect', { x: x0 + dx, y: m.t + alturaUtil - alt, width: larguraBarra, height: Math.max(alt, d[chave] > 0 ? 1 : 0), fill: CORES[chave], rx: 2 });
+      const r = svg('rect', { x: x0 + dx, y: m.t + alturaUtil - alt, width: larguraBarra, height: Math.max(alt, d[chave] > 0 ? 1 : 0), class: chave === 'despesas' ? 's1' : 's2', rx: 2 });
       r.append(Object.assign(svg('title'), { textContent: `${mesBR(d.mes)} · ${chave === 'despesas' ? 'Despesas aprovadas' : 'Adiantado'}: ${brl(d[chave])}` }));
       raiz.append(r);
     });
     raiz.append(Object.assign(svg('text', { x: x0, y: A - 10, class: 'eixo', 'text-anchor': 'middle' }), { textContent: mesBR(d.mes) }));
   });
-  return h('div', { class: 'scroll' }, raiz, legenda([['Adiantado', CORES.adiantado], ['Despesas aprovadas', CORES.despesas]]));
+  return h('div', { class: 'scroll' }, raiz, legenda([['Adiantado', 'var(--serie-2)'], ['Despesas aprovadas', 'var(--serie-1)']]));
 }
 
 function legenda(itens) {
@@ -46,15 +45,42 @@ function legenda(itens) {
 }
 
 // Barras horizontais ranqueadas
-export function barrasHorizontais(itens, { valor = 'despesas', rotulo = 'nome', cor = CORES.despesas } = {}) {
+export function barrasHorizontais(itens, { valor = 'despesas', rotulo = 'nome' } = {}) {
   const lista = itens.filter((i) => i[valor] > 0);
   if (!lista.length) return h('p', { class: 'muted vazio' }, 'Sem despesas aprovadas no período.');
   const max = Math.max(...lista.map((i) => i[valor]));
   return h('div', { class: 'ranking' }, lista.map((i) => {
     const fill = h('i');
     fill.style.width = `${(i[valor] / max) * 100}%`;
-    fill.style.background = cor;
     return h('div', { class: 'linha-rank', title: `${i[rotulo]}: ${brl(i[valor])} (${i.viagens} viagem${i.viagens === 1 ? '' : 'ns'})` },
       h('span', { class: 'nome' }, i[rotulo]), h('div', { class: 'trilho' }, fill), h('span', { class: 'valor' }, brl(i[valor])));
   }));
+}
+
+// Gráfico de rosca. itens: [{ nome, valor, cor }]
+export function rosca(itens, { centro = 'Total' } = {}) {
+  const lista = itens.filter((i) => i.valor > 0);
+  const total = lista.reduce((t, i) => t + i.valor, 0);
+  if (!total) return h('p', { class: 'muted vazio' }, 'Sem viagens no período.');
+  const R = 54;
+  const C = 2 * Math.PI * R;
+  const g = svg('g', { transform: 'rotate(-90 70 70)' });
+  g.append(svg('circle', { cx: 70, cy: 70, r: R, fill: 'none', 'stroke-width': 18, class: 'trilho-c' }));
+  let acum = 0;
+  for (const i of lista) {
+    const comp = (i.valor / total) * C;
+    const arco = svg('circle', { cx: 70, cy: 70, r: R, fill: 'none', stroke: i.cor, 'stroke-width': 18, 'stroke-dasharray': `${Math.max(comp - 1.5, 0.5)} ${C}`, 'stroke-dashoffset': -acum });
+    arco.append(Object.assign(svg('title'), { textContent: `${i.nome}: ${i.valor}` }));
+    g.append(arco);
+    acum += comp;
+  }
+  const grafico = svg('svg', { viewBox: '0 0 140 140', class: 'rosca', role: 'img', 'aria-label': `Viagens por situação, total ${total}` },
+    g,
+    Object.assign(svg('text', { x: 70, y: 74, 'text-anchor': 'middle', 'font-size': 30 }), { textContent: String(total) }),
+    Object.assign(svg('text', { x: 70, y: 92, 'text-anchor': 'middle', 'font-size': 10, class: 't-sub' }), { textContent: centro }));
+  return h('div', { class: 'rosca-wrap' }, grafico, h('ul', { class: 'rosca-legenda' }, lista.map((i) => {
+    const q = h('i');
+    q.style.background = i.cor;
+    return h('li', {}, q, i.nome, h('b', {}, i.valor));
+  })));
 }

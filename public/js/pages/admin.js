@@ -1,6 +1,9 @@
 // Usuários (perfis de acesso) e auditoria: telas do administrador.
 import { get, post, put, cadastros } from '../api.js';
-import { h, tabela, botao, dialogo, toast, secao, badgeTom, rotulo, dataHoraBR, barraFiltros, opcoes, descreverEvento, resumirDetalhes, entidadeRotulo } from '../ui.js';
+import {
+  h, tabela, botao, formulario, toast, secao, badgeTom, rotulo, dataHoraBR, barraFiltros, opcoes, descreverEvento,
+  resumirDetalhes, entidadeRotulo, cabecalhoPagina, vazio,
+} from '../ui.js';
 
 const PERFIS = ['administrador', 'solicitante', 'aprovador', 'financeiro'];
 const DESCRICAO_PERFIL = {
@@ -9,40 +12,79 @@ const DESCRICAO_PERFIL = {
   aprovador: 'Aprova ou reprova viagens, adiantamentos e reembolsos. Vê todas as viagens.',
   financeiro: 'Registra pagamentos, analisa despesas e prestações de contas. Vê todas as viagens.',
 };
+const TOM_PERFIL = { administrador: 'ok', solicitante: 'mute', aprovador: 'info', financeiro: 'warn' };
 
-export async function usuarios({ recarregarPagina }) {
-  const [lista, c] = await Promise.all([get('/usuarios'), cadastros(true)]);
+export async function usuarios() {
+  const [dados, c] = await Promise.all([get('/usuarios'), cadastros(true)]);
+  let lista = dados;
+  let selecionado = lista[0] || 'novo';
+  let filtro = '';
 
-  const abrir = (u) => dialogo({
-    titulo: u ? `Editar usuário ${u.login}` : 'Novo usuário',
-    campos: [
-      { nome: 'nome', rotulo: 'Nome', valor: u?.nome, obrigatorio: true, cheio: true },
-      u ? null : { nome: 'login', rotulo: 'Login', obrigatorio: true, dica: 'Letras, números e . _ @ -' },
-      { nome: 'perfil', rotulo: 'Perfil de acesso', tipo: 'select', opcoes: PERFIS.map((p) => ({ valor: p, rotulo: rotulo(p) })), valor: u?.perfil || 'solicitante', obrigatorio: true },
-      { nome: 'funcionario_id', rotulo: 'Funcionário vinculado', tipo: 'select', opcoes: opcoes(c.funcionarios, { somenteAtivos: true }), valor: u?.funcionario_id, vazio: '(nenhum)', cheio: true,
-        dica: 'Obrigatório para solicitantes: define de quem são as viagens solicitadas.' },
-      { nome: 'senha', rotulo: u ? 'Nova senha (deixe em branco para manter)' : 'Senha', tipo: 'password', obrigatorio: !u, cheio: true, dica: 'Mínimo de 8 caracteres.' },
-      u ? { nome: 'ativo', rotulo: 'Usuário ativo', tipo: 'checkbox', valor: u.ativo } : null,
-    ].filter(Boolean),
-    aoSalvar: async (v) => {
-      const corpo = { ...v, funcionario_id: v.funcionario_id || null };
-      if (!corpo.senha) delete corpo.senha;
-      if (u) await put(`/usuarios/${u.id}`, corpo); else await post('/usuarios', corpo);
-    },
-  }).then((s) => { if (s) { toast('Usuário salvo.'); recarregarPagina(); } });
+  const listaEl = h('div', { class: 'lista-itens' });
+  const detalhe = h('div', { class: 'card' });
+  const busca = h('input', { type: 'search', placeholder: 'Buscar usuário', 'aria-label': 'Buscar usuário' });
+  const norm = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+
+  function desenharLista() {
+    const t = norm(filtro);
+    const visiveis = lista.filter((u) => !t || norm(`${u.nome} ${u.login}`).includes(t));
+    listaEl.replaceChildren(...(visiveis.length ? visiveis.map((u) => h('div', {
+      class: `item-lista ${selecionado !== 'novo' && selecionado.id === u.id ? 'ativo' : ''} ${u.ativo ? '' : 'inativo'}`, tabindex: 0, role: 'button',
+      onclick: () => { selecionado = u; desenhar(); }, onkeydown: (e) => { if (e.key === 'Enter') { selecionado = u; desenhar(); } },
+    }, h('div', {}, h('strong', {}, u.nome), h('small', {}, `${u.login}${u.funcionario_nome ? ` · ${u.funcionario_nome}` : ''}`)),
+    u.ativo ? badgeTom(rotulo(u.perfil), TOM_PERFIL[u.perfil]) : badgeTom('Inativo', 'mute'))) : [vazio('Nenhum usuário encontrado.')]));
+  }
+
+  async function recarregar(idSelecionado) {
+    lista = await get('/usuarios');
+    selecionado = lista.find((u) => u.id === idSelecionado) || lista[0] || 'novo';
+    desenhar();
+  }
+
+  function desenharDetalhe() {
+    const novo = selecionado === 'novo';
+    const u = novo ? undefined : selecionado;
+    const caixaPerfil = h('p', { class: 'perfil-caixa' }, DESCRICAO_PERFIL[u?.perfil || 'solicitante']);
+    const form = formulario({
+      classeGrade: 'tres', confirmar: novo ? 'Criar usuário' : 'Salvar alterações',
+      campos: [
+        { nome: 'nome', rotulo: 'Nome', valor: u?.nome, obrigatorio: true, cheio: true },
+        novo ? { nome: 'login', rotulo: 'Login', obrigatorio: true, dica: 'Letras, números e . _ @ -' } : null,
+        { nome: 'perfil', rotulo: 'Perfil de acesso', tipo: 'select', opcoes: PERFIS.map((p) => ({ valor: p, rotulo: rotulo(p) })), valor: u?.perfil || 'solicitante', obrigatorio: true },
+        { nome: 'funcionario_id', rotulo: 'Funcionário vinculado', tipo: 'select', opcoes: opcoes(c.funcionarios, { somenteAtivos: true }), valor: u?.funcionario_id, vazio: '(nenhum)', dica: 'Obrigatório para solicitantes.' },
+        { nome: 'senha', rotulo: novo ? 'Senha' : 'Nova senha', tipo: 'password', obrigatorio: novo, dica: novo ? 'Mínimo de 8 caracteres.' : 'Deixe em branco para manter a atual.' },
+        novo ? null : { nome: 'ativo', rotulo: 'Usuário ativo', tipo: 'checkbox', valor: u.ativo, cheio: true },
+      ].filter(Boolean),
+      aoSalvar: async (v) => {
+        const corpo = { ...v, funcionario_id: v.funcionario_id || null };
+        if (!corpo.senha) delete corpo.senha;
+        const salvo = novo ? await post('/usuarios', corpo) : await put(`/usuarios/${u.id}`, corpo);
+        toast('Usuário salvo.');
+        await recarregar(salvo.id);
+      },
+      aoCancelar: novo && lista.length ? () => { selecionado = lista[0]; desenhar(); } : null,
+    });
+    form.querySelector('select[name=perfil]')?.addEventListener('change', (e) => { caixaPerfil.textContent = DESCRICAO_PERFIL[e.target.value]; });
+    detalhe.replaceChildren(
+      h('div', { class: 'detalhe-cab' }, h('div', {}, h('h2', {}, novo ? 'Novo usuário' : u.nome), h('div', { class: 'muted' }, novo ? 'Defina o perfil e uma senha inicial.' : `${u.login} · ${rotulo(u.perfil)}`))),
+      caixaPerfil, h('div', { class: 'espaco' }), form);
+  }
+
+  function desenhar() { desenharLista(); desenharDetalhe(); }
+  busca.addEventListener('input', () => { filtro = busca.value; desenharLista(); });
+  desenhar();
+
+  const perfisCard = h('section', { class: 'card' }, h('div', { class: 'card-topo' }, h('h2', {}, 'Perfis')),
+    h('dl', { class: 'perfis' }, PERFIS.flatMap((p) => [h('dt', {}, badgeTom(rotulo(p), TOM_PERFIL[p])), h('dd', {}, DESCRICAO_PERFIL[p])])));
 
   return [
-    h('div', { class: 'cabecalho' }, h('h1', {}, 'Usuários e perfis')),
-    secao('Perfis de acesso', null, h('dl', { class: 'perfis' }, PERFIS.flatMap((p) => [h('dt', {}, rotulo(p)), h('dd', {}, DESCRICAO_PERFIL[p])]))),
-    secao('Usuários', botao('+ Novo usuário', () => abrir(null), { pequeno: true }),
-      tabela([
-        { t: 'Nome', f: (u) => u.nome },
-        { t: 'Login', f: (u) => u.login },
-        { t: 'Perfil', f: (u) => rotulo(u.perfil) },
-        { t: 'Funcionário', f: (u) => u.funcionario_nome || '—' },
-        { t: 'Situação', f: (u) => badgeTom(u.ativo ? 'Ativo' : 'Inativo', u.ativo ? 'ok' : 'mute') },
-        { t: '', f: (u) => botao('Editar', () => abrir(u), { tom: 'sec', pequeno: true }) },
-      ], lista)),
+    cabecalhoPagina({
+      migalhas: [['Configurações'], ['Usuários e perfis']], titulo: 'Usuários e perfis', sub: 'Quem acessa o sistema e o que cada perfil pode fazer',
+      acoes: botao('Novo usuário', () => { selecionado = 'novo'; desenhar(); }, { icone: 'mais' }),
+    }),
+    h('div', { class: 'split' },
+      h('div', { class: 'lateral-col' }, h('section', { class: 'card' }, busca, listaEl), perfisCard),
+      detalhe),
   ];
 }
 
@@ -52,7 +94,7 @@ export async function auditoria({ query, ir }) {
   const qs = new URLSearchParams(query).toString();
   const linhas = await get(`/auditoria${qs ? `?${qs}` : ''}`);
   return [
-    h('div', { class: 'cabecalho' }, h('h1', {}, 'Auditoria')),
+    cabecalhoPagina({ migalhas: [['Configurações'], ['Auditoria']], titulo: 'Auditoria', sub: 'Quem fez o quê e quando' }),
     barraFiltros([
       { nome: 'usuario', rotulo: 'Usuário', placeholder: 'Nome' },
       { nome: 'entidade', rotulo: 'Registro', tipo: 'select', opcoes: ENTIDADES.map((e) => ({ valor: e, rotulo: entidadeRotulo(e) })) },
@@ -70,4 +112,3 @@ export async function auditoria({ query, ir }) {
       ], linhas, { vazioMsg: 'Nenhuma ocorrência.' })),
   ];
 }
-

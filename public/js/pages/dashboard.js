@@ -1,20 +1,22 @@
-import { get } from '../api.js';
-import { h, brl, kpi, secao, barraFiltros } from '../ui.js';
-import { colunasMensais, barrasHorizontais } from '../charts.js';
+import { get, cadastros } from '../api.js';
+import { h, brl, kpi, secao, barraFiltros, cabecalhoPagina } from '../ui.js';
+import { colunasMensais, barrasHorizontais, rosca } from '../charts.js';
 
 export default async function dashboard({ query, ir }) {
   const qs = new URLSearchParams(query).toString();
-  const [d, pendencias] = await Promise.all([get(`/dashboard${qs ? `?${qs}` : ''}`), get('/pendencias')]);
+  const [d, pendencias, c] = await Promise.all([get(`/dashboard${qs ? `?${qs}` : ''}`), get('/pendencias'), cadastros()]);
   const k = d.kpis;
-  const n = (c) => k.por_status[c] || 0;
-  const lv = (status) => `#/viagens?status=${status}${query.de ? `&de=${query.de}` : ''}${query.ate ? `&ate=${query.ate}` : ''}`;
+  const n = (cod) => k.por_status[cod] || 0;
+  const periodo = `${query.de ? `&de=${query.de}` : ''}${query.ate ? `&ate=${query.ate}` : ''}`;
+  const lv = (status) => `#/viagens?status=${status}${periodo}`;
+  const porStatus = c.status.map((s) => ({ nome: s.nome, valor: n(s.codigo), cor: s.cor }));
 
   return [
-    h('div', { class: 'cabecalho' }, h('h1', {}, 'Dashboard'),
-      barraFiltros([
-        { nome: 'de', rotulo: 'Saída de', tipo: 'date' },
-        { nome: 'ate', rotulo: 'até', tipo: 'date' },
-      ], query, (v) => ir('#/dashboard', v))),
+    cabecalhoPagina({ migalhas: [['Início', '#/dashboard'], ['Dashboard']], titulo: 'Dashboard', sub: 'Visão geral de viagens, adiantamentos, despesas e reembolsos' }),
+    barraFiltros([
+      { nome: 'de', rotulo: 'Saída de', tipo: 'date' },
+      { nome: 'ate', rotulo: 'até', tipo: 'date' },
+    ], query, (v) => ir('#/dashboard', v)),
 
     pendencias.length
       ? secao('Pendências para você', null, h('div', { class: 'pendencias' }, pendencias.map((p) =>
@@ -23,24 +25,26 @@ export default async function dashboard({ query, ir }) {
 
     h('h3', { class: 'grupo' }, 'Viagens'),
     h('div', { class: 'kpis' },
-      kpi('Total de viagens', k.total_viagens, { link: '#/viagens' }),
-      kpi('Aguardando aprovação', n('aguardando_aprovacao'), { tom: 'alerta', link: lv('aguardando_aprovacao') }),
-      kpi('Programadas (aprovadas)', n('aprovada'), { tom: 'azul', link: lv('aprovada') }),
-      kpi('Realizadas', n('realizada'), { tom: 'ok', link: lv('realizada') }),
-      kpi('Canceladas', n('cancelada'), { link: lv('cancelada') }),
-      kpi('Não realizadas', n('nao_realizada'), { link: lv('nao_realizada') })),
+      kpi('Total de viagens', k.total_viagens, { link: '#/viagens', icone: 'viagem' }),
+      kpi('Aguardando aprovação', n('aguardando_aprovacao'), { tom: n('aguardando_aprovacao') ? 'alerta' : '', link: lv('aguardando_aprovacao'), icone: 'relogio' }),
+      kpi('Programadas (aprovadas)', n('aprovada'), { link: lv('aprovada'), icone: 'calendario' }),
+      kpi('Realizadas', n('realizada'), { tom: 'ok', link: lv('realizada'), icone: 'ok' }),
+      kpi('Canceladas', n('cancelada'), { tom: 'neutro', link: lv('cancelada'), icone: 'proibido' }),
+      kpi('Não realizadas', n('nao_realizada'), { tom: 'neutro', link: lv('nao_realizada'), icone: 'fechar' })),
 
     h('h3', { class: 'grupo' }, 'Financeiro'),
     h('div', { class: 'kpis' },
-      kpi('Adiantamentos concedidos', brl(k.adiantado), { link: '#/adiantamentos?situacao=pago' }),
-      kpi('Despesas aprovadas', brl(k.despesas_aprovadas)),
-      kpi('Despesas em análise', brl(k.despesas_pendentes), { tom: k.despesas_pendentes ? 'alerta' : '', link: '#/despesas?situacao=pendente' }),
-      kpi('Reembolsos pagos', brl(k.reembolsado), { link: '#/reembolsos?situacao=reembolsado' }),
-      kpi('Reembolsos a pagar', brl(k.reembolso_a_pagar), { tom: k.reembolso_a_pagar ? 'alerta' : '' }),
-      kpi('Saldo pendente de prestação', brl(k.saldo_pendente_prestacao), { sub: `${k.prestacoes_pendentes} prestação(ões) em aberto`, tom: k.saldo_pendente_prestacao ? 'alerta' : '', link: '#/viagens?prestacao=pendente' })),
+      kpi('Adiantamentos concedidos', brl(k.adiantado), { link: '#/adiantamentos?situacao=pago', icone: 'adiantamento' }),
+      kpi('Despesas aprovadas', brl(k.despesas_aprovadas), { icone: 'despesa' }),
+      kpi('Despesas em análise', brl(k.despesas_pendentes), { tom: k.despesas_pendentes ? 'alerta' : '', link: '#/despesas?situacao=pendente', icone: 'relogio' }),
+      kpi('Reembolsos pagos', brl(k.reembolsado), { tom: 'ok', link: '#/reembolsos?situacao=reembolsado', icone: 'reembolso' }),
+      kpi('Reembolsos a pagar', brl(k.reembolso_a_pagar), { tom: k.reembolso_a_pagar ? 'alerta' : '', link: '#/reembolsos?situacao=aprovado', icone: 'carteira' }),
+      kpi('Saldo pendente de prestação', brl(k.saldo_pendente_prestacao), { sub: `${k.prestacoes_pendentes} prestação(ões) em aberto`, tom: k.saldo_pendente_prestacao ? 'alerta' : '', link: '#/viagens?prestacao=em_aberto', icone: 'prestacao' })),
 
-    h('div', { class: 'grade-2' },
+    h('h3', { class: 'grupo' }, 'Análises'),
+    h('div', { class: 'grade-3' },
       secao('Adiantamentos e despesas por mês', null, colunasMensais(d.por_mes)),
+      secao('Viagens por situação', null, rosca(porStatus, { centro: 'viagens' })),
       secao('Despesas por motivo', null, barrasHorizontais(d.por_motivo))),
     h('div', { class: 'grade-2' },
       secao('Despesas por funcionário', null, barrasHorizontais(d.por_funcionario)),

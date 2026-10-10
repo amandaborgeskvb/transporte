@@ -98,7 +98,7 @@ function criarPainel({ pool }) {
       () => cont(fromV('reembolsos', `x.situacao = 'aprovado'`, 'x.valor_aprovado')));
     await add([ADM, SOL], 'Viagens reprovadas (ajustar e reenviar)', '#/viagens?status=reprovada',
       () => cont(viagensQ(`s.codigo = 'reprovada'`)));
-    await add([ADM, SOL], 'Prestações de contas a enviar', '#/viagens?prestacao=pendente',
+    await add([ADM, SOL], 'Prestações de contas a enviar', '#/viagens?prestacao=a_enviar',
       () => cont(viagensQ(`s.codigo IN ('realizada','nao_realizada') AND v.prestacao_situacao IN ('pendente','devolvida')`)));
     res.json(itens);
   }));

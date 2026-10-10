@@ -1,7 +1,7 @@
 import { get, del, enviarAnexo, cadastros } from '../api.js';
 import {
-  h, brl, dataBR, dataHoraBR, badgeStatus, badgeSituacao, kpi, secao, tabela, botao, barra, vazio, toast,
-  confirmar, opcoes, opcoesSituacao, barraFiltros, descreverEvento, resumirDetalhes,
+  h, brl, dataBR, dataHoraBR, badgeStatus, badgeSituacao, kpi, secao, tabela, barra, vazio, toast, confirmar, opcoes,
+  opcoesSituacao, barraFiltros, descreverEvento, resumirDetalhes, cabecalhoPagina, barraComandos, abas, botao, icone,
 } from '../ui.js';
 import {
   formViagem, acaoViagem, acaoPrestacao, solicitarAdiantamento, acaoAdiantamento, formDespesa, acaoDespesa,
@@ -9,6 +9,22 @@ import {
 } from '../acoes.js';
 
 // ---------------- Lista ----------------
+// Visões rápidas (como as "visões do sistema" do Dynamics): cada uma é só um conjunto de filtros
+const VISOES = [
+  { chave: 'todas', texto: 'Todas', filtro: {} },
+  { chave: 'aguardando', texto: 'Aguardando aprovação', filtro: { status: 'aguardando_aprovacao' } },
+  { chave: 'aprovadas', texto: 'Aprovadas', filtro: { status: 'aprovada' } },
+  { chave: 'realizadas', texto: 'Realizadas', filtro: { status: 'realizada' } },
+  { chave: 'prestacao', texto: 'Prestação em aberto', filtro: { prestacao: 'em_aberto' } },
+  { chave: 'reprovadas', texto: 'Reprovadas', filtro: { status: 'reprovada' } },
+  { chave: 'canceladas', texto: 'Canceladas', filtro: { status: 'cancelada' } },
+];
+const mesmaVisao = (v, query) => {
+  const chaves = Object.keys(query).filter((k) => !['aba'].includes(k));
+  const f = Object.entries(v.filtro);
+  return chaves.length === f.length && f.every(([k, val]) => query[k] === val);
+};
+
 export async function lista({ query, usuario, ir }) {
   const c = await cadastros();
   const qs = new URLSearchParams(query).toString();
@@ -16,6 +32,12 @@ export async function lista({ query, usuario, ir }) {
   const veTodos = usuario.perfil !== 'solicitante';
   const podeSolicitar = ['administrador', 'solicitante'].includes(usuario.perfil);
 
+  // links do dashboard usam ?status=codigo; reflete no seletor de status
+  let valores = query;
+  if (query.status && !query.status_id) {
+    const s = c.status.find((x) => x.codigo === query.status);
+    if (s) valores = { ...query, status_id: s.id };
+  }
   const campos = [
     { nome: 'q', rotulo: 'Busca', placeholder: 'Número, destino ou funcionário' },
     { nome: 'status_id', rotulo: 'Status', tipo: 'select', opcoes: opcoes(c.status) },
@@ -25,11 +47,6 @@ export async function lista({ query, usuario, ir }) {
     { nome: 'de', rotulo: 'Saída de', tipo: 'date' },
     { nome: 'ate', rotulo: 'até', tipo: 'date' },
   ].filter(Boolean);
-  // links do dashboard usam ?status=codigo; converte para o select
-  if (query.status && !query.status_id) {
-    const s = c.status.find((x) => x.codigo === query.status);
-    if (s) query = { ...query, status_id: s.id };
-  }
 
   const colunas = [
     { t: 'Número', cls: 'nowrap', f: (v) => h('strong', {}, v.numero) },
@@ -37,38 +54,63 @@ export async function lista({ query, usuario, ir }) {
     { t: 'Destino', f: (v) => [v.destino, h('div', { class: 'muted pequeno' }, v.motivo_nome)] },
     { t: 'Período', cls: 'nowrap', f: (v) => [dataBR(v.data_saida), v.data_retorno !== v.data_saida ? h('div', { class: 'muted pequeno' }, `até ${dataBR(v.data_retorno)}`) : null] },
     { t: 'Status', f: badgeStatus },
-    { t: 'Prestação', f: (v) => (['aprovada', 'realizada', 'nao_realizada'].includes(v.status_codigo) ? badgeSituacao('prestacao', v.prestacao_situacao) : '—') },
+    { t: 'Prestação', f: (v) => (['realizada', 'nao_realizada'].includes(v.status_codigo) ? badgeSituacao('prestacao', v.prestacao_situacao) : '—') },
     { t: 'Adiantado', num: true, f: (v) => brl(v.adiantamento_pago) },
     { t: 'Despesas', num: true, f: (v) => brl(v.despesas_aprovadas) },
     { t: 'Saldo', num: true, f: (v) => (v.reembolso_devido ? h('span', { class: 'neg' }, `Reembolso ${brl(v.reembolso_devido)}`) : v.saldo_devolver ? `Devolver ${brl(v.saldo_devolver)}` : '—') },
   ];
 
   return [
-    h('div', { class: 'cabecalho' }, h('h1', {}, 'Viagens'),
-      podeSolicitar ? botao('+ Solicitar viagem', () => formViagem({ usuario, depois: (r) => ir(`#/viagens/${r.id}`) })) : null),
-    barraFiltros(campos, query, (v) => ir('#/viagens', v)),
+    cabecalhoPagina({
+      migalhas: [['Operação'], ['Viagens']], titulo: 'Viagens', sub: `${viagens.length} registro${viagens.length === 1 ? '' : 's'}`,
+      acoes: podeSolicitar ? botao('Solicitar viagem', () => formViagem({ usuario, depois: (r) => ir(`#/viagens/${r.id}`) }), { icone: 'mais' }) : null,
+    }),
+    h('div', { class: 'visoes', role: 'group', 'aria-label': 'Visões' }, VISOES.map((v) => h('button', {
+      type: 'button', class: `visao ${mesmaVisao(v, query) ? 'ativa' : ''}`, onclick: () => ir('#/viagens', v.filtro),
+    }, v.texto))),
+    barraFiltros(campos, valores, (v) => ir('#/viagens', v)),
     h('div', { class: 'card' }, tabela(colunas, viagens, { vazioMsg: 'Nenhuma viagem encontrada.', aoClicar: (v) => ir(`#/viagens/${v.id}`) })),
   ];
 }
 
 // ---------------- Detalhe ----------------
-const ROTULO_ACAO = {
-  enviar: ['Enviar para aprovação', ''], aprovar: ['Aprovar', ''], reprovar: ['Reprovar', 'perigo'],
-  realizada: ['Registrar como realizada', ''], nao_realizada: ['Não realizada', 'sec'], cancelar: ['Cancelar viagem', 'perigo'],
-  editar: ['Editar', 'sec'], excluir: ['Excluir', 'perigo'],
-};
+const ETAPAS = ['Solicitada', 'Aprovação', 'Aprovada', 'Realizada', 'Prestação de contas'];
 
-const ANEXO_SVG = '📎';
+// Faixa de etapas (processo da viagem), no estilo "business process flow" do Dynamics 365
+function faixaEtapas(v) {
+  if (v.status_codigo === 'cancelada') {
+    return h('div', { class: 'fluxo' }, h('div', { class: 'etapa neutra' }, h('strong', {}, icone('proibido'), 'Viagem cancelada'), v.decisao_justificativa ? h('small', {}, v.decisao_justificativa) : null));
+  }
+  const nivel = { solicitada: 0, aguardando_aprovacao: 1, reprovada: 1, aprovada: 2, realizada: 4, nao_realizada: 4 }[v.status_codigo] ?? 0;
+  const progresso = nivel === 4 && v.prestacao_situacao === 'aprovada' ? 5 : nivel;
+  const detalhes = {
+    1: v.status_codigo === 'reprovada' ? `Reprovada por ${v.aprovador_nome || '—'}` : v.status_codigo === 'aguardando_aprovacao' ? 'Aguardando aprovador' : '',
+    2: v.aprovador_nome && v.aprovado_em && v.status_codigo !== 'reprovada' ? `por ${v.aprovador_nome}` : '',
+    3: v.status_codigo === 'nao_realizada' ? 'Não realizada' : v.realizada_em ? dataBR(v.realizada_em) : '',
+    4: ['realizada', 'nao_realizada'].includes(v.status_codigo) ? { pendente: 'Não enviada', enviada: 'Em análise', aprovada: 'Aprovada', devolvida: 'Devolvida' }[v.prestacao_situacao] : '',
+  };
+  return h('div', { class: 'fluxo', role: 'list', 'aria-label': 'Etapas da viagem' }, ETAPAS.map((nome, i) => {
+    let tom = i < progresso ? 'feita' : i === progresso ? 'atual' : '';
+    if (i === 1 && v.status_codigo === 'reprovada') tom = 'alerta';
+    if (i === 3 && v.status_codigo === 'nao_realizada') tom = 'neutra';
+    if (i === 4 && v.prestacao_situacao === 'devolvida') tom = 'alerta';
+    return h('div', { class: `etapa ${tom}`, role: 'listitem', 'aria-current': tom === 'atual' ? 'step' : null },
+      h('strong', {}, tom === 'feita' ? icone('ok') : null, i === 1 && v.status_codigo === 'reprovada' ? 'Reprovada' : nome),
+      detalhes[i] ? h('small', {}, detalhes[i]) : null);
+  }));
+}
 
-function anexos(lista, entidade, itemId, viagemId, { podeAdicionar, usuario, recarregar }) {
+const ANEXO_ACCEPT = '.pdf,.jpg,.jpeg,.png';
+
+function anexos(lista, entidade, itemId, { podeAdicionar, usuario, recarregar }) {
   const itens = lista.map((a) => h('span', { class: 'anexo' },
-    h('a', { href: `/api/anexos/${a.id}`, target: '_blank', rel: 'noopener', title: `${a.nome_arquivo} (${Math.ceil(a.tamanho / 1024)} KB)` }, `${ANEXO_SVG} ${a.nome_arquivo}`),
+    h('a', { href: `/api/anexos/${a.id}`, target: '_blank', rel: 'noopener', title: `${a.nome_arquivo} (${Math.ceil(a.tamanho / 1024)} KB)` }, icone('clipe'), a.nome_arquivo),
     (['administrador', 'financeiro'].includes(usuario.perfil) || a.enviado_por === usuario.id) && podeAdicionar
       ? h('button', { class: 'link mini', title: 'Remover', 'aria-label': `Remover ${a.nome_arquivo}`, onclick: async () => {
         if (await confirmar('Remover comprovante', a.nome_arquivo, { rotulo: 'Remover', perigo: true })) { await del(`/anexos/${a.id}`); recarregar(); }
-      } }, '✕')
+      } }, icone('fechar'))
       : null));
-  const input = h('input', { type: 'file', accept: '.pdf,.jpg,.jpeg,.png', class: 'oculto', 'aria-label': 'Anexar comprovante' });
+  const input = h('input', { type: 'file', accept: ANEXO_ACCEPT, class: 'oculto', 'aria-label': 'Anexar comprovante' });
   input.addEventListener('change', async () => {
     if (!input.files[0]) return;
     try { await enviarAnexo(entidade, itemId, input.files[0]); toast('Comprovante anexado.'); recarregar(); } catch (e) { toast(e.message, 'erro'); input.value = ''; }
@@ -78,54 +120,72 @@ function anexos(lista, entidade, itemId, viagemId, { podeAdicionar, usuario, rec
     !lista.length && !podeAdicionar ? h('span', { class: 'muted' }, '—') : null);
 }
 
-export async function detalhe({ params, usuario, ir, recarregarPagina }) {
+export async function detalhe({ params, query, usuario, ir, recarregarPagina }) {
   const id = params[0];
   const v = await get(`/viagens/${id}`);
   const recarregar = () => recarregarPagina();
+  // Depois de criar um lançamento pela barra de comandos, abre a aba correspondente
+  const recarregarNaAba = (aba) => () => { history.replaceState(null, '', `#/viagens/${id}?aba=${aba}`); recarregarPagina(); };
   const tem = (a) => v.acoes.includes(a);
+  const apos = (r) => (r === 'excluida' ? ir('#/viagens') : recarregar());
+  const podeAnexarFin = ['administrador', 'financeiro'].includes(usuario.perfil);
 
-  const botoesTopo = ['enviar', 'aprovar', 'reprovar', 'realizada', 'nao_realizada', 'cancelar', 'editar', 'excluir']
-    .filter(tem).map((a) => botao(ROTULO_ACAO[a][0], () => (a === 'editar'
-      ? formViagem({ viagem: v, usuario, depois: recarregar })
-      : acaoViagem(v, a, (r) => (r === 'excluida' ? ir('#/viagens') : recarregar()))), { tom: ROTULO_ACAO[a][1] }));
+  // ----- Barra de comandos -----
+  const cmd = (texto, icn, fn, tom = '') => ({ texto, icone: icn, tom, aoClicar: fn });
+  const principal = [
+    tem('enviar') && cmd('Enviar para aprovação', 'enviar', () => acaoViagem(v, 'enviar', apos), 'primario'),
+    tem('aprovar') && cmd('Aprovar viagem', 'ok', () => acaoViagem(v, 'aprovar', apos), 'primario'),
+    tem('realizada') && cmd('Registrar como realizada', 'calendario', () => acaoViagem(v, 'realizada', apos), 'primario'),
+    tem('enviar_prestacao') && cmd('Enviar prestação de contas', 'prestacao', () => acaoPrestacao(v, 'enviar_prestacao', recarregar), 'primario'),
+    tem('aprovar_prestacao') && cmd('Aprovar prestação', 'ok', () => acaoPrestacao(v, 'aprovar_prestacao', recarregar), 'primario'),
+  ].filter(Boolean);
+  const lancamentos = [
+    tem('solicitar_adiantamento') && cmd('Solicitar adiantamento', 'adiantamento', () => solicitarAdiantamento(v, recarregarNaAba('adiantamentos'))),
+    tem('lancar_despesa') && cmd('Lançar despesa', 'despesa', () => formDespesa({ viagem: v, depois: recarregarNaAba('despesas') })),
+    tem('solicitar_reembolso') && cmd('Solicitar reembolso', 'reembolso', () => solicitarReembolso(v, recarregarNaAba('reembolsos'))),
+  ].filter(Boolean);
+  const outras = [
+    tem('editar') && cmd('Editar', 'editar', () => formViagem({ viagem: v, usuario, depois: recarregar })),
+    tem('nao_realizada') && cmd('Não realizada', 'proibido', () => acaoViagem(v, 'nao_realizada', apos)),
+    tem('devolver_prestacao') && cmd('Devolver prestação', 'voltar', () => acaoPrestacao(v, 'devolver_prestacao', recarregar), 'perigo'),
+    tem('reprovar') && cmd('Reprovar', 'fechar', () => acaoViagem(v, 'reprovar', apos), 'perigo'),
+    tem('cancelar') && cmd('Cancelar viagem', 'proibido', () => acaoViagem(v, 'cancelar', apos), 'perigo'),
+    tem('excluir') && cmd('Excluir', 'lixeira', () => acaoViagem(v, 'excluir', apos), 'perigo'),
+  ].filter(Boolean);
+  const grupos = [principal, lancamentos, outras].filter((g) => g.length);
+  const itensBarra = grupos.flatMap((g, i) => (i ? ['sep', ...g] : g));
 
-  const cab = h('div', { class: 'card viagem-cab' },
-    h('div', { class: 'card-topo' },
-      h('div', {},
-        h('a', { class: 'voltar', href: '#/viagens' }, '← Viagens'),
-        h('h1', {}, `${v.numero} · ${v.destino}`, ' ', badgeStatus(v)),
-        h('p', { class: 'muted' }, `${v.funcionario_nome} (mat. ${v.funcionario_matricula}) · Setor: ${v.funcionario_setor || '—'} · Motivo: ${v.motivo_nome}`),
-        h('p', { class: 'muted' }, `Saída ${dataBR(v.data_saida)} · Retorno ${dataBR(v.data_retorno)}${v.realizada_em ? ` · Realizada em ${dataBR(v.realizada_em)}` : ''} · Estimado ${brl(v.valor_estimado)}`),
-        v.descricao ? h('p', {}, v.descricao) : null,
-        v.aprovador_nome && v.aprovado_em
-          ? h('p', { class: 'decisao' }, `${v.status_codigo === 'reprovada' ? 'Reprovada' : 'Decisão'} por ${v.aprovador_nome} em ${dataHoraBR(v.aprovado_em)}${v.decisao_justificativa ? ` — “${v.decisao_justificativa}”` : ''}`)
-          : null),
-      h('div', { class: 'acoes' }, botoesTopo)));
-
-  // ----- Resumo financeiro -----
+  // ----- Painel "Resumo" -----
   const gasto = v.despesas_aprovadas + v.despesas_pendentes;
-  const resumo = secao('Resumo financeiro', null,
+  const dados = h('dl', { class: 'dados' },
+    ...[
+      ['Funcionário', `${v.funcionario_nome} (mat. ${v.funcionario_matricula})`], ['Setor', v.funcionario_setor || '—'],
+      ['Centro de custo', v.funcionario_centro_custo || '—'], ['Motivo', v.motivo_nome],
+      ['Saída', dataBR(v.data_saida)], ['Retorno', dataBR(v.data_retorno)],
+      ['Realizada em', dataBR(v.realizada_em)], ['Valor estimado', brl(v.valor_estimado)],
+      ['Aprovador', v.aprovador_nome ? `${v.aprovador_nome} · ${dataHoraBR(v.aprovado_em)}` : '—'],
+    ].flatMap(([t, valor]) => [h('div', {}, h('dt', {}, t), h('dd', {}, valor))]),
+    v.decisao_justificativa ? h('div', { class: 'largo' }, h('dt', {}, v.status_codigo === 'reprovada' ? 'Motivo da reprovação' : 'Observação da decisão'), h('dd', { class: 'decisao' }, v.decisao_justificativa)) : null,
+    v.descricao ? h('div', { class: 'largo' }, h('dt', {}, 'Descrição da atividade'), h('dd', {}, v.descricao)) : null);
+
+  const financeiro = h('div', {},
     h('div', { class: 'kpis' },
       kpi('Adiantamento recebido', brl(v.adiantamento_pago), { sub: v.adiantamento_solicitado > v.adiantamento_pago ? `Solicitado: ${brl(v.adiantamento_solicitado)}` : undefined }),
       kpi('Despesas aprovadas', brl(v.despesas_aprovadas), { sub: v.despesas_pendentes ? `+ ${brl(v.despesas_pendentes)} em análise` : undefined }),
       kpi('Saldo a devolver', brl(v.saldo_devolver), { tom: v.saldo_devolver ? 'alerta' : '' }),
       kpi('Reembolso devido', brl(v.reembolso_devido), { tom: v.reembolso_devido ? 'alerta' : '', sub: v.reembolso_pago ? `Pago: ${brl(v.reembolso_pago)}` : undefined }),
-      kpi('Reembolso a pagar', brl(v.reembolso_a_pagar), { tom: v.reembolso_a_pagar ? 'azul' : '' })),
+      kpi('Reembolso a pagar', brl(v.reembolso_a_pagar), { tom: v.reembolso_a_pagar ? 'alerta' : '' })),
     v.valor_estimado > 0 ? [h('p', { class: 'muted pequeno' }, `Gasto (aprovado + em análise) ${brl(gasto)} de ${brl(v.valor_estimado)} estimados`), barra(gasto, v.valor_estimado)] : null,
-    h('div', { class: 'prestacao' },
-      h('span', {}, 'Prestação de contas: '), badgeSituacao('prestacao', v.prestacao_situacao),
-      v.prestacao_obs ? h('span', { class: 'muted' }, ` — ${v.prestacao_obs}`) : null,
-      h('span', { class: 'acoes' },
-        tem('enviar_prestacao') ? botao('Enviar prestação de contas', () => acaoPrestacao(v, 'enviar_prestacao', recarregar)) : null,
-        tem('aprovar_prestacao') ? botao('Aprovar prestação', () => acaoPrestacao(v, 'aprovar_prestacao', recarregar)) : null,
-        tem('devolver_prestacao') ? botao('Devolver', () => acaoPrestacao(v, 'devolver_prestacao', recarregar), { tom: 'perigo' }) : null)));
+    h('div', { class: 'prestacao' }, h('span', {}, 'Prestação de contas: '), badgeSituacao('prestacao', v.prestacao_situacao), v.prestacao_obs ? h('span', { class: 'muted' }, ` — ${v.prestacao_obs}`) : null));
 
+  const painelResumo = h('div', { class: 'grade-2' }, secao('Dados da viagem', null, dados), secao('Resumo financeiro', null, financeiro));
+
+  // ----- Tabelas -----
   const botoesItem = (item, acoes, fn, rotulos) => h('div', { class: 'acoes-linha' },
     acoes.filter((a) => item.acoes.includes(a)).map((a) => botao(rotulos[a][0], () => fn(item, a, recarregar), { tom: rotulos[a][1], pequeno: true })));
 
-  // ----- Adiantamentos -----
-  const R_ADIANT = { aprovar: ['Aprovar', ''], rejeitar: ['Rejeitar', 'perigo sec'], pagar: ['Registrar pagamento', ''], cancelar: ['Cancelar', 'perigo sec'] };
-  const adiantamentos = secao('Adiantamentos', tem('solicitar_adiantamento') ? botao('+ Solicitar adiantamento', () => solicitarAdiantamento(v, recarregar), { pequeno: true }) : null,
+  const R_ADIANT = { aprovar: ['Aprovar', ''], rejeitar: ['Rejeitar', 'perigo'], pagar: ['Registrar pagamento', ''], cancelar: ['Cancelar', 'perigo'] };
+  const painelAdiant = secao('Adiantamentos', tem('solicitar_adiantamento') ? botao('Solicitar adiantamento', () => solicitarAdiantamento(v, recarregar), { pequeno: true, icone: 'mais' }) : null,
     tabela([
       { t: 'Situação', f: (a) => badgeSituacao('adiantamento', a.situacao) },
       { t: 'Solicitado', num: true, f: (a) => brl(a.valor_solicitado) },
@@ -134,26 +194,24 @@ export async function detalhe({ params, usuario, ir, recarregarPagina }) {
       { t: 'Forma', f: (a) => a.forma_pagamento_nome || '—' },
       { t: 'Data pgto.', cls: 'nowrap', f: (a) => dataBR(a.data_pagamento) },
       { t: 'Observação', f: (a) => a.observacao || '—' },
-      { t: 'Comprovantes', f: (a) => anexos(a.anexos, 'adiantamento', a.id, v.id, { podeAdicionar: ['administrador', 'financeiro'].includes(usuario.perfil), usuario, recarregar }) },
+      { t: 'Comprovantes', f: (a) => anexos(a.anexos, 'adiantamento', a.id, { podeAdicionar: podeAnexarFin && v.prestacao_situacao !== 'aprovada', usuario, recarregar }) },
       { t: '', f: (a) => botoesItem(a, ['aprovar', 'rejeitar', 'pagar', 'cancelar'], acaoAdiantamento, R_ADIANT) },
     ], v.adiantamentos, { vazioMsg: 'Nenhum adiantamento solicitado.' }));
 
-  // ----- Despesas -----
-  const R_DESP = { aprovar: ['Aprovar', ''], rejeitar: ['Rejeitar', 'perigo sec'], editar: ['Editar', 'sec'], excluir: ['Excluir', 'perigo sec'] };
-  const despesas = secao('Despesas', tem('lancar_despesa') ? botao('+ Lançar despesa', () => formDespesa({ viagem: v, depois: recarregar }), { pequeno: true }) : null,
+  const R_DESP = { aprovar: ['Aprovar', ''], rejeitar: ['Rejeitar', 'perigo'], editar: ['Editar', 'sec'], excluir: ['Excluir', 'perigo'] };
+  const painelDesp = secao('Despesas', tem('lancar_despesa') ? botao('Lançar despesa', () => formDespesa({ viagem: v, depois: recarregar }), { pequeno: true, icone: 'mais' }) : null,
     tabela([
       { t: 'Data', cls: 'nowrap', f: (d) => dataBR(d.data) },
       { t: 'Categoria', f: (d) => d.categoria_nome },
       { t: 'Descrição', f: (d) => d.descricao },
       { t: 'Valor', num: true, f: (d) => brl(d.valor) },
       { t: 'Situação', f: (d) => [badgeSituacao('despesa', d.situacao), d.motivo_rejeicao ? h('div', { class: 'muted pequeno' }, d.motivo_rejeicao) : null] },
-      { t: 'Comprovantes', f: (d) => anexos(d.anexos, 'despesa', d.id, v.id, { podeAdicionar: d.situacao !== 'aprovada' && v.prestacao_situacao !== 'aprovada' && (tem('lancar_despesa') || ['administrador', 'financeiro'].includes(usuario.perfil)), usuario, recarregar }) },
+      { t: 'Comprovantes', f: (d) => anexos(d.anexos, 'despesa', d.id, { podeAdicionar: d.situacao !== 'aprovada' && v.prestacao_situacao !== 'aprovada' && (tem('lancar_despesa') || podeAnexarFin), usuario, recarregar }) },
       { t: '', f: (d) => botoesItem(d, ['aprovar', 'rejeitar', 'editar', 'excluir'], acaoDespesa, R_DESP) },
     ], v.despesas, { vazioMsg: 'Nenhuma despesa lançada.' }));
 
-  // ----- Reembolsos -----
-  const R_REEMB = { aprovar: ['Aprovar', ''], rejeitar: ['Rejeitar', 'perigo sec'], pagar: ['Registrar pagamento', ''] };
-  const reembolsos = secao('Reembolsos', tem('solicitar_reembolso') ? botao('+ Solicitar reembolso', () => solicitarReembolso(v, recarregar), { pequeno: true }) : null,
+  const R_REEMB = { aprovar: ['Aprovar', ''], rejeitar: ['Rejeitar', 'perigo'], pagar: ['Registrar pagamento', ''] };
+  const painelReemb = secao('Reembolsos', tem('solicitar_reembolso') ? botao('Solicitar reembolso', () => solicitarReembolso(v, recarregar), { pequeno: true, icone: 'mais' }) : null,
     tabela([
       { t: 'Situação', f: (r) => badgeSituacao('reembolso', r.situacao) },
       { t: 'Solicitado', num: true, f: (r) => brl(r.valor_solicitado) },
@@ -162,12 +220,11 @@ export async function detalhe({ params, usuario, ir, recarregarPagina }) {
       { t: 'Forma', f: (r) => r.forma_pagamento_nome || '—' },
       { t: 'Data pgto.', cls: 'nowrap', f: (r) => dataBR(r.data_pagamento) },
       { t: 'Motivo', f: (r) => [r.motivo, r.observacao ? h('div', { class: 'muted pequeno' }, r.observacao) : null] },
-      { t: 'Comprovantes', f: (r) => anexos(r.anexos, 'reembolso', r.id, v.id, { podeAdicionar: ['administrador', 'financeiro'].includes(usuario.perfil), usuario, recarregar }) },
+      { t: 'Comprovantes', f: (r) => anexos(r.anexos, 'reembolso', r.id, { podeAdicionar: podeAnexarFin && v.prestacao_situacao !== 'aprovada', usuario, recarregar }) },
       { t: '', f: (r) => botoesItem(r, ['aprovar', 'rejeitar', 'pagar'], acaoReembolso, R_REEMB) },
     ], v.reembolsos, { vazioMsg: 'Nenhum reembolso solicitado.' }));
 
-  // ----- Histórico -----
-  const historico = secao('Histórico', null,
+  const painelHist = secao('Histórico', null,
     v.historico.length
       ? h('ul', { class: 'historico' }, v.historico.map((e) => {
         const det = resumirDetalhes(e.detalhes);
@@ -175,5 +232,42 @@ export async function detalhe({ params, usuario, ir, recarregarPagina }) {
       }))
       : vazio('Sem registros.'));
 
-  return [cab, resumo, adiantamentos, despesas, reembolsos, historico];
+  // ----- Abas -----
+  const PAINEIS = { resumo: painelResumo, adiantamentos: painelAdiant, despesas: painelDesp, reembolsos: painelReemb, historico: painelHist };
+  const itensAba = [
+    { chave: 'resumo', texto: 'Resumo' },
+    { chave: 'adiantamentos', texto: 'Adiantamentos', cont: v.adiantamentos.length },
+    { chave: 'despesas', texto: 'Despesas', cont: v.despesas.length },
+    { chave: 'reembolsos', texto: 'Reembolsos', cont: v.reembolsos.length },
+    { chave: 'historico', texto: 'Histórico', cont: v.historico.length },
+  ];
+  let ativa = PAINEIS[query.aba] ? query.aba : 'resumo';
+  const area = h('div', { class: 'painel-abas' });
+  let barraAbas;
+  const mostrar = (chave) => {
+    ativa = chave;
+    for (const [k, el] of Object.entries(PAINEIS)) el.classList.toggle('oculto', k !== chave);
+    barraAbas.querySelectorAll('button').forEach((b) => {
+      const on = b.dataset.aba === chave;
+      b.classList.toggle('ativa', on);
+      b.setAttribute('aria-selected', String(on));
+    });
+    history.replaceState(null, '', `#/viagens/${id}${chave === 'resumo' ? '' : `?aba=${chave}`}`); // lembra a aba sem recarregar
+  };
+  barraAbas = abas(itensAba, ativa, mostrar);
+  area.append(...Object.values(PAINEIS));
+  for (const [k, el] of Object.entries(PAINEIS)) el.classList.toggle('oculto', k !== ativa);
+
+  return [
+    cabecalhoPagina({
+      migalhas: [['Operação'], ['Viagens', '#/viagens'], [v.numero]],
+      titulo: h('span', {}, `${v.numero} · ${v.destino} `, badgeStatus(v)),
+      sub: `${v.funcionario_nome} · ${dataBR(v.data_saida)} a ${dataBR(v.data_retorno)} · ${v.motivo_nome}`,
+    }),
+    faixaEtapas(v),
+    barraComandos(itensBarra),
+    barraAbas,
+    area,
+  ];
 }
+

@@ -1,5 +1,5 @@
 import { get, cadastros } from '../api.js';
-import { h, brl, dataBR, badgeStatus, badgeSituacao, tabela, opcoes, opcoesSituacao, barraFiltros, kpi, secao } from '../ui.js';
+import { h, brl, dataBR, badgeStatus, badgeSituacao, tabela, opcoes, opcoesSituacao, barraFiltros, kpi, secao, cabecalhoPagina, icone } from '../ui.js';
 
 export default async function relatorios({ query, usuario, ir }) {
   const c = await cadastros();
@@ -59,8 +59,10 @@ export default async function relatorios({ query, usuario, ir }) {
     : [kpi('Despesas', dados.length), kpi('Total', brl(soma('valor')))];
 
   return [
-    h('div', { class: 'cabecalho' }, h('h1', {}, 'Relatórios'),
-      h('a', { class: 'btn', href: `/api/relatorios/${tipo}.csv${qs ? `?${qs}` : ''}`, download: '' }, 'Exportar CSV')),
+    cabecalhoPagina({
+      migalhas: [['Análise'], ['Relatórios']], titulo: 'Relatórios', sub: 'Filtre, confira os totais e exporte para o Excel (CSV)',
+      acoes: h('a', { class: 'btn', href: `/api/relatorios/${tipo}.csv${qs ? `?${qs}` : ''}`, download: '' }, icone('baixar'), 'Exportar CSV'),
+    }),
     abas,
     barraFiltros(campos, filtros, (v) => ir('#/relatorios', { ...v, tipo })),
     h('div', { class: 'kpis compactos' }, totais),

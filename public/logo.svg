@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="CRV">
-  <rect width="96" height="96" rx="20" fill="#0a1f44"/>
-  <text x="48" y="50" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="800" fill="#ffffff" letter-spacing="1">CRV</text>
-  <path d="M18 66 Q48 52 78 62" fill="none" stroke="#2f6fdb" stroke-width="5" stroke-linecap="round"/>
-  <path d="M70 55 L82 63 L68 70 Z" fill="#2f6fdb"/>
-</svg>

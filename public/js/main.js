@@ -1,33 +1,56 @@
 import { get, post } from './api.js';
-import { h, dialogo, rotulo } from './ui.js';
+import { h, icone, dialogo, rotulo } from './ui.js';
 import dashboard from './pages/dashboard.js';
 import { lista as listaViagens, detalhe as detalheViagem } from './pages/viagens.js';
 import { adiantamentos, despesas, reembolsos } from './pages/filas.js';
 import relatorios from './pages/relatorios.js';
-import cadastrosPagina from './pages/cadastros.js';
+import cadastrosPagina, { TIPOS_CADASTRO } from './pages/cadastros.js';
 import { usuarios, auditoria } from './pages/admin.js';
 
 const raiz = document.getElementById('raiz');
+const MARCA = 'CRV Industrial';
 let usuario = null;
+let app = null;
 let areaPagina = null;
-let menuLinks = [];
+let areaVoltar = null;
 let tokenRender = 0;
+let ultimoHash = null;
 
 const TODOS = ['administrador', 'solicitante', 'aprovador', 'financeiro'];
 const ADMIN = ['administrador'];
+const guardar = (k, v) => { try { localStorage.setItem(k, v); } catch { /* sem armazenamento: segue sem lembrar */ } };
+const lembrado = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 
-// caminho -> { titulo, pagina, perfis, menu }
+// ---------- Rotas ----------
 const ROTAS = {
-  dashboard: { titulo: 'Dashboard', pagina: dashboard, perfis: TODOS, menu: true },
-  viagens: { titulo: 'Viagens', pagina: (c) => (c.params.length ? detalheViagem(c) : listaViagens(c)), perfis: TODOS, menu: true },
-  adiantamentos: { titulo: 'Adiantamentos', pagina: adiantamentos, perfis: TODOS, menu: true },
-  despesas: { titulo: 'Despesas', pagina: despesas, perfis: TODOS, menu: true },
-  reembolsos: { titulo: 'Reembolsos', pagina: reembolsos, perfis: TODOS, menu: true },
-  relatorios: { titulo: 'Relatórios', pagina: relatorios, perfis: TODOS, menu: true },
-  cadastros: { titulo: 'Cadastros', pagina: cadastrosPagina, perfis: ADMIN, menu: true },
-  usuarios: { titulo: 'Usuários e perfis', pagina: usuarios, perfis: ADMIN, menu: true },
-  auditoria: { titulo: 'Auditoria', pagina: auditoria, perfis: ADMIN, menu: true },
+  dashboard: { titulo: 'Dashboard', pagina: dashboard },
+  viagens: { titulo: 'Viagens', pagina: (c) => (c.params.length ? detalheViagem(c) : listaViagens(c)), voltar: (c) => (c.params.length ? '#/viagens' : null) },
+  adiantamentos: { titulo: 'Adiantamentos', pagina: adiantamentos },
+  despesas: { titulo: 'Despesas', pagina: despesas },
+  reembolsos: { titulo: 'Reembolsos', pagina: reembolsos },
+  relatorios: { titulo: 'Relatórios', pagina: relatorios },
+  cadastros: { titulo: 'Cadastros', pagina: cadastrosPagina, perfis: ADMIN, voltar: () => '#/dashboard' },
+  usuarios: { titulo: 'Usuários e perfis', pagina: usuarios, perfis: ADMIN, voltar: () => '#/dashboard' },
+  auditoria: { titulo: 'Auditoria', pagina: auditoria, perfis: ADMIN, voltar: () => '#/dashboard' },
 };
+
+// Menu lateral: grupos e itens (com sub-itens opcionais)
+const MENU = [
+  { rota: 'dashboard', titulo: 'Início / Dashboard', icone: 'dashboard' },
+  { grupo: 'Operação' },
+  { rota: 'viagens', titulo: 'Viagens', icone: 'viagem' },
+  { grupo: 'Financeiro' },
+  { rota: 'adiantamentos', titulo: 'Adiantamentos', icone: 'adiantamento' },
+  { rota: 'despesas', titulo: 'Despesas', icone: 'despesa' },
+  { rota: 'reembolsos', titulo: 'Reembolsos', icone: 'reembolso' },
+  { grupo: 'Análise' },
+  { rota: 'relatorios', titulo: 'Relatórios', icone: 'relatorio' },
+  { grupo: 'Configurações', perfis: ADMIN },
+  { rota: 'cadastros', titulo: 'Cadastros', icone: 'cadastros', perfis: ADMIN, filhos: Object.entries(TIPOS_CADASTRO).map(([k, t]) => ({ href: `#/cadastros/${k}`, titulo: t.titulo })) },
+  { rota: 'usuarios', titulo: 'Usuários e perfis', icone: 'usuarios', perfis: ADMIN },
+  { rota: 'auditoria', titulo: 'Auditoria', icone: 'auditoria', perfis: ADMIN },
+];
+const permitido = (perfis) => !perfis || perfis.includes(usuario.perfil);
 
 // ---------- Navegação ----------
 function lerHash() {
@@ -43,58 +66,192 @@ export function ir(caminho, query = {}) {
   else location.hash = alvo;
 }
 
+function marcarMenu(rota) {
+  let atual = location.hash.split('?')[0];
+  if (atual === '#/cadastros') atual = '#/cadastros/funcionarios'; // tela padrão dos cadastros
+  app.querySelectorAll('.nav a').forEach((a) => {
+    a.classList.toggle('ativo', a.dataset.filho ? a.getAttribute('href') === atual : a.dataset.rota === rota);
+  });
+  app.querySelectorAll('.nav .grupo-btn').forEach((b) => {
+    const aberto = b.dataset.rota === rota || b.dataset.manual === '1';
+    b.nextElementSibling.hidden = !aberto;
+    b.setAttribute('aria-expanded', String(aberto));
+  });
+}
+
 async function renderizar() {
   if (!usuario) return;
   const { rota, params, query } = lerHash();
   const def = ROTAS[rota];
   const meu = ++tokenRender;
-  menuLinks.forEach((a) => a.classList.toggle('ativo', a.dataset.rota === rota));
-  document.getElementById('menu-toggle')?.setAttribute('aria-expanded', 'false');
+  marcarMenu(rota);
+  app.classList.remove('menu-aberto');
   document.body.classList.remove('menu-aberto');
 
-  if (!def || !def.perfis.includes(usuario.perfil)) {
+  if (!def || !permitido(def.perfis)) {
+    areaVoltar.replaceChildren();
     areaPagina.replaceChildren(h('div', { class: 'card' }, h('h2', {}, 'Página não disponível'), h('p', { class: 'muted' }, 'Esta área não existe ou não está liberada para o seu perfil.'), h('a', { href: '#/dashboard' }, 'Ir para o dashboard')));
     return;
   }
-  document.title = `${def.titulo} · CRV Gestão de Viagens`;
-  const y = window.scrollY;
+  document.title = `${def.titulo} · ${MARCA}`;
   const contexto = { params, query, usuario, ir, recarregarPagina: renderizar };
+  const destinoVoltar = def.voltar?.(contexto);
+  areaVoltar.replaceChildren(...(destinoVoltar
+    ? [h('button', { type: 'button', class: 'voltar-btn', onclick: () => ir(destinoVoltar) }, icone('voltar'), 'Voltar')] : []));
+  const y = window.scrollY;
   try {
     const conteudo = await def.pagina(contexto);
     if (meu !== tokenRender) return; // outra navegação começou
     areaPagina.replaceChildren(...[conteudo].flat(Infinity).filter(Boolean));
-    window.scrollTo(0, location.hash === lerHash.ultimo ? y : 0);
-    lerHash.ultimo = location.hash;
+    const caminhoAtual = location.hash.split('?')[0];
+    window.scrollTo(0, caminhoAtual === ultimoHash ? y : 0); // mantém a rolagem ao recarregar a mesma tela
+    ultimoHash = caminhoAtual;
   } catch (e) {
     if (meu !== tokenRender || e.status === 401) return;
     areaPagina.replaceChildren(h('div', { class: 'card' }, h('h2', {}, e.status === 404 ? 'Não encontrado' : 'Não foi possível carregar'), h('p', { class: 'erro' }, e.message), h('a', { href: '#/dashboard' }, 'Ir para o dashboard')));
   }
 }
 
-// ---------- Estrutura (menu lateral + área da página) ----------
+// ---------- Tema ----------
+const temaAtual = () => document.documentElement.dataset.tema;
+function alternarTema(botao) {
+  const novo = temaAtual() === 'escuro' ? 'claro' : 'escuro';
+  document.documentElement.dataset.tema = novo;
+  guardar('tema', novo);
+  botao.replaceChildren(icone(novo === 'escuro' ? 'sol' : 'lua'));
+  botao.title = novo === 'escuro' ? 'Usar tema claro' : 'Usar tema escuro';
+}
+function botaoTema(classe = 'icone-btn') {
+  const b = h('button', { type: 'button', class: classe, 'aria-label': 'Alternar tema claro/escuro' }, icone(temaAtual() === 'escuro' ? 'sol' : 'lua'));
+  b.title = temaAtual() === 'escuro' ? 'Usar tema claro' : 'Usar tema escuro';
+  b.addEventListener('click', () => alternarTema(b));
+  return b;
+}
+
+// ---------- Busca de telas (Ctrl K) ----------
+function montarBusca() {
+  const telas = MENU.flatMap((m) => (m.rota && permitido(m.perfis)
+    ? [{ titulo: m.titulo, href: `#/${m.rota}`, icone: m.icone, sub: 'Tela' }, ...(m.filhos || []).map((f) => ({ titulo: `${m.titulo} › ${f.titulo}`, href: f.href, icone: m.icone, sub: 'Cadastro' }))]
+    : []));
+  const campo = h('input', { type: 'search', placeholder: 'Buscar tela ou viagem', 'aria-label': 'Buscar tela ou viagem', autocomplete: 'off', role: 'combobox', 'aria-expanded': 'false' });
+  const caixa = h('div', { class: 'campo' }, icone('buscar'), campo, h('kbd', {}, 'Ctrl K'));
+  const lista = h('div', { class: 'busca-lista', role: 'listbox', hidden: true });
+  let itens = [];
+  let foco = 0;
+  let seq = 0;
+  let timer;
+
+  const norm = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const fechar = () => { lista.hidden = true; campo.setAttribute('aria-expanded', 'false'); };
+  const abrirItem = (i) => { fechar(); campo.value = ''; campo.blur(); location.hash = i.href; };
+
+  function desenhar() {
+    lista.replaceChildren();
+    if (!itens.length) { lista.append(h('div', { class: 'busca-item' }, h('span', { class: 'muted' }, 'Nada encontrado.'))); lista.hidden = false; return; }
+    let grupoAtual = '';
+    itens.forEach((it, idx) => {
+      if (it.grupo !== grupoAtual) { grupoAtual = it.grupo; lista.append(h('div', { class: 'grupo-t' }, grupoAtual)); }
+      lista.append(h('a', { class: `busca-item ${idx === foco ? 'foco' : ''}`, href: it.href, role: 'option', onclick: (e) => { e.preventDefault(); abrirItem(it); } },
+        icone(it.icone), h('div', {}, h('span', {}, it.titulo), it.sub ? h('small', {}, it.sub) : null)));
+    });
+    lista.hidden = false;
+    campo.setAttribute('aria-expanded', 'true');
+  }
+
+  async function buscar() {
+    const q = campo.value.trim();
+    const t = norm(q);
+    const telasFiltradas = telas.filter((x) => !t || norm(x.titulo).includes(t)).slice(0, 8).map((x) => ({ ...x, grupo: 'Telas' }));
+    itens = telasFiltradas;
+    foco = 0;
+    desenhar();
+    if (q.length < 2) return;
+    const minha = ++seq;
+    try {
+      const viagens = await get(`/viagens?q=${encodeURIComponent(q)}`);
+      if (minha !== seq || document.activeElement !== campo) return;
+      itens = [...telasFiltradas, ...viagens.slice(0, 6).map((v) => ({ titulo: `${v.numero} · ${v.destino}`, sub: `${v.funcionario_nome} · ${v.status_nome}`, href: `#/viagens/${v.id}`, icone: 'viagem', grupo: 'Viagens' }))];
+      desenhar();
+    } catch { /* sem resultados de viagens */ }
+  }
+
+  campo.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(buscar, 180); });
+  campo.addEventListener('focus', buscar);
+  campo.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { fechar(); campo.blur(); return; }
+    if (!itens.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); foco = (foco + 1) % itens.length; desenhar(); }
+    if (e.key === 'ArrowUp') { e.preventDefault(); foco = (foco - 1 + itens.length) % itens.length; desenhar(); }
+    if (e.key === 'Enter') { e.preventDefault(); abrirItem(itens[foco]); }
+  });
+  document.addEventListener('click', (e) => { if (!e.target.closest('.busca')) fechar(); });
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); campo.focus(); campo.select(); }
+  });
+  return h('div', { class: 'busca' }, caixa, lista);
+}
+
+// ---------- Estrutura geral ----------
+const iniciais = (nome) => nome.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('');
+const ehMovel = () => window.matchMedia('(max-width: 960px)').matches;
+
+function alternarMenu() {
+  if (ehMovel()) { app.classList.toggle('menu-aberto'); return; }
+  const novo = app.dataset.nav === 'recolhido' ? 'aberto' : 'recolhido';
+  app.dataset.nav = novo;
+  guardar('nav', novo);
+}
+
+function montarMenu() {
+  const nav = h('nav', { class: 'nav', 'aria-label': 'Menu principal' });
+  for (const m of MENU) {
+    if (!permitido(m.perfis)) continue;
+    if (m.grupo) { nav.append(h('div', { class: 'grupo-titulo' }, m.grupo)); continue; }
+    if (m.filhos) {
+      const sub = h('div', { class: 'sub', hidden: true }, m.filhos.map((f) => h('a', { href: f.href, 'data-filho': '1', 'data-rota': m.rota }, h('span', { class: 'rot' }, f.titulo))));
+      const btn = h('button', { type: 'button', class: 'grupo-btn', 'data-rota': m.rota, 'aria-expanded': 'false', title: m.titulo },
+        icone(m.icone), h('span', { class: 'rot' }, m.titulo), icone('baixo', 'seta'));
+      btn.addEventListener('click', () => {
+        const aberto = btn.getAttribute('aria-expanded') === 'true';
+        btn.setAttribute('aria-expanded', String(!aberto));
+        btn.dataset.manual = aberto ? '' : '1';
+        sub.hidden = aberto;
+        if (!aberto && app.dataset.nav === 'recolhido' && !ehMovel()) { app.dataset.nav = 'aberto'; guardar('nav', 'aberto'); }
+      });
+      nav.append(btn, sub);
+      continue;
+    }
+    nav.append(h('a', { href: `#/${m.rota}`, 'data-rota': m.rota, title: m.titulo }, icone(m.icone), h('span', { class: 'rot' }, m.titulo)));
+  }
+  return nav;
+}
+
 function montarApp() {
-  const itens = Object.entries(ROTAS).filter(([, r]) => r.menu && r.perfis.includes(usuario.perfil));
-  menuLinks = itens.map(([k, r]) => h('a', { href: `#/${k}`, 'data-rota': k }, r.titulo));
-  areaPagina = h('main', { id: 'pagina', tabindex: '-1' });
+  areaPagina = h('main', { id: 'pagina', class: 'pagina', tabindex: '-1' });
+  areaVoltar = h('div', { class: 'barra-voltar' });
+  const menuUsuario = h('div', { class: 'menu-usuario', hidden: true, role: 'menu' },
+    h('div', { class: 'cab' }, h('strong', {}, usuario.nome), h('small', {}, `${rotulo(usuario.perfil)}${usuario.funcionario_nome ? ` · ${usuario.funcionario_nome}` : ''}`)),
+    h('button', { type: 'button', role: 'menuitem', onclick: () => { menuUsuario.hidden = true; alterarSenha(); } }, icone('chave'), 'Alterar senha'),
+    h('button', { type: 'button', role: 'menuitem', onclick: sair }, icone('sair'), 'Sair'));
+  const chip = h('div', { class: 'usuario-chip' },
+    h('button', { type: 'button', 'aria-haspopup': 'menu', 'aria-label': `Menu do usuário ${usuario.nome}`, onclick: (e) => { e.stopPropagation(); menuUsuario.hidden = !menuUsuario.hidden; } },
+      h('span', { class: 'avatar' }, iniciais(usuario.nome)), h('span', { class: 'nome' }, usuario.nome), icone('baixo')),
+    menuUsuario);
+  document.addEventListener('click', () => { menuUsuario.hidden = true; });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') menuUsuario.hidden = true; });
 
-  const menu = h('nav', { class: 'menu', 'aria-label': 'Menu principal' }, menuLinks);
-  const rodape = h('div', { class: 'usuario' },
-    h('strong', {}, usuario.nome),
-    h('small', {}, `${rotulo(usuario.perfil)}${usuario.funcionario_nome ? ` · ${usuario.funcionario_nome}` : ''}`),
-    h('div', { class: 'linha-botoes' },
-      h('button', { class: 'link claro', onclick: alterarSenha }, 'Alterar senha'),
-      h('button', { class: 'link claro', onclick: sair }, 'Sair')));
+  const logo = h('img', { class: 'logo-topo', src: '/img/crv-industrial-branca.png', alt: 'CRV Industrial — Açúcar, Etanol e Energia', width: 104, height: 34 });
 
-  raiz.replaceChildren(h('div', { class: 'app' },
-    h('aside', { class: 'lateral' },
-      h('div', { class: 'marca' }, h('img', { src: '/logo.svg', alt: 'CRV', width: 44, height: 44 }), h('div', {}, h('strong', {}, 'CRV Gestão'), h('small', {}, 'Viagens e Despesas'))),
-      menu, rodape),
-    h('div', { class: 'conteudo' },
-      h('header', { class: 'topo-mobile' },
-        h('button', { id: 'menu-toggle', class: 'hamburguer', 'aria-label': 'Abrir menu', 'aria-expanded': 'false', onclick: () => document.body.classList.toggle('menu-aberto') }, '☰'),
-        h('strong', {}, 'CRV Gestão')),
-      areaPagina),
-    h('div', { class: 'cortina', onclick: () => document.body.classList.remove('menu-aberto') })));
+  app = h('div', { class: 'app', 'data-nav': lembrado('nav') === 'recolhido' ? 'recolhido' : 'aberto' },
+    h('header', { class: 'topbar' },
+      h('button', { type: 'button', class: 'icone-btn', 'aria-label': 'Abrir ou recolher o menu', onclick: alternarMenu }, icone('menu')),
+      h('div', { class: 'titulo-app' }, h('strong', {}, 'Gestão de Viagens'), h('small', {}, `${MARCA} · Despesas e prestação de contas`)),
+      montarBusca(),
+      h('div', { class: 'topbar-dir' }, botaoTema(), chip, logo)),
+    montarMenu(),
+    h('div', { class: 'area' }, areaVoltar, areaPagina),
+    h('div', { class: 'cortina', onclick: () => app.classList.remove('menu-aberto') }));
+  raiz.replaceChildren(app);
 }
 
 // ---------- Login / sessão ----------
@@ -104,12 +261,14 @@ function telaLogin(aviso) {
   const erro = h('div', { class: 'erro', role: 'alert' }, aviso || '');
   const entrar = h('button', { type: 'submit' }, 'Entrar');
   const form = h('form', { class: 'login-card' },
-    h('img', { src: '/logo.svg', alt: 'CRV', width: 72, height: 72 }),
-    h('h1', {}, 'CRV Gestão'),
-    h('p', { class: 'muted' }, 'Controle de viagens e despesas'),
+    h('img', { class: 'logo logo-claro', src: '/img/crv-industrial-azul.png', alt: 'CRV Industrial — Açúcar, Etanol e Energia', width: 220, height: 71 }),
+    h('img', { class: 'logo logo-escuro', src: '/img/crv-industrial-branca.png', alt: 'CRV Industrial — Açúcar, Etanol e Energia', width: 220, height: 71 }),
+    h('h1', {}, 'Gestão de Viagens e Despesas'),
+    h('p', { class: 'muted' }, 'Acesse com seu usuário e senha'),
     h('label', {}, 'Usuário', h('input', { name: 'usuario', autocomplete: 'username', required: true, autofocus: true })),
     h('label', {}, 'Senha', h('input', { name: 'senha', type: 'password', autocomplete: 'current-password', required: true })),
-    erro, entrar);
+    erro, entrar,
+    h('div', { class: 'login-rodape' }, 'Açúcar, Etanol e Energia'));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = new FormData(form);
@@ -123,8 +282,8 @@ function telaLogin(aviso) {
       entrar.disabled = false;
     }
   });
-  document.title = 'Entrar · CRV Gestão de Viagens';
-  raiz.replaceChildren(h('div', { class: 'login' }, form));
+  document.title = `Entrar · ${MARCA}`;
+  raiz.replaceChildren(h('div', { class: 'login' }, botaoTema('icone-btn login-tema'), form));
 }
 
 async function sair() {
@@ -159,4 +318,3 @@ window.addEventListener('hashchange', renderizar);
 window.addEventListener('sessao-expirada', () => { if (usuario) telaLogin('Sua sessão expirou. Entre novamente.'); });
 
 get('/me').then(() => iniciar()).catch(() => telaLogin());
-

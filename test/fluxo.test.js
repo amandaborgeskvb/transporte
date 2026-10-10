@@ -282,3 +282,24 @@ test('valores monetários com centavos não acumulam erro de ponto flutuante', a
   assert.equal(d.despesas_aprovadas, 0.6);
   assert.equal(d.reembolso_devido, 0.6);
 });
+
+test('atalhos de prestação de contas: a_enviar e em_aberto só consideram viagens encerradas', async () => {
+  const v = (await novaViagem(ana, { destino: 'Aracaju' })).corpo.id;
+  const numeros = async (c, filtro) => (await c.get(`/api/viagens?prestacao=${filtro}`)).corpo.map((x) => x.id);
+
+  await trans(ana, v, 'enviar'); await trans(carla, v, 'aprovar');
+  assert.ok(!(await numeros(ana, 'a_enviar')).includes(v)); // aprovada, mas ainda não realizada
+  assert.ok(!(await numeros(ana, 'em_aberto')).includes(v));
+
+  await trans(ana, v, 'realizada');
+  assert.ok((await numeros(ana, 'a_enviar')).includes(v));
+  assert.ok((await numeros(ana, 'em_aberto')).includes(v));
+  assert.ok(!(await numeros(bruno, 'a_enviar')).includes(v)); // escopo do solicitante
+
+  await ana.post(`/api/viagens/${v}/prestacao`, { acao: 'enviar' });
+  assert.ok(!(await numeros(ana, 'a_enviar')).includes(v));
+  assert.ok((await numeros(davi, 'em_aberto')).includes(v)); // financeiro enxerga para analisar
+
+  await davi.post(`/api/viagens/${v}/prestacao`, { acao: 'aprovar' });
+  assert.ok(!(await numeros(davi, 'em_aberto')).includes(v));
+});

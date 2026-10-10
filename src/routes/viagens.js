@@ -35,6 +35,9 @@ function filtrosViagem(q, usuario) {
   if (q.setor) add('f.setor = ?', String(q.setor).slice(0, 80));
   if (q.destino) add(`v.destino ILIKE ?`, `%${String(q.destino).slice(0, 80).replace(/[%_\\]/g, '\\$&')}%`);
   if (q.prestacao && ['pendente', 'enviada', 'aprovada', 'devolvida'].includes(q.prestacao)) add('v.prestacao_situacao = ?', q.prestacao);
+  // Atalhos usados pelo dashboard: considera só viagens já encerradas (realizadas ou não realizadas)
+  if (q.prestacao === 'a_enviar') cond.push(`s.codigo IN ('realizada','nao_realizada') AND v.prestacao_situacao IN ('pendente','devolvida')`);
+  if (q.prestacao === 'em_aberto') cond.push(`s.codigo IN ('realizada','nao_realizada') AND v.prestacao_situacao <> 'aprovada'`);
   if (ehData(q.de)) add('v.data_saida >= ?', q.de);
   if (ehData(q.ate)) add('v.data_saida <= ?', q.ate);
   if (q.q) {

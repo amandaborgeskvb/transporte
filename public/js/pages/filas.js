@@ -1,6 +1,6 @@
 // Listas transversais de adiantamentos, despesas e reembolsos (com as ações liberadas para cada perfil).
 import { get } from '../api.js';
-import { h, brl, dataBR, badgeSituacao, tabela, botao, barraFiltros, opcoesSituacao } from '../ui.js';
+import { h, brl, dataBR, badgeSituacao, tabela, botao, barraFiltros, opcoesSituacao, cabecalhoPagina } from '../ui.js';
 import { acaoAdiantamento, acaoDespesa, acaoReembolso } from '../acoes.js';
 
 const verViagem = (x) => h('a', { href: `#/viagens/${x.viagem_id}` }, x.numero);
@@ -13,7 +13,7 @@ function fila({ titulo, rota, tipo, colunas, acoes, fn, rotulos }) {
     const itens = await get(`/${rota}${qs ? `?${qs}` : ''}`);
     const veTodos = usuario.perfil !== 'solicitante';
     return [
-      h('div', { class: 'cabecalho' }, h('h1', {}, titulo)),
+      cabecalhoPagina({ migalhas: [['Financeiro'], [titulo]], titulo, sub: `${itens.length} registro${itens.length === 1 ? '' : 's'}` }),
       barraFiltros([{ nome: 'situacao', rotulo: 'Situação', tipo: 'select', opcoes: opcoesSituacao(tipo) }], query, (v) => ir(`#/${rota}`, v)),
       h('div', { class: 'card' }, tabela([
         { t: 'Viagem', cls: 'nowrap', f: verViagem },

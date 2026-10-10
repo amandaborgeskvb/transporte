@@ -1,36 +1,37 @@
+// Cadastros no padrão lista + detalhe: lista com busca à esquerda, formulário do item selecionado à direita.
 import { get, post, put, del, limparCadastros } from '../api.js';
-import { h, tabela, botao, dialogo, confirmar, toast, secao } from '../ui.js';
+import { h, botao, formulario, confirmar, toast, vazio, cabecalhoPagina, badgeTom } from '../ui.js';
 
 const sim = (v) => (v ? 'Sim' : 'Não');
 
-const TIPOS = {
+export const TIPOS_CADASTRO = {
   funcionarios: {
-    titulo: 'Funcionários', singular: 'funcionário',
+    titulo: 'Funcionários', singular: 'funcionário', grade: 'tres',
     campos: (x = {}) => [
       { nome: 'nome', rotulo: 'Nome', valor: x.nome, obrigatorio: true, cheio: true },
       { nome: 'matricula', rotulo: 'Matrícula', valor: x.matricula, obrigatorio: true },
       { nome: 'funcao', rotulo: 'Função', valor: x.funcao },
       { nome: 'setor', rotulo: 'Setor', valor: x.setor },
       { nome: 'centro_custo', rotulo: 'Centro de custo', valor: x.centro_custo },
-      { nome: 'ativo', rotulo: 'Ativo', tipo: 'checkbox', valor: x.ativo ?? true },
+      { nome: 'ativo', rotulo: 'Cadastro ativo', tipo: 'checkbox', valor: x.ativo ?? true, cheio: true },
     ],
-    colunas: [['Nome', (x) => x.nome], ['Matrícula', (x) => x.matricula], ['Função', (x) => x.funcao || '—'], ['Setor', (x) => x.setor || '—'], ['Centro de custo', (x) => x.centro_custo || '—'], ['Ativo', (x) => sim(x.ativo)]],
+    item: (x) => ({ titulo: x.nome, sub: `Mat. ${x.matricula}${x.setor ? ` · ${x.setor}` : ''}${x.funcao ? ` · ${x.funcao}` : ''}` }),
   },
   motivos: {
     titulo: 'Motivos de viagem', singular: 'motivo',
     campos: (x = {}) => [{ nome: 'nome', rotulo: 'Nome', valor: x.nome, obrigatorio: true, cheio: true }, { nome: 'ativo', rotulo: 'Ativo', tipo: 'checkbox', valor: x.ativo ?? true }],
-    colunas: [['Motivo', (x) => x.nome], ['Ativo', (x) => sim(x.ativo)]],
+    item: (x) => ({ titulo: x.nome, sub: '' }),
   },
   status: {
     titulo: 'Status da viagem', singular: 'status', fixo: true,
     nota: 'Os status fazem parte do fluxo de aprovação e não podem ser criados ou removidos. Você pode ajustar o nome e a cor de exibição.',
-    campos: (x = {}) => [{ nome: 'nome', rotulo: 'Nome', valor: x.nome, obrigatorio: true, cheio: true }, { nome: 'cor', rotulo: 'Cor', tipo: 'color', valor: x.cor }],
-    colunas: [['Status', (x) => { const s = h('span', { class: 'badge colorido' }, x.nome); s.style.setProperty('--cor', x.cor); return s; }], ['Código interno', (x) => x.codigo]],
+    campos: (x = {}) => [{ nome: 'nome', rotulo: 'Nome', valor: x.nome, obrigatorio: true, cheio: true }, { nome: 'cor', rotulo: 'Cor de exibição', tipo: 'color', valor: x.cor }],
+    item: (x) => ({ titulo: x.nome, sub: `Código: ${x.codigo}`, cor: x.cor }),
   },
   categorias: {
     titulo: 'Categorias de despesa', singular: 'categoria',
     campos: (x = {}) => [{ nome: 'nome', rotulo: 'Nome', valor: x.nome, obrigatorio: true, cheio: true }, { nome: 'ativo', rotulo: 'Ativa', tipo: 'checkbox', valor: x.ativo ?? true }],
-    colunas: [['Categoria', (x) => x.nome], ['Ativa', (x) => sim(x.ativo)]],
+    item: (x) => ({ titulo: x.nome, sub: '' }),
   },
   formas: {
     titulo: 'Formas de pagamento', singular: 'forma de pagamento',
@@ -41,38 +42,84 @@ const TIPOS = {
       { nome: 'uso_reembolso', rotulo: 'Pode ser usada em reembolsos', tipo: 'checkbox', valor: x.uso_reembolso ?? true, cheio: true },
       { nome: 'ativo', rotulo: 'Ativa', tipo: 'checkbox', valor: x.ativo ?? true },
     ],
-    colunas: [['Forma', (x) => x.nome], ['Adiantamento', (x) => sim(x.uso_adiantamento)], ['Reembolso', (x) => sim(x.uso_reembolso)], ['Ativa', (x) => sim(x.ativo)]],
+    item: (x) => ({ titulo: x.nome, sub: [x.uso_adiantamento && 'Adiantamento', x.uso_reembolso && 'Reembolso'].filter(Boolean).join(' · ') || 'Sem uso definido' }),
   },
 };
 
-export default async function paginaCadastros({ params, ir, recarregarPagina }) {
-  const tipo = TIPOS[params[0]] ? params[0] : 'funcionarios';
-  const cfg = TIPOS[tipo];
-  const itens = await get(`/cadastros/${tipo}`);
-  const depois = () => { limparCadastros(); recarregarPagina(); };
+export default async function paginaCadastros({ params, ir }) {
+  const tipo = TIPOS_CADASTRO[params[0]] ? params[0] : 'funcionarios';
+  const cfg = TIPOS_CADASTRO[tipo];
+  let itens = await get(`/cadastros/${tipo}`);
+  let selecionado = itens[0] || (cfg.fixo ? null : 'novo');
+  let filtro = '';
 
-  const abrir = (item) => dialogo({
-    titulo: item ? `Editar ${cfg.singular}` : `Novo ${cfg.singular}`, campos: cfg.campos(item),
-    aoSalvar: async (v) => { if (item) await put(`/cadastros/${tipo}/${item.id}`, v); else await post(`/cadastros/${tipo}`, v); },
-  }).then((s) => { if (s) { toast('Cadastro salvo.'); depois(); } });
+  const detalhe = h('div', { class: 'card' });
+  const lista = h('div', { class: 'lista-itens' });
+  const busca = h('input', { type: 'search', placeholder: `Buscar ${cfg.singular}`, 'aria-label': `Buscar ${cfg.singular}` });
+  const contagem = h('small', { class: 'muted' });
 
-  const excluir = async (item) => {
-    if (!(await confirmar('Excluir cadastro', `Excluir "${item.nome}"? Se já estiver em uso, desative-o em vez de excluir.`, { rotulo: 'Excluir', perigo: true }))) return;
-    try { await del(`/cadastros/${tipo}/${item.id}`); toast('Cadastro excluído.'); depois(); } catch (e) { toast(e.message, 'erro'); }
-  };
+  const norm = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
-  const abas = h('div', { class: 'abas' }, Object.entries(TIPOS).map(([k, t]) =>
-    h('button', { class: k === tipo ? 'ativa' : '', onclick: () => ir(`#/cadastros/${k}`) }, t.titulo)));
+  function desenharLista() {
+    const t = norm(filtro);
+    const visiveis = itens.filter((x) => !t || norm(`${cfg.item(x).titulo} ${cfg.item(x).sub}`).includes(t));
+    contagem.textContent = `${visiveis.length} de ${itens.length}`;
+    lista.replaceChildren(...(visiveis.length ? visiveis.map((x) => {
+      const it = cfg.item(x);
+      const ativo = selecionado && selecionado !== 'novo' && selecionado.id === x.id;
+      const marcador = it.cor ? (() => { const b = h('span', { class: 'badge colorido' }, 'Aa'); b.style.setProperty('--cor', it.cor); return b; })() : null;
+      return h('div', { class: `item-lista ${ativo ? 'ativo' : ''} ${x.ativo === false ? 'inativo' : ''}`, tabindex: 0, role: 'button',
+        onclick: () => { selecionado = x; desenhar(); }, onkeydown: (e) => { if (e.key === 'Enter') { selecionado = x; desenhar(); } } },
+      h('div', {}, h('strong', {}, it.titulo), it.sub ? h('small', {}, it.sub) : null),
+      marcador || (x.ativo === false ? badgeTom('Inativo', 'mute') : null));
+    }) : [vazio('Nada encontrado.')]));
+  }
+
+  async function recarregarLista(depoisDeSalvar) {
+    limparCadastros();
+    itens = await get(`/cadastros/${tipo}`);
+    selecionado = depoisDeSalvar ? itens.find((x) => x.id === depoisDeSalvar) || itens[0] || null : itens[0] || null;
+    desenhar();
+  }
+
+  function desenharDetalhe() {
+    const novo = selecionado === 'novo';
+    if (!selecionado) { detalhe.replaceChildren(vazio('Selecione um item na lista.')); return; }
+    const item = novo ? undefined : selecionado;
+    const form = formulario({
+      campos: cfg.campos(item), classeGrade: cfg.grade || '', confirmar: novo ? `Cadastrar ${cfg.singular}` : 'Salvar alterações',
+      aoSalvar: async (v) => {
+        const salvo = novo ? await post(`/cadastros/${tipo}`, v) : await put(`/cadastros/${tipo}/${item.id}`, v);
+        toast('Cadastro salvo.');
+        await recarregarLista(salvo.id);
+      },
+      aoCancelar: novo && itens.length ? () => { selecionado = itens[0]; desenhar(); } : null,
+      extras: !novo && !cfg.fixo ? [botao('Excluir', async () => {
+        if (!(await confirmar('Excluir cadastro', `Excluir "${cfg.item(item).titulo}"? Se já estiver em uso, desative-o em vez de excluir.`, { rotulo: 'Excluir', perigo: true }))) return;
+        try { await del(`/cadastros/${tipo}/${item.id}`); toast('Cadastro excluído.'); await recarregarLista(); } catch (e) { toast(e.message, 'erro'); }
+      }, { tom: 'perigo', icone: 'lixeira' })] : [],
+    });
+    detalhe.replaceChildren(
+      h('div', { class: 'detalhe-cab' }, h('div', {}, h('h2', {}, novo ? `Novo ${cfg.singular}` : cfg.item(item).titulo), h('div', { class: 'muted' }, novo ? 'Preencha os dados e salve.' : cfg.item(item).sub || cfg.titulo))),
+      cfg.nota ? h('p', { class: 'perfil-caixa' }, cfg.nota) : null,
+      form);
+  }
+
+  function desenhar() { desenharLista(); desenharDetalhe(); }
+  busca.addEventListener('input', () => { filtro = busca.value; desenharLista(); });
+  desenhar();
+
+  const abas = h('div', { class: 'abas' }, Object.entries(TIPOS_CADASTRO).map(([k, t]) =>
+    h('button', { type: 'button', class: k === tipo ? 'ativa' : '', onclick: () => ir(`#/cadastros/${k}`) }, t.titulo)));
 
   return [
-    h('div', { class: 'cabecalho' }, h('h1', {}, 'Cadastros')),
+    cabecalhoPagina({
+      migalhas: [['Configurações'], ['Cadastros'], [cfg.titulo]], titulo: cfg.titulo, sub: 'Cadastros que alimentam viagens, adiantamentos, despesas e reembolsos',
+      acoes: cfg.fixo ? null : botao(`Novo ${cfg.singular}`, () => { selecionado = 'novo'; desenhar(); }, { icone: 'mais' }),
+    }),
     abas,
-    secao(cfg.titulo, cfg.fixo ? null : botao(`+ Novo ${cfg.singular}`, () => abrir(null), { pequeno: true }),
-      cfg.nota ? h('p', { class: 'muted' }, cfg.nota) : null,
-      tabela([
-        ...cfg.colunas.map(([t, f]) => ({ t, f })),
-        { t: '', f: (x) => h('div', { class: 'acoes-linha' }, botao('Editar', () => abrir(x), { tom: 'sec', pequeno: true }), cfg.fixo ? null : botao('Excluir', () => excluir(x), { tom: 'perigo sec', pequeno: true })) },
-      ], itens, { vazioMsg: 'Nenhum cadastro.' })),
+    h('div', { class: 'split' },
+      h('div', { class: 'lateral-col' }, h('section', { class: 'card' }, busca, h('div', { class: 'pequeno' }, contagem), lista)),
+      detalhe),
   ];
 }
-

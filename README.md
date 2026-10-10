@@ -21,6 +21,29 @@ PostgreSQL como banco. Sem etapa de build e sem frameworks de interface.
 | **Usuários e perfis** | Login individual e quatro perfis de acesso |
 | **Auditoria** | Quem fez o quê e quando (aprovações, pagamentos, alterações), por registro e por viagem |
 
+## Identidade visual e interface
+
+Layout no padrão dos sistemas corporativos da CRV Industrial (referência: a tela de Usuários do sistema agrícola), com
+conceitos de ERPs e plataformas de operação agrícola:
+
+- **Marca:** logomarca oficial (azul no fundo claro, branca no topo e no tema escuro), azul `#28549c` e verde `#74c04c`.
+  Arquivos em `public/img/` (versões otimizadas; os originais em alta resolução e os `.cdr` ficam fora do repositório).
+- **Barra superior** azul-marinho com a linha verde da marca, busca **"Buscar tela ou viagem" (`Ctrl K`)**, tema
+  claro/escuro, menu do usuário (alterar senha, sair) e a logo.
+- **Menu lateral por grupos** (Operação, Financeiro, Análise, Configurações), recolhível, com o item ativo destacado.
+- **Telas lista + detalhe** em Usuários e Cadastros (busca à esquerda, formulário do item à direita).
+- **Registro da viagem** no estilo Dynamics 365: faixa de etapas (Solicitada → Aprovação → Aprovada → Realizada →
+  Prestação de contas), barra de comandos com as ações liberadas para o perfil e abas (Resumo, Adiantamentos, Despesas,
+  Reembolsos, Histórico). A aba aberta fica gravada na URL.
+- **Lista de viagens** com visões rápidas (Aguardando aprovação, Aprovadas, Prestação em aberto…).
+- **Dashboard** com indicadores com ícone, rosca de viagens por situação (cores dos status), colunas por mês e rankings.
+- Responsivo (celular e tablet) e **tema escuro** (a escolha fica lembrada no navegador).
+- Fontes **Inter** e **Barlow Condensed** (licença OFL) hospedadas junto do sistema em `public/fonts/` — nada é carregado
+  de CDN, o que mantém a política de segurança (CSP) restrita.
+
+Para trocar a logo, substitua os arquivos de `public/img/` mantendo os nomes (`crv-industrial-azul.png`,
+`crv-industrial-branca.png`).
+
 ## Perfis de acesso
 
 As permissões são validadas **no servidor** (a tela apenas esconde o que o perfil não pode fazer).
@@ -141,8 +164,8 @@ src/
   financeiro.js            cálculos financeiros por viagem
   routes/                  cadastros, viagens, lancamentos, anexos, painel
 public/
-  index.html, style.css, logo.svg     troque o logo.svg pelo logotipo oficial da CRV
-  js/                      main (rotas e menu), api, ui, acoes, charts e pages/
+  index.html, style.css, favicon.svg, img/ (logos), fonts/
+  js/                      main (casco, rotas, menu, busca), api, ui, acoes, charts, tema e pages/
 test/                      testes de API (perfis, fluxo, cálculos, comprovantes, migração)
 ```
 
