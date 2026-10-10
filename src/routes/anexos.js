@@ -36,6 +36,7 @@ function criarAnexos({ pool }) {
         const item = (await db.query(`SELECT viagem_id FROM ${TABELA[entidade]} WHERE id=$1`, [entidadeId])).rows[0];
         if (!item) throw erro404('Registro não encontrado.');
         const v = await carregarViagem(db, item.viagem_id, req.usuario, { travar: true });
+        if (v.prestacao_situacao === 'aprovada') throw erro403('A prestação de contas já foi aprovada.');
         // Quem pode lançar na viagem pode anexar (aprovador só consulta)
         const pode = acoesViagem(req.usuario, v).some((a) => ['lancar_despesa', 'solicitar_adiantamento', 'solicitar_reembolso'].includes(a));
         if (!pode && ![ADM, FIN].includes(req.usuario.perfil)) throw erro403('Você não pode anexar comprovantes nesta viagem.');

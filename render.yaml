@@ -16,6 +16,8 @@ services:
         sync: false # Internal Database URL do PostgreSQL existente
       - key: SESSION_SECRET
         generateValue: true
+      # APP_USER / APP_PASSWORD só criam o PRIMEIRO administrador (quando ainda não há usuários).
+      # Depois disso, usuários e senhas são gerenciados dentro do sistema (menu Usuários e perfis).
       - key: APP_USER
         value: admin
       - key: APP_PASSWORD

@@ -3,20 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Despesas de Viagem</title>
+  <meta name="color-scheme" content="light">
+  <title>CRV Gestão de Viagens e Despesas</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-  <header class="topo">
-    <h1>✈️ Despesas de Viagem</h1>
-    <button id="btn-sair" class="link" hidden>Sair</button>
-  </header>
-
-  <main id="app"></main>
-
+  <div id="raiz"><p class="carregando">Carregando…</p></div>
   <dialog id="dlg"></dialog>
-
-  <script src="/app.js"></script>
+  <noscript><p class="carregando">Este sistema precisa de JavaScript habilitado.</p></noscript>
+  <script type="module" src="/js/main.js"></script>
 </body>
 </html>

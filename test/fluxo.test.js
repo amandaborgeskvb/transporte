@@ -173,7 +173,9 @@ test('realização e prestação de contas', async () => {
   assert.equal((await pr(davi, { acao: 'aprovar', obs: 'ok' })).status, 200);
   const d = await detalhe(ana, ids.v);
   assert.equal(d.prestacao_situacao, 'aprovada');
-  // depois de aprovada a prestação, tudo fica travado
+  // depois de aprovada a prestação, tudo fica travado (inclusive comprovantes)
+  const pdf = Buffer.from('%PDF-1.4\nx');
+  assert.equal((await davi.req('POST', `/api/anexos?entidade=despesa&id=${ids.desp1}&nome=a.pdf`, undefined, { bruto: pdf, tipo: 'application/pdf' })).status, 403);
   assert.equal((await ana.post(`/api/viagens/${ids.v}/despesas`, { categoria_id: ids.alim, descricao: 'x', valor: 1, data: '2026-06-12' })).status, 403);
   assert.equal((await ana.put(`/api/despesas/${ids.desp3}`, { categoria_id: ids.alim, descricao: 'y', valor: 1, data: '2026-06-12' })).status, 403);
   assert.equal((await ana.del(`/api/despesas/${ids.desp1}`)).status, 403);
