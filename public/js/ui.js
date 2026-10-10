@@ -376,7 +376,7 @@ const EVENTOS = {
   'importar:importacao_funcionarios': 'importou funcionários de arquivos do ERP',
   'emitir:autorizacao_desconto': 'emitiu a autorização de desconto', 'editar:autorizacao_desconto': 'editou a autorização de desconto',
   'assinar:autorizacao_desconto': 'registrou a assinatura da autorização de desconto', 'concluir:autorizacao_desconto': 'concluiu o desconto em folha',
-  'cancelar:autorizacao_desconto': 'cancelou a autorização de desconto', 'anexar:autorizacao_desconto': 'anexou arquivo à autorização de desconto',
+  'cancelar:autorizacao_desconto': 'cancelou a autorização de desconto', 'excluir:autorizacao_desconto': 'excluiu a autorização de desconto', 'anexar:autorizacao_desconto': 'anexou arquivo à autorização de desconto',
   'remover_anexo:autorizacao_desconto': 'removeu arquivo da autorização de desconto',
 };
 const ENTIDADES_ROTULO = {

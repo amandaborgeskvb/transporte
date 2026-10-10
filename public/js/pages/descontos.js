@@ -96,6 +96,10 @@ export async function detalhe({ params, usuario, ir, recarregarPagina }) {
       campos: [{ nome: 'motivo', rotulo: 'Motivo do cancelamento', tipo: 'textarea', obrigatorio: true, cheio: true }],
       aoSalvar: (v) => post(`/descontos/${id}/acao`, { acao: 'cancelar', motivo: v.motivo }),
     }).then((s) => s && aoConcluir('Autorização cancelada.')()), 'perigo'),
+    tem('excluir') && cmd('Excluir', 'lixeira', async () => {
+      if (!(await confirmar('Excluir autorização', `${d.numero} · ${d.func_nome} · ${brl(d.valor)}. A exclusão é definitiva e remove também os arquivos anexados; fica registrada na auditoria. Para manter o registro, use "Cancelar autorização".`, { rotulo: 'Excluir', perigo: true }))) return;
+      try { await del(`/descontos/${id}`); toast('Autorização excluída.'); ir('#/descontos'); } catch (e) { toast(e.message, 'erro'); }
+    }, 'perigo'),
   ].filter((x, i, a) => x && !(x === 'sep' && (i === a.length - 1 || !a[i + 1] || a[i + 1] === 'sep'))));
 
   const dado = (t, v) => h('div', {}, h('dt', {}, t), h('dd', {}, v));

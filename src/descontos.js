@@ -94,6 +94,7 @@ function acoesDesconto(u, d) {
   if (d.situacao === 'assinada') acoes.push('concluir');
   if (['emitida', 'assinada'].includes(d.situacao)) acoes.push('cancelar');
   if (d.situacao !== 'cancelada') acoes.push('anexar');
+  if (d.situacao !== 'concluida') acoes.push('excluir'); // desconto já feito em folha fica registrado: só se cancela antes
   return acoes;
 }
 

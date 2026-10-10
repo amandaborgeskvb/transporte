@@ -136,6 +136,7 @@ As permissões são validadas **no servidor** (a tela apenas esconde o que o per
 | Enviar prestação de contas | ✔ | | | ✔ |
 | Aprovar ou devolver prestação de contas | | | ✔ | ✔ |
 | Emitir, editar e cancelar autorização de desconto (RE. 0150.09) | | | ✔ | ✔ |
+| Excluir autorização de desconto (definitivo, exceto as já concluídas em folha) | | | ✔ | ✔ |
 | Consultar e imprimir a própria autorização de desconto | ✔ | | ✔ | ✔ |
 | Cadastros, importação de funcionários, usuários e auditoria | | | | ✔ |
 

@@ -183,6 +183,20 @@ function criarDescontos({ pool }) {
     res.json({ ok: true });
   }));
 
+  // ---- Excluir (definitivo; descontos já concluídos em folha não podem ser excluídos) ----
+  router.delete('/descontos/:id', apenasGestores, wrap(async (req, res) => {
+    const id = idParam(req);
+    await tx(pool, async (db) => {
+      const d = await carregar(db, id, req.usuario, { travar: true });
+      if (!acoesDesconto(req.usuario, d).includes('excluir')) throw erro403('Autorizações com o desconto já concluído em folha não podem ser excluídas.');
+      await db.query(`DELETE FROM anexos WHERE entidade = 'autorizacao' AND entidade_id = $1`, [id]);
+      await db.query('DELETE FROM autorizacoes_desconto WHERE id = $1', [id]);
+      await auditar(db, req.usuario, 'excluir', 'autorizacao_desconto', id,
+        { numero: d.numero, funcionario: d.func_nome, matricula: d.func_matricula, valor: d.valor, parcelas: d.parcelas, situacao: d.situacao }, d.viagem_id);
+    });
+    res.status(204).end();
+  }));
+
   return router;
 }
 

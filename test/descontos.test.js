@@ -152,7 +152,7 @@ test('ciclo: emitir → editar → assinar → concluir, com snapshot do formul�
   assert.equal(d.func_nome, 'Ana Souza');
   assert.equal(d.valor_parcela, 60);
   assert.equal(d.documento_impresso.cabecalho.versao, '02');
-  assert.deepEqual(d.acoes.sort(), ['anexar', 'assinar', 'cancelar', 'editar', 'imprimir']);
+  assert.deepEqual(d.acoes.sort(), ['anexar', 'assinar', 'cancelar', 'editar', 'excluir', 'imprimir']);
 
   // viagem passa a ter a autorização e já não sugere novo desconto
   const v = (await davi.get(`/api/viagens/${ids.v}`)).corpo;
@@ -263,4 +263,27 @@ test('formulário é um cadastro fixo (não cria nem exclui) e só o administrad
   assert.equal((await admin.del(`/api/cadastros/documentos/${cfg[0].id}`)).status, 404);
   assert.equal((await davi.put(`/api/cadastros/documentos/${cfg[0].id}`, cfg[0])).status, 403);
   assert.equal((await admin.put(`/api/cadastros/documentos/${cfg[0].id}`, { ...cfg[0], versao: '' })).status, 400);
+});
+
+test('excluir remove a autorização e seus anexos (registrando na auditoria); concluída não pode ser excluída', async () => {
+  const pdf = Buffer.from('%PDF-1.4\nx');
+  const nova = (await davi.post('/api/descontos', corpo({ funcionario_id: ids.bruno }))).corpo.id;
+  const anexo = (await davi.req('POST', `/api/anexos?entidade=autorizacao&id=${nova}&nome=a.pdf`, undefined, { bruto: pdf, tipo: 'application/pdf' })).corpo.id;
+  assert.ok((await davi.get(`/api/descontos/${nova}`)).corpo.acoes.includes('excluir'));
+  assert.equal((await ana.del(`/api/descontos/${nova}`)).status, 403); // solicitante não exclui
+  assert.equal((await davi.del(`/api/descontos/${nova}`)).status, 204);
+  assert.equal((await davi.get(`/api/descontos/${nova}`)).status, 404);
+  assert.equal((await davi.get(`/api/anexos/${anexo}`)).status, 404);
+  assert.equal((await davi.del(`/api/descontos/${nova}`)).status, 404);
+  const log = (await admin.get('/api/auditoria?entidade=autorizacao_desconto')).corpo;
+  assert.ok(JSON.stringify(log).includes('excluir'));
+
+  const feita = (await davi.post('/api/descontos', corpo({ funcionario_id: ids.bruno }))).corpo.id;
+  await davi.post(`/api/descontos/${feita}/acao`, { acao: 'assinar' });
+  assert.equal((await davi.del(`/api/descontos/${feita}`)).status, 204); // assinada ainda pode
+  const concl = (await davi.post('/api/descontos', corpo({ funcionario_id: ids.bruno }))).corpo.id;
+  await davi.post(`/api/descontos/${concl}/acao`, { acao: 'assinar' });
+  await davi.post(`/api/descontos/${concl}/acao`, { acao: 'concluir' });
+  assert.equal((await davi.del(`/api/descontos/${concl}`)).status, 403);
+  assert.ok(!(await davi.get(`/api/descontos/${concl}`)).corpo.acoes.includes('excluir'));
 });
