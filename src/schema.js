@@ -235,6 +235,18 @@ ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS tipo_contrato TEXT NOT NULL DE
 ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS local_trabalho TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS funcionarios_situacao_idx ON funcionarios (situacao);
 
+-- Fim das etapas de aprovação: o que estava aguardando aprovação passa a seguir direto (idempotente)
+UPDATE viagens SET status_id = (SELECT id FROM status_viagem WHERE codigo = 'aprovada')
+  WHERE status_id IN (SELECT id FROM status_viagem WHERE codigo IN ('solicitada', 'aguardando_aprovacao', 'reprovada'))
+    AND EXISTS (SELECT 1 FROM status_viagem WHERE codigo = 'aprovada');
+DELETE FROM status_viagem WHERE codigo IN ('solicitada', 'aguardando_aprovacao', 'reprovada')
+  AND NOT EXISTS (SELECT 1 FROM viagens v WHERE v.status_id = status_viagem.id);
+UPDATE status_viagem SET nome = 'Programada' WHERE codigo = 'aprovada' AND nome = 'Aprovada';
+UPDATE adiantamentos SET situacao = 'aprovado', valor_aprovado = COALESCE(valor_aprovado, valor_solicitado) WHERE situacao = 'solicitado';
+ALTER TABLE reembolsos DROP CONSTRAINT IF EXISTS reembolsos_situacao_check;
+ALTER TABLE reembolsos ADD CONSTRAINT reembolsos_situacao_check CHECK (situacao IN ('pendente','aprovado','reembolsado','rejeitado','cancelado'));
+UPDATE reembolsos SET situacao = 'aprovado', valor_aprovado = COALESCE(valor_aprovado, valor_solicitado) WHERE situacao = 'pendente';
+
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,
   tipo         TEXT NOT NULL,
@@ -259,11 +271,9 @@ INSERT INTO motivos_viagem (nome) VALUES
   ('Manutenção'), ('Viagem programada'), ('Reunião'), ('Treinamento'), ('Outros')
 ON CONFLICT (nome) DO NOTHING;
 
+-- Sem etapa de aprovação: a viagem nasce "Programada" (código interno "aprovada", mantido por compatibilidade)
 INSERT INTO status_viagem (codigo, nome, cor, ordem) VALUES
-  ('solicitada',           'Solicitada',           '#64748b', 1),
-  ('aguardando_aprovacao', 'Aguardando aprovação', '#d97706', 2),
-  ('aprovada',             'Aprovada',             '#2563eb', 3),
-  ('reprovada',            'Reprovada',            '#dc2626', 4),
+  ('aprovada',             'Programada',           '#2563eb', 3),
   ('realizada',            'Realizada',            '#16a34a', 5),
   ('nao_realizada',        'Não realizada',        '#7c3aed', 6),
   ('cancelada',            'Cancelada',            '#475569', 7)

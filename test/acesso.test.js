@@ -56,7 +56,8 @@ test('cadastros: criar, duplicado, editar, excluir em uso', async () => {
 
 test('status: nome e cor editáveis, código fixo', async () => {
   const st = (await admin.get('/api/cadastros/status')).corpo;
-  assert.equal(st.length, 7);
+  assert.equal(st.length, 4); // sem etapa de aprovação: programada, realizada, não realizada, cancelada
+  assert.equal(st.find((x) => x.codigo === 'aprovada').nome, 'Programada');
   const s = st.find((x) => x.codigo === 'aprovada');
   const r = await admin.put(`/api/cadastros/status/${s.id}`, { nome: 'Aprovada pela gestão', cor: '#123456' });
   assert.equal(r.corpo.codigo, 'aprovada');

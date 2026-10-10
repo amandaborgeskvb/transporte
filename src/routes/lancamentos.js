@@ -8,9 +8,9 @@ const {
   escopoSql, carregarViagem, acoesViagem, acoesAdiantamento, acoesDespesa, acoesReembolso,
 } = require('../workflow');
 
-const ACOES_ADIANT = ['aprovar', 'rejeitar', 'pagar', 'cancelar'];
+const ACOES_ADIANT = ['pagar', 'cancelar'];
 const ACOES_DESPESA = ['aprovar', 'rejeitar'];
-const ACOES_REEMB = ['aprovar', 'rejeitar', 'pagar'];
+const ACOES_REEMB = ['pagar', 'cancelar'];
 
 // Trava a viagem e depois o item (mesma ordem em todas as rotas, evita deadlock).
 async function carregarItem(db, tabela, id, usuario) {
@@ -70,7 +70,7 @@ function criarLancamentos({ pool }) {
       const v = await carregarViagem(db, viagemId, req.usuario, { travar: true });
       if (!acoesViagem(req.usuario, v).includes('solicitar_adiantamento')) throw erro403('Não é possível solicitar adiantamento nesta viagem.');
       const { rows } = await db.query(
-        `INSERT INTO adiantamentos (viagem_id, valor_solicitado, observacao, solicitado_por) VALUES ($1,$2,$3,$4) RETURNING id`,
+        `INSERT INTO adiantamentos (viagem_id, valor_solicitado, valor_aprovado, situacao, observacao, solicitado_por) VALUES ($1,$2,$2,'aprovado',$3,$4) RETURNING id`,
         [viagemId, valor, obs, req.usuario.id]);
       await auditar(db, req.usuario, 'solicitar', 'adiantamento', rows[0].id, { valor }, viagemId);
       return rows[0];
@@ -84,18 +84,8 @@ function criarLancamentos({ pool }) {
     await tx(pool, async (db) => {
       const { item, viagem } = await carregarItem(db, 'adiantamentos', id, req.usuario);
       if (!acoesAdiantamento(req.usuario, item, viagem).includes(acao)) throw erro403('Ação não permitida para este perfil ou estado do adiantamento.');
-      const obs = texto(req.body.observacao, 300);
       let det = {};
-      if (acao === 'aprovar') {
-        const valor = dinheiro(req.body.valor_aprovado ?? item.valor_solicitado, 'Valor aprovado');
-        await db.query(`UPDATE adiantamentos SET situacao='aprovado', valor_aprovado=$1, aprovado_por=$2, observacao=$3 WHERE id=$4`,
-          [valor, req.usuario.id, obs || item.observacao, id]);
-        det = { valor_solicitado: item.valor_solicitado, valor_aprovado: valor };
-      } else if (acao === 'rejeitar') {
-        if (!obs) throw erro400('Informe o motivo da rejeição.');
-        await db.query(`UPDATE adiantamentos SET situacao='rejeitado', aprovado_por=$1, observacao=$2 WHERE id=$3`, [req.usuario.id, obs, id]);
-        det = { motivo: obs };
-      } else if (acao === 'pagar') {
+      if (acao === 'pagar') {
         const valor = dinheiro(req.body.valor_pago ?? item.valor_aprovado, 'Valor pago');
         if (valor > item.valor_aprovado) throw erro400('O valor pago não pode exceder o valor aprovado.');
         const fp = await formaDePagamento(db, inteiro(req.body.forma_pagamento_id, 'Forma de pagamento'), 'uso_adiantamento');
@@ -195,7 +185,7 @@ function criarLancamentos({ pool }) {
       const v = await carregarViagem(db, viagemId, req.usuario, { travar: true });
       if (!acoesViagem(req.usuario, v).includes('solicitar_reembolso')) throw erro403('Não é possível solicitar reembolso nesta viagem.');
       const { rows } = await db.query(
-        `INSERT INTO reembolsos (viagem_id, valor_solicitado, motivo, solicitado_por) VALUES ($1,$2,$3,$4) RETURNING id`,
+        `INSERT INTO reembolsos (viagem_id, valor_solicitado, valor_aprovado, situacao, motivo, solicitado_por) VALUES ($1,$2,$2,'aprovado',$3,$4) RETURNING id`,
         [viagemId, valor, motivo, req.usuario.id]);
       await auditar(db, req.usuario, 'solicitar', 'reembolso', rows[0].id, { valor, motivo }, viagemId);
       return rows[0];
@@ -209,17 +199,9 @@ function criarLancamentos({ pool }) {
     await tx(pool, async (db) => {
       const { item, viagem } = await carregarItem(db, 'reembolsos', id, req.usuario);
       if (!acoesReembolso(req.usuario, item, viagem).includes(acao)) throw erro403('Ação não permitida para este perfil ou estado do reembolso.');
-      const obs = texto(req.body.observacao, 300);
       let det = {};
-      if (acao === 'aprovar') {
-        const valor = dinheiro(req.body.valor_aprovado ?? item.valor_solicitado, 'Valor aprovado');
-        await db.query(`UPDATE reembolsos SET situacao='aprovado', valor_aprovado=$1, aprovado_por=$2, observacao=$3 WHERE id=$4`,
-          [valor, req.usuario.id, obs, id]);
-        det = { valor_solicitado: item.valor_solicitado, valor_aprovado: valor };
-      } else if (acao === 'rejeitar') {
-        if (!obs) throw erro400('Informe o motivo da rejeição.');
-        await db.query(`UPDATE reembolsos SET situacao='rejeitado', aprovado_por=$1, observacao=$2 WHERE id=$3`, [req.usuario.id, obs, id]);
-        det = { motivo: obs };
+      if (acao === 'cancelar') {
+        await db.query(`UPDATE reembolsos SET situacao='cancelado' WHERE id=$1`, [id]);
       } else {
         const valor = dinheiro(req.body.valor_pago ?? item.valor_aprovado, 'Valor pago');
         if (valor > item.valor_aprovado) throw erro400('O valor pago não pode exceder o valor aprovado.');

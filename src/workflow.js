@@ -36,13 +36,11 @@ async function carregarViagem(db, id, usuario, { travar = false } = {}) {
   return rows[0];
 }
 
+// Sem etapa de aprovação: a viagem já nasce programada (código "aprovada", exibido como "Programada").
 const TRANSICOES = {
-  enviar: { de: ['solicitada', 'reprovada'], para: 'aguardando_aprovacao' },
-  aprovar: { de: ['aguardando_aprovacao'], para: 'aprovada' },
-  reprovar: { de: ['aguardando_aprovacao'], para: 'reprovada' },
   realizada: { de: ['aprovada'], para: 'realizada' },
   nao_realizada: { de: ['aprovada'], para: 'nao_realizada' },
-  cancelar: { de: ['solicitada', 'aguardando_aprovacao', 'reprovada', 'aprovada'], para: 'cancelada' },
+  cancelar: { de: ['aprovada'], para: 'cancelada' },
 };
 
 const STATUS_FINANCEIRO = ['aprovada', 'realizada']; // viagens que aceitam despesas/reembolsos/pagamentos
@@ -53,9 +51,6 @@ function podeTransicao(acao, u, v) {
   if (!t || !t.de.includes(v.status_codigo)) return false;
   const dono = ehDono(u, v);
   switch (acao) {
-    case 'enviar': return u.perfil === ADM || (u.perfil === SOL && dono);
-    case 'aprovar':
-    case 'reprovar': return [ADM, APR].includes(u.perfil) && !dono; // ninguém aprova a própria viagem
     case 'realizada':
     case 'nao_realizada': return u.perfil === ADM || u.perfil === FIN || (u.perfil === SOL && dono);
     case 'cancelar': return u.perfil === ADM || u.perfil === APR || (u.perfil === SOL && dono);
@@ -72,13 +67,11 @@ function acoesViagem(u, v) {
   const acoes = [];
   for (const a of Object.keys(TRANSICOES)) if (podeTransicao(a, u, v)) acoes.push(a);
 
-  const editavel = ['solicitada', 'reprovada'].includes(v.status_codigo) && (u.perfil === ADM || (u.perfil === SOL && dono));
-  const adminEdita = u.perfil === ADM && ['aguardando_aprovacao', 'aprovada'].includes(v.status_codigo);
-  if (editavel || adminEdita) acoes.push('editar');
-  if (u.perfil === ADM && ['solicitada', 'reprovada', 'cancelada'].includes(v.status_codigo)) acoes.push('excluir');
+  if (v.status_codigo === 'aprovada' && (u.perfil === ADM || (u.perfil === SOL && dono))) acoes.push('editar');
+  if (u.perfil === ADM && ['aprovada', 'cancelada'].includes(v.status_codigo)) acoes.push('excluir');
 
   if (podeLancar(u, v)) {
-    if (['solicitada', 'aguardando_aprovacao', 'aprovada'].includes(v.status_codigo)) acoes.push('solicitar_adiantamento');
+    if (v.status_codigo === 'aprovada') acoes.push('solicitar_adiantamento');
     if (STATUS_FINANCEIRO.includes(v.status_codigo) && prestacaoAberta(v)) acoes.push('lancar_despesa');
     if (STATUS_FINANCEIRO.includes(v.status_codigo)) acoes.push('solicitar_reembolso');
   }
@@ -96,9 +89,8 @@ function acoesViagem(u, v) {
 function acoesAdiantamento(u, a, v) {
   const out = [];
   const fin = STATUS_FINANCEIRO.includes(v.status_codigo);
-  if (a.situacao === 'solicitado' && fin && podeAnalisar(u, v, [ADM, APR])) out.push('aprovar', 'rejeitar');
   if (a.situacao === 'aprovado' && fin && podeAnalisar(u, v, [ADM, FIN])) out.push('pagar');
-  if (['solicitado', 'aprovado'].includes(a.situacao) && podeLancar(u, v)) out.push('cancelar');
+  if (a.situacao === 'aprovado' && podeLancar(u, v)) out.push('cancelar');
   return out;
 }
 
@@ -113,8 +105,8 @@ function acoesDespesa(u, d, v) {
 function acoesReembolso(u, r, v) {
   const out = [];
   const fin = STATUS_FINANCEIRO.includes(v.status_codigo);
-  if (r.situacao === 'pendente' && fin && podeAnalisar(u, v, [ADM, APR])) out.push('aprovar', 'rejeitar');
   if (r.situacao === 'aprovado' && fin && podeAnalisar(u, v, [ADM, FIN])) out.push('pagar');
+  if (r.situacao === 'aprovado' && podeLancar(u, v)) out.push('cancelar');
   return out;
 }
 

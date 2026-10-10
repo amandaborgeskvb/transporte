@@ -36,9 +36,11 @@ test('quem pode solicitar viagens', async () => {
   assert.match(r.corpo.numero, /^VG-\d{4}-\d{4}$/);
   ids.v = r.corpo.id;
   const d = await detalhe(ana, ids.v);
-  assert.equal(d.status_codigo, 'solicitada');
+  assert.equal(d.status_codigo, 'aprovada'); // sem etapa de aprovação: já nasce programada
+  assert.equal(d.status_nome, 'Programada');
   assert.equal(d.funcionario_nome, 'Ana Souza'); // solicitante só cria para si
-  assert.ok(d.acoes.includes('enviar') && d.acoes.includes('editar'));
+  assert.ok(d.acoes.includes('editar') && d.acoes.includes('realizada'));
+  assert.ok(!d.acoes.some((a) => ['enviar', 'aprovar', 'reprovar'].includes(a)));
 });
 
 test('visibilidade: solicitante só vê as próprias viagens', async () => {
@@ -49,45 +51,29 @@ test('visibilidade: solicitante só vê as próprias viagens', async () => {
   assert.equal((await trans(bruno, ids.v, 'cancelar', { justificativa: 'x' })).status, 404);
 });
 
-test('aprovação: reprovar exige justificativa, corrigir e reenviar, aprovar', async () => {
-  assert.equal((await trans(ana, ids.v, 'aprovar')).status, 403);
-  assert.equal((await trans(carla, ids.v, 'aprovar')).status, 403); // ainda não foi enviada
-  assert.equal((await trans(ana, ids.v, 'enviar')).status, 200);
-  assert.equal((await trans(ana, ids.v, 'aprovar')).status, 403); // ninguém aprova a própria
-  assert.equal((await trans(davi, ids.v, 'aprovar')).status, 403); // financeiro não aprova viagem
-  assert.equal((await trans(carla, ids.v, 'reprovar')).status, 400); // sem justificativa
-  assert.equal((await trans(carla, ids.v, 'reprovar', { justificativa: 'Orçamento acima do previsto' })).status, 200);
-  let d = await detalhe(ana, ids.v);
-  assert.equal(d.status_codigo, 'reprovada');
-  assert.equal(d.decisao_justificativa, 'Orçamento acima do previsto');
-  assert.equal(d.aprovador_nome, 'carla');
+test('não há etapa de aprovação: as ações antigas não existem e a viagem é editável até ser realizada', async () => {
+  for (const acao of ['enviar', 'aprovar', 'reprovar']) assert.equal((await trans(carla, ids.v, acao)).status, 400);
   assert.equal((await ana.put(`/api/viagens/${ids.v}`, { destino: 'São Paulo', motivo_id: ids.motivo, data_saida: '2026-06-10', data_retorno: '2026-06-12', valor_estimado: 600 })).status, 200);
-  assert.equal((await trans(ana, ids.v, 'enviar')).status, 200);
-  assert.equal((await trans(carla, ids.v, 'aprovar')).status, 200);
-  d = await detalhe(ana, ids.v);
-  assert.equal(d.status_codigo, 'aprovada');
-  assert.equal(d.valor_estimado, 600);
-  assert.ok(!d.acoes.includes('editar')); // aprovada: solicitante não edita mais
-  assert.equal((await ana.put(`/api/viagens/${ids.v}`, { destino: 'Outro', motivo_id: ids.motivo, data_saida: '2026-06-10', data_retorno: '2026-06-12' })).status, 403);
+  assert.equal((await detalhe(ana, ids.v)).valor_estimado, 600);
+  assert.equal((await bruno.put(`/api/viagens/${ids.v}`, { destino: 'Outro', motivo_id: ids.motivo, data_saida: '2026-06-10', data_retorno: '2026-06-12' })).status, 404); // de outro funcionário
+  assert.equal((await davi.put(`/api/viagens/${ids.v}`, { destino: 'Outro', motivo_id: ids.motivo, data_saida: '2026-06-10', data_retorno: '2026-06-12' })).status, 403);
 });
 
-test('administrador não aprova viagem que ele mesmo solicitou', async () => {
+test('administrador cadastra viagem em nome de um funcionário e ela já fica programada', async () => {
   const f = (await admin.get('/api/cadastros/funcionarios')).corpo[0];
   const r = await admin.post('/api/viagens', { destino: 'Salvador', motivo_id: ids.motivo, data_saida: '2026-07-01', data_retorno: '2026-07-02', funcionario_id: f.id });
   assert.equal(r.status, 201);
-  assert.equal((await trans(admin, r.corpo.id, 'enviar')).status, 200);
-  assert.equal((await trans(admin, r.corpo.id, 'aprovar')).status, 403);
-  assert.equal((await trans(carla, r.corpo.id, 'aprovar')).status, 200);
+  assert.equal((await detalhe(admin, r.corpo.id)).status_codigo, 'aprovada');
 });
 
-test('adiantamento: solicitar, aprovar, pagar (valores e formas validados)', async () => {
+test('adiantamento: solicitar e pagar direto (valores e formas validados)', async () => {
   const s = await ana.post(`/api/viagens/${ids.v}/adiantamentos`, { valor_solicitado: 500, observacao: 'Combustível e refeições' });
   assert.equal(s.status, 201);
   ids.adiant = s.corpo.id;
   const acao = (c, corpo) => c.post(`/api/adiantamentos/${ids.adiant}/acao`, corpo);
-  assert.equal((await acao(ana, { acao: 'aprovar' })).status, 403); // solicitante não aprova
-  assert.equal((await acao(davi, { acao: 'pagar', forma_pagamento_id: ids.dinheiro })).status, 403); // ainda não aprovado
-  assert.equal((await acao(carla, { acao: 'aprovar', valor_aprovado: 500 })).status, 200);
+  assert.equal((await acao(ana, { acao: 'aprovar' })).status, 400); // não existe mais etapa de aprovação
+  assert.equal((await acao(ana, { acao: 'pagar', forma_pagamento_id: ids.dinheiro })).status, 403); // solicitante não paga
+  assert.equal((await detalhe(davi, ids.v)).adiantamentos[0].situacao, 'aprovado'); // já nasce liberado para pagamento
   assert.equal((await acao(carla, { acao: 'pagar', forma_pagamento_id: ids.dinheiro })).status, 403); // aprovador não paga
   assert.equal((await acao(davi, { acao: 'pagar', forma_pagamento_id: ids.outros, valor_pago: 500 })).status, 400); // "Outros" não vale para adiantamento
   assert.equal((await acao(davi, { acao: 'pagar', forma_pagamento_id: ids.dinheiro, valor_pago: 600 })).status, 400); // acima do aprovado
@@ -143,12 +129,12 @@ test('despesas: análise do financeiro e cálculo automático (exemplo do docume
   ids.desp3 = d3.corpo.id;
 });
 
-test('reembolso: solicitar, aprovar, pagar por depósito', async () => {
+test('reembolso: solicitar e pagar por depósito (ou cancelar)', async () => {
   const s = await ana.post(`/api/viagens/${ids.v}/reembolsos`, { valor_solicitado: 80, motivo: 'Despesas acima do adiantamento' });
   assert.equal(s.status, 201);
   const acao = (c, corpo) => c.post(`/api/reembolsos/${s.corpo.id}/acao`, corpo);
-  assert.equal((await acao(davi, { acao: 'aprovar' })).status, 403); // financeiro paga, não aprova
-  assert.equal((await acao(carla, { acao: 'aprovar' })).status, 200);
+  assert.equal((await acao(davi, { acao: 'aprovar' })).status, 400); // não existe mais etapa de aprovação
+  assert.equal((await acao(carla, { acao: 'pagar', forma_pagamento_id: ids.deposito })).status, 403); // aprovador não paga
   assert.equal((await acao(davi, { acao: 'pagar', forma_pagamento_id: ids.deposito, valor_pago: 80, data_pagamento: '2026-06-20' })).status, 200);
   const d = await detalhe(ana, ids.v);
   assert.equal(d.reembolso_pago, 80);
@@ -220,7 +206,7 @@ test('cancelar, excluir e proteção de viagens com pagamento', async () => {
   const v = (await novaViagem(ana, { destino: 'Natal' })).corpo.id;
   assert.equal((await trans(ana, v, 'cancelar')).status, 400); // justificativa obrigatória
   assert.equal((await trans(ana, v, 'cancelar', { justificativa: 'Reunião adiada' })).status, 200);
-  assert.equal((await trans(ana, v, 'enviar')).status, 403); // cancelada é final
+  assert.equal((await trans(ana, v, 'realizada')).status, 403); // cancelada é final
   assert.equal((await ana.del(`/api/viagens/${v}`)).status, 403); // só o administrador exclui
   assert.equal((await admin.del(`/api/viagens/${v}`)).status, 204);
   assert.equal((await admin.del(`/api/viagens/${ids.v}`)).status, 403); // realizada: não exclui
@@ -262,18 +248,17 @@ test('dashboard, pendências, relatórios e CSV', async () => {
 test('auditoria registra quem fez o quê, e o histórico aparece na viagem', async () => {
   const d = await detalhe(ana, ids.v);
   const acoes = d.historico.map((h) => `${h.usuario_nome}:${h.acao}:${h.entidade}`);
-  for (const esperado of ['ana:criar:viagem', 'carla:reprovar:viagem', 'carla:aprovar:viagem', 'davi:pagar:adiantamento', 'davi:aprovar:despesa', 'carla:aprovar:reembolso', 'davi:prestacao_aprovar:viagem']) {
+  for (const esperado of ['ana:criar:viagem', 'ana:realizada:viagem', 'davi:pagar:adiantamento', 'davi:aprovar:despesa', 'davi:pagar:reembolso', 'davi:prestacao_aprovar:viagem']) {
     assert.ok(acoes.includes(esperado), `faltou no histórico: ${esperado}`);
   }
   const pagto = d.historico.find((h) => h.acao === 'pagar' && h.entidade === 'adiantamento');
   assert.equal(pagto.detalhes.valor_pago, 500);
-  const aud = (await admin.get('/api/auditoria?entidade=viagem&usuario=carla')).corpo;
-  assert.ok(aud.length >= 2 && aud.every((a) => a.usuario_nome === 'carla' && a.entidade === 'viagem'));
+  const aud = (await admin.get('/api/auditoria?entidade=viagem&usuario=ana')).corpo;
+  assert.ok(aud.length >= 2 && aud.every((a) => a.usuario_nome === 'ana' && a.entidade === 'viagem'));
 });
 
 test('valores monetários com centavos não acumulam erro de ponto flutuante', async () => {
   const v = (await novaViagem(ana, { destino: 'Maceió' })).corpo.id;
-  await trans(ana, v, 'enviar'); await trans(carla, v, 'aprovar');
   for (const valor of [0.1, 0.2, 0.3]) {
     const d = await ana.post(`/api/viagens/${v}/despesas`, { categoria_id: ids.alim, descricao: 'c', valor, data: '2026-06-11' });
     await davi.post(`/api/despesas/${d.corpo.id}/acao`, { acao: 'aprovar' });
@@ -287,8 +272,7 @@ test('atalhos de prestação de contas: a_enviar e em_aberto só consideram viag
   const v = (await novaViagem(ana, { destino: 'Aracaju' })).corpo.id;
   const numeros = async (c, filtro) => (await c.get(`/api/viagens?prestacao=${filtro}`)).corpo.map((x) => x.id);
 
-  await trans(ana, v, 'enviar'); await trans(carla, v, 'aprovar');
-  assert.ok(!(await numeros(ana, 'a_enviar')).includes(v)); // aprovada, mas ainda não realizada
+  assert.ok(!(await numeros(ana, 'a_enviar')).includes(v)); // programada, mas ainda não realizada
   assert.ok(!(await numeros(ana, 'em_aberto')).includes(v));
 
   await trans(ana, v, 'realizada');

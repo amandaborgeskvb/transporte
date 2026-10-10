@@ -12,11 +12,9 @@ import {
 // Visões rápidas (como as "visões do sistema" do Dynamics): cada uma é só um conjunto de filtros
 const VISOES = [
   { chave: 'todas', texto: 'Todas', filtro: {} },
-  { chave: 'aguardando', texto: 'Aguardando aprovação', filtro: { status: 'aguardando_aprovacao' } },
-  { chave: 'aprovadas', texto: 'Aprovadas', filtro: { status: 'aprovada' } },
+  { chave: 'programadas', texto: 'Programadas', filtro: { status: 'aprovada' } },
   { chave: 'realizadas', texto: 'Realizadas', filtro: { status: 'realizada' } },
   { chave: 'prestacao', texto: 'Prestação em aberto', filtro: { prestacao: 'em_aberto' } },
-  { chave: 'reprovadas', texto: 'Reprovadas', filtro: { status: 'reprovada' } },
   { chave: 'canceladas', texto: 'Canceladas', filtro: { status: 'cancelada' } },
 ];
 const mesmaVisao = (v, query) => {
@@ -74,28 +72,25 @@ export async function lista({ query, usuario, ir }) {
 }
 
 // ---------------- Detalhe ----------------
-const ETAPAS = ['Solicitada', 'Aprovação', 'Aprovada', 'Realizada', 'Prestação de contas'];
+const ETAPAS = ['Programada', 'Realizada', 'Prestação de contas'];
 
 // Faixa de etapas (processo da viagem), no estilo "business process flow" do Dynamics 365
 function faixaEtapas(v) {
   if (v.status_codigo === 'cancelada') {
     return h('div', { class: 'fluxo' }, h('div', { class: 'etapa neutra' }, h('strong', {}, icone('proibido'), 'Viagem cancelada'), v.decisao_justificativa ? h('small', {}, v.decisao_justificativa) : null));
   }
-  const nivel = { solicitada: 0, aguardando_aprovacao: 1, reprovada: 1, aprovada: 2, realizada: 4, nao_realizada: 4 }[v.status_codigo] ?? 0;
-  const progresso = nivel === 4 && v.prestacao_situacao === 'aprovada' ? 5 : nivel;
+  const nivel = { aprovada: 0, realizada: 1, nao_realizada: 1 }[v.status_codigo] ?? 0;
+  const progresso = nivel === 1 && v.prestacao_situacao === 'aprovada' ? 3 : nivel;
   const detalhes = {
-    1: v.status_codigo === 'reprovada' ? `Reprovada por ${v.aprovador_nome || '—'}` : v.status_codigo === 'aguardando_aprovacao' ? 'Aguardando aprovador' : '',
-    2: v.aprovador_nome && v.aprovado_em && v.status_codigo !== 'reprovada' ? `por ${v.aprovador_nome}` : '',
-    3: v.status_codigo === 'nao_realizada' ? 'Não realizada' : v.realizada_em ? dataBR(v.realizada_em) : '',
-    4: ['realizada', 'nao_realizada'].includes(v.status_codigo) ? { pendente: 'Não enviada', enviada: 'Em análise', aprovada: 'Aprovada', devolvida: 'Devolvida' }[v.prestacao_situacao] : '',
+    1: v.status_codigo === 'nao_realizada' ? 'Não realizada' : v.realizada_em ? dataBR(v.realizada_em) : '',
+    2: ['realizada', 'nao_realizada'].includes(v.status_codigo) ? { pendente: 'Não enviada', enviada: 'Em análise', aprovada: 'Concluída', devolvida: 'Devolvida' }[v.prestacao_situacao] : '',
   };
   return h('div', { class: 'fluxo', role: 'list', 'aria-label': 'Etapas da viagem' }, ETAPAS.map((nome, i) => {
     let tom = i < progresso ? 'feita' : i === progresso ? 'atual' : '';
-    if (i === 1 && v.status_codigo === 'reprovada') tom = 'alerta';
-    if (i === 3 && v.status_codigo === 'nao_realizada') tom = 'neutra';
-    if (i === 4 && v.prestacao_situacao === 'devolvida') tom = 'alerta';
+    if (i === 1 && v.status_codigo === 'nao_realizada') tom = 'neutra';
+    if (i === 2 && v.prestacao_situacao === 'devolvida') tom = 'alerta';
     return h('div', { class: `etapa ${tom}`, role: 'listitem', 'aria-current': tom === 'atual' ? 'step' : null },
-      h('strong', {}, tom === 'feita' ? icone('ok') : null, i === 1 && v.status_codigo === 'reprovada' ? 'Reprovada' : nome),
+      h('strong', {}, tom === 'feita' ? icone('ok') : null, nome),
       detalhes[i] ? h('small', {}, detalhes[i]) : null);
   }));
 }
@@ -133,8 +128,6 @@ export async function detalhe({ params, query, usuario, ir, recarregarPagina }) 
   // ----- Barra de comandos -----
   const cmd = (texto, icn, fn, tom = '') => ({ texto, icone: icn, tom, aoClicar: fn });
   const principal = [
-    tem('enviar') && cmd('Enviar para aprovação', 'enviar', () => acaoViagem(v, 'enviar', apos), 'primario'),
-    tem('aprovar') && cmd('Aprovar viagem', 'ok', () => acaoViagem(v, 'aprovar', apos), 'primario'),
     tem('realizada') && cmd('Registrar como realizada', 'calendario', () => acaoViagem(v, 'realizada', apos), 'primario'),
     tem('enviar_prestacao') && cmd('Enviar prestação de contas', 'prestacao', () => acaoPrestacao(v, 'enviar_prestacao', recarregar), 'primario'),
     tem('aprovar_prestacao') && cmd('Aprovar prestação', 'ok', () => acaoPrestacao(v, 'aprovar_prestacao', recarregar), 'primario'),
@@ -149,7 +142,6 @@ export async function detalhe({ params, query, usuario, ir, recarregarPagina }) 
     tem('editar') && cmd('Editar', 'editar', () => formViagem({ viagem: v, usuario, depois: recarregar })),
     tem('nao_realizada') && cmd('Não realizada', 'proibido', () => acaoViagem(v, 'nao_realizada', apos)),
     tem('devolver_prestacao') && cmd('Devolver prestação', 'voltar', () => acaoPrestacao(v, 'devolver_prestacao', recarregar), 'perigo'),
-    tem('reprovar') && cmd('Reprovar', 'fechar', () => acaoViagem(v, 'reprovar', apos), 'perigo'),
     tem('cancelar') && cmd('Cancelar viagem', 'proibido', () => acaoViagem(v, 'cancelar', apos), 'perigo'),
     tem('excluir') && cmd('Excluir', 'lixeira', () => acaoViagem(v, 'excluir', apos), 'perigo'),
   ].filter(Boolean);
@@ -164,9 +156,8 @@ export async function detalhe({ params, query, usuario, ir, recarregarPagina }) 
       ['Centro de custo', v.funcionario_centro_custo || '—'], ['Empresa', v.funcionario_empresa ? `Empresa ${v.funcionario_empresa}` : '—'], ['Motivo', v.motivo_nome],
       ['Saída', dataBR(v.data_saida)], ['Retorno', dataBR(v.data_retorno)],
       ['Realizada em', dataBR(v.realizada_em)], ['Valor estimado', brl(v.valor_estimado)],
-      ['Aprovador', v.aprovador_nome ? `${v.aprovador_nome} · ${dataHoraBR(v.aprovado_em)}` : '—'],
     ].flatMap(([t, valor]) => [h('div', {}, h('dt', {}, t), h('dd', {}, valor))]),
-    v.decisao_justificativa ? h('div', { class: 'largo' }, h('dt', {}, v.status_codigo === 'reprovada' ? 'Motivo da reprovação' : 'Observação da decisão'), h('dd', { class: 'decisao' }, v.decisao_justificativa)) : null,
+    v.decisao_justificativa ? h('div', { class: 'largo' }, h('dt', {}, v.status_codigo === 'cancelada' ? 'Motivo do cancelamento' : 'Observação'), h('dd', { class: 'decisao' }, v.decisao_justificativa)) : null,
     v.descricao ? h('div', { class: 'largo' }, h('dt', {}, 'Descrição da atividade'), h('dd', {}, v.descricao)) : null);
 
   const financeiro = h('div', {},

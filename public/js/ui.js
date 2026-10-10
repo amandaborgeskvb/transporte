@@ -85,9 +85,9 @@ export const rotulo = (k) => ROTULOS[k] || k;
 
 // Situações de cada tipo de registro: [texto, tom]
 const SITUACOES = {
-  adiantamento: { solicitado: ['Aguardando aprovação', 'warn'], aprovado: ['Aprovado (a pagar)', 'info'], pago: ['Pago', 'ok'], rejeitado: ['Rejeitado', 'bad'], cancelado: ['Cancelado', 'mute'] },
+  adiantamento: { aprovado: ['A pagar', 'info'], pago: ['Pago', 'ok'], rejeitado: ['Rejeitado', 'bad'], cancelado: ['Cancelado', 'mute'] },
   despesa: { pendente: ['Em análise', 'warn'], aprovada: ['Aprovada', 'ok'], rejeitada: ['Rejeitada', 'bad'] },
-  reembolso: { pendente: ['Aguardando aprovação', 'warn'], aprovado: ['Aprovado (a pagar)', 'info'], reembolsado: ['Reembolsado', 'ok'], rejeitado: ['Rejeitado', 'bad'] },
+  reembolso: { aprovado: ['A pagar', 'info'], reembolsado: ['Reembolsado', 'ok'], cancelado: ['Cancelado', 'mute'] },
   prestacao: { pendente: ['Não enviada', 'mute'], enviada: ['Em análise', 'info'], aprovada: ['Aprovada', 'ok'], devolvida: ['Devolvida', 'bad'] },
   desconto: { emitida: ['Aguardando assinatura', 'warn'], assinada: ['Assinada', 'info'], concluida: ['Descontado', 'ok'], cancelada: ['Cancelada', 'mute'] },
 };
@@ -376,7 +376,7 @@ const EVENTOS = {
   'importar:importacao_funcionarios': 'importou funcionários de arquivos do ERP',
   'emitir:autorizacao_desconto': 'emitiu a autorização de desconto', 'editar:autorizacao_desconto': 'editou a autorização de desconto',
   'assinar:autorizacao_desconto': 'registrou a assinatura da autorização de desconto', 'concluir:autorizacao_desconto': 'concluiu o desconto em folha',
-  'cancelar:autorizacao_desconto': 'cancelou a autorização de desconto', 'excluir:autorizacao_desconto': 'excluiu a autorização de desconto', 'anexar:autorizacao_desconto': 'anexou arquivo à autorização de desconto',
+  'cancelar:reembolso': 'cancelou o reembolso', 'cancelar:autorizacao_desconto': 'cancelou a autorização de desconto', 'excluir:autorizacao_desconto': 'excluiu a autorização de desconto', 'anexar:autorizacao_desconto': 'anexou arquivo à autorização de desconto',
   'remover_anexo:autorizacao_desconto': 'removeu arquivo da autorização de desconto',
 };
 const ENTIDADES_ROTULO = {

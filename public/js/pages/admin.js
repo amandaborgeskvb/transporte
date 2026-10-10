@@ -8,8 +8,8 @@ import {
 const PERFIS = ['administrador', 'solicitante', 'aprovador', 'financeiro'];
 const DESCRICAO_PERFIL = {
   administrador: 'Acesso total: cadastros, usuários, auditoria e todas as etapas.',
-  solicitante: 'Solicita viagens, adiantamentos e reembolsos, lança despesas e envia a prestação de contas — somente das próprias viagens.',
-  aprovador: 'Aprova ou reprova viagens, adiantamentos e reembolsos. Vê todas as viagens.',
+  solicitante: 'Cadastra viagens, solicita adiantamentos e reembolsos, lança despesas e envia a prestação de contas — somente das próprias viagens.',
+  aprovador: 'Consulta todas as viagens e pode cancelá-las (não há mais etapa de aprovação).',
   financeiro: 'Registra pagamentos, analisa despesas e prestações de contas. Vê todas as viagens.',
 };
 const TOM_PERFIL = { administrador: 'ok', solicitante: 'mute', aprovador: 'info', financeiro: 'warn' };

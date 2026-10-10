@@ -29,14 +29,13 @@ function fila({ titulo, rota, tipo, colunas, acoes, fn, rotulos }) {
 export const adiantamentos = fila({
   titulo: 'Adiantamentos', rota: 'adiantamentos', tipo: 'adiantamento',
   colunas: [
-    { t: 'Solicitado', num: true, f: (x) => brl(x.valor_solicitado) },
-    { t: 'Aprovado', num: true, f: (x) => (x.valor_aprovado != null ? brl(x.valor_aprovado) : '—') },
+    { t: 'Valor', num: true, f: (x) => brl(x.valor_solicitado) },
     { t: 'Pago', num: true, f: (x) => (x.valor_pago != null ? brl(x.valor_pago) : '—') },
     { t: 'Forma', f: (x) => x.forma_pagamento_nome || '—' },
     { t: 'Data pgto.', cls: 'nowrap', f: (x) => dataBR(x.data_pagamento) },
   ],
-  acoes: ['aprovar', 'rejeitar', 'pagar', 'cancelar'], fn: acaoAdiantamento,
-  rotulos: { aprovar: ['Aprovar', ''], rejeitar: ['Rejeitar', 'perigo sec'], pagar: ['Registrar pagamento', ''], cancelar: ['Cancelar', 'perigo sec'] },
+  acoes: ['pagar', 'cancelar'], fn: acaoAdiantamento,
+  rotulos: { pagar: ['Registrar pagamento', ''], cancelar: ['Cancelar', 'perigo sec'] },
 });
 
 export const despesas = fila({
@@ -54,13 +53,12 @@ export const despesas = fila({
 export const reembolsos = fila({
   titulo: 'Reembolsos', rota: 'reembolsos', tipo: 'reembolso',
   colunas: [
-    { t: 'Solicitado', num: true, f: (x) => brl(x.valor_solicitado) },
-    { t: 'Aprovado', num: true, f: (x) => (x.valor_aprovado != null ? brl(x.valor_aprovado) : '—') },
+    { t: 'Valor', num: true, f: (x) => brl(x.valor_solicitado) },
     { t: 'Pago', num: true, f: (x) => (x.valor_pago != null ? brl(x.valor_pago) : '—') },
     { t: 'Forma', f: (x) => x.forma_pagamento_nome || '—' },
     { t: 'Data pgto.', cls: 'nowrap', f: (x) => dataBR(x.data_pagamento) },
     { t: 'Motivo', f: (x) => x.motivo },
   ],
-  acoes: ['aprovar', 'rejeitar', 'pagar'], fn: acaoReembolso,
-  rotulos: { aprovar: ['Aprovar', ''], rejeitar: ['Rejeitar', 'perigo sec'], pagar: ['Registrar pagamento', ''] },
+  acoes: ['pagar', 'cancelar'], fn: acaoReembolso,
+  rotulos: { pagar: ['Registrar pagamento', ''], cancelar: ['Cancelar', 'perigo sec'] },
 });

@@ -65,8 +65,6 @@ function criarPainel({ pool }) {
     const u = req.usuario;
     const params = [];
     const esc = escopoSql(u, params);
-    const nao_dono = u.funcionario_id ? ' AND v.funcionario_id <> ' + Number(u.funcionario_id) : '';
-    const nao_solic = ` AND (v.solicitante_id IS NULL OR v.solicitante_id <> ${Number(u.id)})`;
     const cont = async (sql, extra = '') => {
       const { rows } = await pool.query(`${sql} AND ${esc} ${extra}`, params);
       return { qtd: rows[0].n, valor: round2(rows[0].valor || 0) };
@@ -82,19 +80,13 @@ function criarPainel({ pool }) {
       if (r.qtd) itens.push({ rotulo, link, ...r });
     };
 
-    await add([ADM, APR], 'Viagens aguardando aprovação', '#/viagens?status=aguardando_aprovacao',
-      () => cont(viagensQ(`s.codigo = 'aguardando_aprovacao'`), nao_dono + nao_solic));
-    await add([ADM, APR], 'Adiantamentos aguardando aprovação', '#/adiantamentos?situacao=solicitado',
-      () => cont(fromV('adiantamentos', `x.situacao = 'solicitado' AND s.codigo IN ('aprovada','realizada')`, 'x.valor_solicitado'), nao_dono + nao_solic));
-    await add([ADM, APR], 'Reembolsos aguardando aprovação', '#/reembolsos?situacao=pendente',
-      () => cont(fromV('reembolsos', `x.situacao = 'pendente' AND s.codigo IN ('aprovada','realizada')`, 'x.valor_solicitado'), nao_dono + nao_solic));
-    await add([ADM, FIN], 'Adiantamentos aprovados a pagar', '#/adiantamentos?situacao=aprovado',
+    await add([ADM, FIN], 'Adiantamentos a pagar', '#/adiantamentos?situacao=aprovado',
       () => cont(fromV('adiantamentos', `x.situacao = 'aprovado'`, 'x.valor_aprovado')));
     await add([ADM, FIN], 'Despesas aguardando análise', '#/despesas?situacao=pendente',
       () => cont(fromV('despesas', `x.situacao = 'pendente'`, 'x.valor')));
     await add([ADM, FIN], 'Prestações de contas para análise', '#/viagens?prestacao=enviada',
       () => cont(viagensQ(`v.prestacao_situacao = 'enviada'`)));
-    await add([ADM, FIN], 'Reembolsos aprovados a pagar', '#/reembolsos?situacao=aprovado',
+    await add([ADM, FIN], 'Reembolsos a pagar', '#/reembolsos?situacao=aprovado',
       () => cont(fromV('reembolsos', `x.situacao = 'aprovado'`, 'x.valor_aprovado')));
     if ([ADM, FIN].includes(u.perfil)) {
       const q = async (situacao) => (await pool.query(`SELECT COUNT(*)::int AS n, COALESCE(SUM(valor),0) AS valor FROM autorizacoes_desconto WHERE situacao = $1`, [situacao])).rows[0];
@@ -102,8 +94,6 @@ function criarPainel({ pool }) {
       if (emitidas.n) itens.push({ rotulo: 'Autorizações de desconto aguardando assinatura', link: '#/descontos?situacao=emitida', qtd: emitidas.n, valor: round2(emitidas.valor) });
       if (assinadas.n) itens.push({ rotulo: 'Descontos assinados a efetuar na folha', link: '#/descontos?situacao=assinada', qtd: assinadas.n, valor: round2(assinadas.valor) });
     }
-    await add([ADM, SOL], 'Viagens reprovadas (ajustar e reenviar)', '#/viagens?status=reprovada',
-      () => cont(viagensQ(`s.codigo = 'reprovada'`)));
     await add([ADM, SOL], 'Prestações de contas a enviar', '#/viagens?prestacao=a_enviar',
       () => cont(viagensQ(`s.codigo IN ('realizada','nao_realizada') AND v.prestacao_situacao IN ('pendente','devolvida')`)));
     res.json(itens);

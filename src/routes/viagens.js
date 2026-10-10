@@ -97,7 +97,7 @@ function criarViagens({ pool }) {
       const { rows } = await db.query(
         `INSERT INTO viagens (funcionario_id, solicitante_id, destino, motivo_id, data_saida, data_retorno, descricao, valor_estimado, status_id)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, numero`,
-        [v.funcionario_id, req.usuario.id, v.destino, v.motivo_id, v.data_saida, v.data_retorno, v.descricao, v.valor_estimado, await statusId(db, 'solicitada')],
+        [v.funcionario_id, req.usuario.id, v.destino, v.motivo_id, v.data_saida, v.data_retorno, v.descricao, v.valor_estimado, await statusId(db, 'aprovada')],
       );
       await auditar(db, req.usuario, 'criar', 'viagem', rows[0].id, { numero: rows[0].numero, destino: v.destino }, rows[0].id);
       return rows[0];
@@ -169,7 +169,7 @@ function criarViagens({ pool }) {
     res.json({ ok: true });
   }));
 
-  // Transições do fluxo: enviar, aprovar, reprovar, realizada, nao_realizada, cancelar
+  // Transições do fluxo: realizada, nao_realizada, cancelar
   router.post('/viagens/:id/transicao', wrap(async (req, res) => {
     const id = idParam(req);
     const acao = opcaoDe(req.body.acao, Object.keys(TRANSICOES), 'Ação');
@@ -177,20 +177,13 @@ function criarViagens({ pool }) {
     await tx(pool, async (db) => {
       const v = await carregarViagem(db, id, req.usuario, { travar: true });
       if (!podeTransicao(acao, req.usuario, v)) {
-        throw erro403((acao === 'aprovar' || acao === 'reprovar') && ehDono(req.usuario, v)
-          ? 'Você não pode decidir sobre uma viagem solicitada por você ou em seu nome.'
-          : 'Ação não permitida para este perfil ou estado da viagem.');
+        throw erro403('Ação não permitida para este perfil ou estado da viagem.');
       }
-      if (['reprovar', 'cancelar'].includes(acao) && !justificativa) throw erro400('Informe a justificativa.');
+      if (acao === 'cancelar' && !justificativa) throw erro400('Informe a justificativa.');
       const sets = ['status_id=$1', 'atualizado_em=now()'];
       const params = [await statusId(db, TRANSICOES[acao].para)];
       const add = (col, val) => { params.push(val); sets.push(`${col}=$${params.length}`); };
-      if (acao === 'aprovar' || acao === 'reprovar') {
-        add('aprovador_id', req.usuario.id);
-        sets.push('aprovado_em=now()');
-        add('decisao_justificativa', justificativa);
-      }
-      if (acao === 'enviar') { sets.push('aprovador_id=NULL', 'aprovado_em=NULL'); }
+      if (acao === 'cancelar') add('decisao_justificativa', justificativa);
       if (acao === 'realizada') {
         const quando = req.body.data_realizacao ? data(req.body.data_realizacao, 'Data de realização') : hojeSP();
         add('realizada_em', quando);
@@ -236,7 +229,7 @@ function criarViagens({ pool }) {
     const id = idParam(req);
     await tx(pool, async (db) => {
       const v = await carregarViagem(db, id, req.usuario, { travar: true });
-      if (!acoesViagem(req.usuario, v).includes('excluir')) throw erro403('Só é possível excluir viagens solicitadas, reprovadas ou canceladas (administrador).');
+      if (!acoesViagem(req.usuario, v).includes('excluir')) throw erro403('Só o administrador pode excluir viagens programadas ou canceladas.');
       const pagos = await db.query(
         `SELECT (SELECT COUNT(*) FROM adiantamentos WHERE viagem_id=$1 AND situacao='pago')
               + (SELECT COUNT(*) FROM reembolsos WHERE viagem_id=$1 AND situacao='reembolsado') AS n`, [id]);

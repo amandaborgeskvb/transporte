@@ -1,7 +1,7 @@
 # TRANSPORTE - CTT (CRV Industrial)
 
 Sistema web para o controle de viagens (programadas e de manutenção), adiantamentos, despesas, reembolsos
-e prestação de contas, com aprovações por perfil, histórico de alterações e dashboard gerencial.
+e prestação de contas, com permissões por perfil (sem etapas de aprovação de viagem, adiantamento e reembolso), histórico de alterações e dashboard gerencial.
 
 **Tecnologia:** 100% JavaScript — Node.js 22 + Express no servidor, JavaScript puro (módulos ES) no navegador,
 PostgreSQL como banco. Sem etapa de build e sem frameworks de interface.
@@ -11,10 +11,10 @@ PostgreSQL como banco. Sem etapa de build e sem frameworks de interface.
 | Módulo | O que faz |
 |---|---|
 | **Dashboard** | Viagens por situação, adiantamentos, despesas, reembolsos, saldo pendente de prestação, gráficos por mês, motivo, funcionário e setor, e as **pendências** de cada usuário |
-| **Viagens** | Programação (nº automático `VG-AAAA-NNNN`, funcionário, destino, motivo, datas, descrição, valor estimado), aprovação, realização e cancelamento |
-| **Adiantamentos** | Valor solicitado → aprovado → pago, com forma (dinheiro, depósito, transferência…), data e comprovante |
+| **Viagens** | Programação (nº automático `VG-AAAA-NNNN`, funcionário, destino, motivo, datas, descrição, valor estimado), realização e cancelamento (a viagem já nasce programada) |
+| **Adiantamentos** | Solicitado já liberado para pagamento → pago, com forma (dinheiro, depósito, transferência…), data e comprovante |
 | **Despesas** | Alimentação, combustível, hospedagem, pedágio, manutenção etc., com comprovantes e análise do financeiro |
-| **Reembolsos** | Solicitação, aprovação e pagamento (depósito em conta, transferência, outros) |
+| **Reembolsos** | Solicitação e pagamento direto (depósito em conta, transferência, outros) |
 | **Prestação de contas** | Envio pelo solicitante, aprovação ou devolução pelo financeiro; ao aprovar, a viagem é travada |
 | **Autorizações de desconto** | Formulário padrão **RE. 0150.09** (Autorização de Desconto) emitido a partir da viagem ou avulso, com prévia ao vivo, impressão em A4 e acompanhamento até o desconto em folha |
 | **Importação** | Carga e atualização do cadastro de funcionários por até 3 arquivos do ERP (Ativos, Afastados, Demitidos), com situação, prévia, histórico e relatório |
@@ -34,10 +34,10 @@ conceitos de ERPs e plataformas de operação agrícola:
   claro/escuro, menu do usuário (alterar senha, sair) e a logo.
 - **Menu lateral por grupos** (Operação, Financeiro, Análise, Configurações), recolhível, com o item ativo destacado.
 - **Telas lista + detalhe** em Usuários e Cadastros (busca à esquerda, formulário do item à direita).
-- **Registro da viagem** no estilo Dynamics 365: faixa de etapas (Solicitada → Aprovação → Aprovada → Realizada →
+- **Registro da viagem** no estilo Dynamics 365: faixa de etapas (Programada → Realizada →
   Prestação de contas), barra de comandos com as ações liberadas para o perfil e abas (Resumo, Adiantamentos, Despesas,
   Reembolsos, Histórico). A aba aberta fica gravada na URL.
-- **Lista de viagens** com visões rápidas (Aguardando aprovação, Aprovadas, Prestação em aberto…).
+- **Lista de viagens** com visões rápidas (Programadas, Realizadas, Prestação em aberto…).
 - **Dashboard** com indicadores com ícone, rosca de viagens por situação (cores dos status), colunas por mês e rankings.
 - Responsivo (celular e tablet) e **tema escuro** (a escolha fica lembrada no navegador).
 - Fontes **Inter** e **Barlow Condensed** (licença OFL) hospedadas junto do sistema em `public/fonts/` — nada é carregado
@@ -124,12 +124,10 @@ As permissões são validadas **no servidor** (a tela apenas esconde o que o per
 | Ação | Solicitante | Aprovador | Financeiro | Administrador |
 |---|:-:|:-:|:-:|:-:|
 | Ver viagens | só as próprias | todas | todas | todas |
-| Solicitar / editar viagem (antes da aprovação) | ✔ | | | ✔ (para qualquer funcionário) |
-| Aprovar ou reprovar viagem | | ✔ | | ✔ |
+| Cadastrar / editar viagem (até ser realizada) | ✔ | | | ✔ (para qualquer funcionário) |
 | Registrar viagem como realizada / não realizada | ✔ | | ✔ | ✔ |
 | Cancelar viagem | ✔ | ✔ | | ✔ |
 | Solicitar adiantamento e reembolso | ✔ | | ✔ | ✔ |
-| Aprovar adiantamento e reembolso | | ✔ | | ✔ |
 | Registrar pagamento de adiantamento e reembolso | | | ✔ | ✔ |
 | Lançar despesas e anexar comprovantes | ✔ | | ✔ | ✔ |
 | Aprovar ou rejeitar despesas | | | ✔ | ✔ |
@@ -140,17 +138,16 @@ As permissões são validadas **no servidor** (a tela apenas esconde o que o per
 | Consultar e imprimir a própria autorização de desconto | ✔ | | ✔ | ✔ |
 | Cadastros, importação de funcionários, usuários e auditoria | | | | ✔ |
 
-**Segregação de funções:** ninguém aprova (viagem, adiantamento, reembolso, despesa ou prestação) o que ele mesmo
+**Segregação de funções:** ninguém paga ou confere (adiantamento, reembolso, despesa ou prestação) o que ele mesmo
 solicitou ou que é em nome do funcionário vinculado ao seu usuário. Por isso, o ideal é ter ao menos um administrador
-e usuários separados para quem solicita e quem aprova.
+e usuários separados para quem solicita e quem paga/confere. O perfil *Aprovador* ficou só com consulta e cancelamento de viagens.
 
 ## Fluxo da viagem
 
 ```
-Solicitada → Aguardando aprovação → Aprovada → Realizada
-                  │   ↑                │  └──→ Não realizada
-                  ↓   │                └─────→ Cancelada
-              Reprovada (corrige e reenvia)
+Programada → Realizada (a viagem já nasce programada, sem etapa de aprovação)
+     │  └────→ Não realizada
+     └───────→ Cancelada
 ```
 
 Os status fazem parte do fluxo e não podem ser criados ou excluídos; o nome e a cor de exibição são editáveis em

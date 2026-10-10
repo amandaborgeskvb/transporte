@@ -26,13 +26,10 @@ export async function formViagem({ viagem, usuario, depois }) {
     confirmar: viagem ? 'Salvar alterações' : 'Solicitar viagem',
     aoSalvar: async (v) => { resultado = viagem ? await put(`/viagens/${viagem.id}`, v) : await post('/viagens', v); },
   });
-  if (salvou) { toast(viagem ? 'Viagem atualizada.' : `Viagem ${resultado.numero} solicitada.`); depois?.(resultado); }
+  if (salvou) { toast(viagem ? 'Viagem atualizada.' : `Viagem ${resultado.numero} cadastrada.`); depois?.(resultado); }
 }
 
 const TRANSICOES = {
-  enviar: { titulo: 'Enviar para aprovação', descricao: 'A viagem seguirá para análise dos aprovadores.', rotulo: 'Enviar', msg: 'Viagem enviada para aprovação.' },
-  aprovar: { titulo: 'Aprovar viagem', justificativa: false, rotulo: 'Aprovar', msg: 'Viagem aprovada.' },
-  reprovar: { titulo: 'Reprovar viagem', justificativa: true, rotulo: 'Reprovar', perigo: true, msg: 'Viagem reprovada.' },
   nao_realizada: { titulo: 'Marcar como não realizada', descricao: 'Se houve adiantamento, o valor deverá ser devolvido na prestação de contas.', rotulo: 'Confirmar', msg: 'Viagem marcada como não realizada.' },
   cancelar: { titulo: 'Cancelar viagem', justificativa: true, rotulo: 'Cancelar viagem', perigo: true, msg: 'Viagem cancelada.' },
 };
@@ -102,14 +99,12 @@ export async function acaoAdiantamento(a, acao, depois) {
   const formas = opcoes(c.formas.filter((f) => f.uso_adiantamento), { somenteAtivos: true });
   const corpo = (v) => ({ acao, ...v });
   const url = `/adiantamentos/${a.id}/acao`;
-  const resumo = `${a.numero ? `${a.numero} · ` : ''}Solicitado: ${brl(a.valor_solicitado)}`;
+  const resumo = `${a.numero ? `${a.numero} · ` : ''}Valor: ${brl(a.valor_solicitado)}`;
   if (acao === 'cancelar') {
     if (await confirmar('Cancelar adiantamento', resumo, { rotulo: 'Cancelar adiantamento', perigo: true })) { await post(url, { acao }); ok('Adiantamento cancelado.', depois)(); }
     return;
   }
   const cfg = {
-    aprovar: { titulo: 'Aprovar adiantamento', rotulo: 'Aprovar', campos: [{ nome: 'valor_aprovado', rotulo: 'Valor aprovado (R$)', tipo: 'number', passo: '0.01', min: '0.01', valor: a.valor_solicitado, obrigatorio: true, cheio: true }, { nome: 'observacao', rotulo: 'Observação', tipo: 'textarea', cheio: true }], msg: 'Adiantamento aprovado.' },
-    rejeitar: { titulo: 'Rejeitar adiantamento', rotulo: 'Rejeitar', perigo: true, campos: [{ nome: 'observacao', rotulo: 'Motivo da rejeição', tipo: 'textarea', obrigatorio: true, cheio: true }], msg: 'Adiantamento rejeitado.' },
     pagar: {
       titulo: 'Registrar pagamento do adiantamento', rotulo: 'Registrar pagamento', msg: 'Pagamento registrado.',
       campos: [
@@ -187,10 +182,12 @@ export async function acaoReembolso(r, acao, depois) {
   const c = await cadastros();
   const formas = opcoes(c.formas.filter((f) => f.uso_reembolso), { somenteAtivos: true });
   const url = `/reembolsos/${r.id}/acao`;
-  const resumo = `${r.numero ? `${r.numero} · ` : ''}Solicitado: ${brl(r.valor_solicitado)} — ${r.motivo}`;
+  const resumo = `${r.numero ? `${r.numero} · ` : ''}${brl(r.valor_solicitado)} — ${r.motivo}`;
+  if (acao === 'cancelar') {
+    if (await confirmar('Cancelar reembolso', resumo, { rotulo: 'Cancelar reembolso', perigo: true })) { await post(url, { acao }); ok('Reembolso cancelado.', depois)(); }
+    return;
+  }
   const cfg = {
-    aprovar: { titulo: 'Aprovar reembolso', rotulo: 'Aprovar', campos: [{ nome: 'valor_aprovado', rotulo: 'Valor aprovado (R$)', tipo: 'number', passo: '0.01', min: '0.01', valor: r.valor_solicitado, obrigatorio: true, cheio: true }, { nome: 'observacao', rotulo: 'Observação', tipo: 'textarea', cheio: true }], msg: 'Reembolso aprovado.' },
-    rejeitar: { titulo: 'Rejeitar reembolso', rotulo: 'Rejeitar', perigo: true, campos: [{ nome: 'observacao', rotulo: 'Motivo da rejeição', tipo: 'textarea', obrigatorio: true, cheio: true }], msg: 'Reembolso rejeitado.' },
     pagar: {
       titulo: 'Registrar pagamento do reembolso', rotulo: 'Registrar pagamento', msg: 'Reembolso pago.',
       campos: [
