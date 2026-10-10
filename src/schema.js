@@ -212,6 +212,27 @@ CREATE TABLE IF NOT EXISTS autorizacoes_desconto (
 CREATE INDEX IF NOT EXISTS autorizacoes_viagem_idx ON autorizacoes_desconto (viagem_id);
 CREATE INDEX IF NOT EXISTS autorizacoes_func_idx ON autorizacoes_desconto (funcionario_id);
 
+-- Importação de funcionários (planilhas do ERP/RH): colunas de origem e histórico das importações
+ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS origem_codigo  TEXT;
+ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS empresa_codigo TEXT NOT NULL DEFAULT '';
+ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS empregador     TEXT NOT NULL DEFAULT '';
+ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS importado_em   TIMESTAMPTZ;
+ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS atualizado_em  TIMESTAMPTZ NOT NULL DEFAULT now();
+CREATE UNIQUE INDEX IF NOT EXISTS funcionarios_origem_idx ON funcionarios (origem_codigo) WHERE origem_codigo IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS importacoes (
+  id           SERIAL PRIMARY KEY,
+  tipo         TEXT NOT NULL,
+  arquivo      TEXT NOT NULL,
+  usuario_id   INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  usuario_nome TEXT NOT NULL DEFAULT '',
+  mapeamento   JSONB NOT NULL DEFAULT '{}'::jsonb,
+  opcoes       JSONB NOT NULL DEFAULT '{}'::jsonb,
+  resumo       JSONB NOT NULL DEFAULT '{}'::jsonb,
+  relatorio    JSONB NOT NULL DEFAULT '[]'::jsonb,
+  criado_em    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Comprovantes também podem pertencer a uma autorização de desconto (que pode não ter viagem)
 ALTER TABLE anexos ALTER COLUMN viagem_id DROP NOT NULL;
 ALTER TABLE anexos DROP CONSTRAINT IF EXISTS anexos_entidade_check;

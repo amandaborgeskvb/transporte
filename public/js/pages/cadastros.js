@@ -3,6 +3,7 @@ import { get, post, put, del, limparCadastros } from '../api.js';
 import { h, botao, formulario, confirmar, toast, vazio, cabecalhoPagina, badgeTom } from '../ui.js';
 
 const sim = (v) => (v ? 'Sim' : 'Não');
+const LIMITE_LISTA = 300; // cadastros grandes (importados de planilha): a lista mostra os primeiros e a busca filtra o resto
 
 export const TIPOS_CADASTRO = {
   funcionarios: {
@@ -15,7 +16,7 @@ export const TIPOS_CADASTRO = {
       { nome: 'centro_custo', rotulo: 'Centro de custo', valor: x.centro_custo },
       { nome: 'ativo', rotulo: 'Cadastro ativo', tipo: 'checkbox', valor: x.ativo ?? true, cheio: true },
     ],
-    item: (x) => ({ titulo: x.nome, sub: `Mat. ${x.matricula}${x.setor ? ` · ${x.setor}` : ''}${x.funcao ? ` · ${x.funcao}` : ''}` }),
+    item: (x) => ({ titulo: x.nome, sub: `Mat. ${x.matricula}${x.setor ? ` · ${x.setor}` : ''}${x.funcao ? ` · ${x.funcao}` : ''}${x.empresa_codigo ? ` · empresa ${x.empresa_codigo}` : ''}` }),
   },
   motivos: {
     titulo: 'Motivos de viagem', singular: 'motivo',
@@ -80,8 +81,9 @@ export default async function paginaCadastros({ params, ir }) {
 
   function desenharLista() {
     const t = norm(filtro);
-    const visiveis = itens.filter((x) => !t || norm(`${cfg.item(x).titulo} ${cfg.item(x).sub}`).includes(t));
-    contagem.textContent = `${visiveis.length} de ${itens.length}`;
+    const todos = itens.filter((x) => !t || norm(`${cfg.item(x).titulo} ${cfg.item(x).sub}`).includes(t));
+    const visiveis = todos.slice(0, LIMITE_LISTA);
+    contagem.textContent = todos.length > LIMITE_LISTA ? `Mostrando ${LIMITE_LISTA} de ${todos.length}: refine a busca` : `${todos.length} de ${itens.length}`;
     lista.replaceChildren(...(visiveis.length ? visiveis.map((x) => {
       const it = cfg.item(x);
       const ativo = selecionado && selecionado !== 'novo' && selecionado.id === x.id;
@@ -133,7 +135,10 @@ export default async function paginaCadastros({ params, ir }) {
   return [
     cabecalhoPagina({
       migalhas: [['Configurações'], ['Cadastros'], [cfg.titulo]], titulo: cfg.titulo, sub: 'Cadastros que alimentam viagens, adiantamentos, despesas e reembolsos',
-      acoes: cfg.fixo ? null : botao(`Novo ${cfg.singular}`, () => { selecionado = 'novo'; desenhar(); }, { icone: 'mais' }),
+      acoes: [
+        tipo === 'funcionarios' ? botao('Importar planilha', () => ir('#/importacao'), { tom: 'sec', icone: 'upload' }) : null,
+        cfg.fixo ? null : botao(`Novo ${cfg.singular}`, () => { selecionado = 'novo'; desenhar(); }, { icone: 'mais' }),
+      ],
     }),
     abas,
     h('div', { class: 'split' },

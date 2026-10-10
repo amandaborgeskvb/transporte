@@ -1,6 +1,6 @@
 // Diálogos das ações de viagem, adiantamento, despesa e reembolso (usados no detalhe e nas filas).
 import { post, put, del, cadastros, enviarAnexo, limparCadastros } from './api.js';
-import { dialogo, confirmar, opcoes, hojeISO, brl, toast } from './ui.js';
+import { dialogo, confirmar, opcoes, opcoesFuncionarios, hojeISO, brl, toast } from './ui.js';
 
 const ok = (msg, depois) => () => { toast(msg); depois?.(); };
 
@@ -9,7 +9,7 @@ export async function formViagem({ viagem, usuario, depois }) {
   const c = await cadastros();
   const admin = usuario.perfil === 'administrador';
   const campos = [
-    admin ? { nome: 'funcionario_id', rotulo: 'Funcionário', tipo: 'select', opcoes: opcoes(c.funcionarios, { somenteAtivos: true }), valor: viagem?.funcionario_id, obrigatorio: true, vazio: 'Selecione…', cheio: true } : null,
+    admin ? { nome: 'funcionario_id', rotulo: 'Funcionário', tipo: 'select', opcoes: opcoesFuncionarios(c.funcionarios, { somenteAtivos: true }), valor: viagem?.funcionario_id, obrigatorio: true, vazio: 'Selecione…', cheio: true } : null,
     { nome: 'destino', rotulo: 'Destino', obrigatorio: true, valor: viagem?.destino, cheio: true },
     { nome: 'motivo_id', rotulo: 'Motivo da viagem', tipo: 'select', opcoes: opcoes(c.motivos, { somenteAtivos: true }), valor: viagem?.motivo_id, obrigatorio: true, vazio: 'Selecione…', cheio: true },
     { nome: 'data_saida', rotulo: 'Data de saída', tipo: 'date', obrigatorio: true, valor: viagem?.data_saida || hojeISO() },

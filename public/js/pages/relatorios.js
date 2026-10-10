@@ -1,5 +1,5 @@
 import { get, cadastros } from '../api.js';
-import { h, brl, dataBR, badgeStatus, badgeSituacao, tabela, opcoes, opcoesSituacao, barraFiltros, kpi, secao, cabecalhoPagina, icone } from '../ui.js';
+import { h, brl, dataBR, badgeStatus, badgeSituacao, tabela, opcoes, opcoesFuncionarios, opcoesSituacao, barraFiltros, kpi, secao, cabecalhoPagina, icone } from '../ui.js';
 
 export default async function relatorios({ query, usuario, ir }) {
   const c = await cadastros();
@@ -13,7 +13,7 @@ export default async function relatorios({ query, usuario, ir }) {
   const campos = [
     { nome: 'de', rotulo: 'Saída de', tipo: 'date' },
     { nome: 'ate', rotulo: 'até', tipo: 'date' },
-    veTodos ? { nome: 'funcionario_id', rotulo: 'Funcionário', tipo: 'select', opcoes: opcoes(c.funcionarios) } : null,
+    veTodos ? { nome: 'funcionario_id', rotulo: 'Funcionário', tipo: 'select', opcoes: opcoesFuncionarios(c.funcionarios) } : null,
     veTodos ? { nome: 'setor', rotulo: 'Setor', tipo: 'select', opcoes: setores } : null,
     { nome: 'motivo_id', rotulo: 'Motivo', tipo: 'select', opcoes: opcoes(c.motivos) },
     { nome: 'destino', rotulo: 'Destino', placeholder: 'Parte do nome' },

@@ -1,7 +1,7 @@
 import { get, del, enviarAnexo, cadastros } from '../api.js';
 import {
   h, brl, dataBR, dataHoraBR, badgeStatus, badgeSituacao, kpi, secao, tabela, barra, vazio, toast, confirmar, opcoes,
-  opcoesSituacao, barraFiltros, descreverEvento, resumirDetalhes, cabecalhoPagina, barraComandos, abas, botao, icone,
+  opcoesSituacao, opcoesFuncionarios, barraFiltros, descreverEvento, resumirDetalhes, cabecalhoPagina, barraComandos, abas, botao, icone,
 } from '../ui.js';
 import {
   formViagem, acaoViagem, acaoPrestacao, solicitarAdiantamento, acaoAdiantamento, formDespesa, acaoDespesa,
@@ -41,7 +41,7 @@ export async function lista({ query, usuario, ir }) {
   const campos = [
     { nome: 'q', rotulo: 'Busca', placeholder: 'Número, destino ou funcionário' },
     { nome: 'status_id', rotulo: 'Status', tipo: 'select', opcoes: opcoes(c.status) },
-    veTodos ? { nome: 'funcionario_id', rotulo: 'Funcionário', tipo: 'select', opcoes: opcoes(c.funcionarios) } : null,
+    veTodos ? { nome: 'funcionario_id', rotulo: 'Funcionário', tipo: 'select', opcoes: opcoesFuncionarios(c.funcionarios) } : null,
     { nome: 'motivo_id', rotulo: 'Motivo', tipo: 'select', opcoes: opcoes(c.motivos) },
     { nome: 'prestacao', rotulo: 'Prestação de contas', tipo: 'select', opcoes: opcoesSituacao('prestacao') },
     { nome: 'de', rotulo: 'Saída de', tipo: 'date' },

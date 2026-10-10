@@ -420,3 +420,19 @@ html[data-tema="escuro"] .re-mesa { background: #0a1120; }
 
 .dicas-form { margin: -4px 0 10px; display: grid; gap: 2px; }
 .dicas-form .dica { margin: 0; }
+
+/* ===== Importação de planilhas ===== */
+.imp-zona { border: 2px dashed var(--campo-borda); border-radius: 12px; padding: 34px 16px; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; text-align: center; background: var(--card-2); margin-bottom: 12px; }
+.imp-zona:hover, .imp-zona.sobre { border-color: var(--marca); background: var(--sel); }
+.imp-zona svg { width: 34px; height: 34px; color: var(--marca-txt); }
+.imp-grade { display: grid; grid-template-columns: minmax(360px, 520px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.imp-esq .form-grid { grid-template-columns: 1fr; }
+.imp-esq .card, .imp-dir .card { margin-bottom: 14px; }
+.imp-opcao { align-items: flex-start; margin-bottom: 8px; }
+.imp-opcao input { margin-top: 3px; }
+.imp-opcao .dica { margin-top: 0; }
+.imp-empresas { margin-top: 10px; }
+label.faltando select { border-color: var(--bad); }
+.imp-motivo { border: 1px solid var(--linha); border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; }
+.imp-motivo summary { cursor: pointer; }
+@media (max-width: 1100px) { .imp-grade { grid-template-columns: minmax(0, 1fr); } }

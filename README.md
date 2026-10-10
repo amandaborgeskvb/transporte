@@ -17,6 +17,7 @@ PostgreSQL como banco. Sem etapa de build e sem frameworks de interface.
 | **Reembolsos** | Solicitação, aprovação e pagamento (depósito em conta, transferência, outros) |
 | **Prestação de contas** | Envio pelo solicitante, aprovação ou devolução pelo financeiro; ao aprovar, a viagem é travada |
 | **Autorizações de desconto** | Formulário padrão **RE. 0150.09** (Autorização de Desconto) emitido a partir da viagem ou avulso, com prévia ao vivo, impressão em A4 e acompanhamento até o desconto em folha |
+| **Importação** | Carga e atualização do cadastro de funcionários por planilha (.xlsx/.csv), com prévia, histórico e relatório |
 | **Relatórios** | Filtros por período, funcionário, setor, motivo, destino, status, categoria e prestação; exportação em CSV |
 | **Cadastros** | Funcionários, motivos de viagem, status, categorias de despesa e formas de pagamento |
 | **Usuários e perfis** | Login individual e quatro perfis de acesso |
@@ -78,6 +79,33 @@ Diferenças em relação à planilha (melhorias): valores com separador de milha
 > **Privacidade:** a planilha original contém abas ocultas com cadastros de funcionários. Esses dados **não** foram para o
 > repositório (que é público) — só a estrutura do formulário. Mantenha arquivos `.xlsx`/`.cdr` fora do Git (já ignorados).
 
+## Importação de funcionários (planilhas do ERP/RH)
+
+Em **Configurações → Importação** (administrador) o cadastro de funcionários é carregado e atualizado a partir de uma
+planilha **.xlsx ou .csv**, em etapas, sem gravar nada antes da confirmação:
+
+1. **Arquivo** — o sistema acha sozinho a linha de cabeçalho (exportações de ERP costumam ter títulos antes da tabela) e sugere
+   as colunas.
+2. **Colunas e regras** — escolha qual coluna é matrícula, nome, situação (ativo), função, setor, centro de custo, código da
+   pessoa no ERP, empresa e empregador. Escolha também as **empresas** a importar (a mesma matrícula pode existir em empresas
+   diferentes) e as regras: criar novos, atualizar existentes, inativar quem está inativo no arquivo, inativar quem sumiu do
+   arquivo e se célula vazia apaga o valor cadastrado (padrão: não apaga).
+3. **Prévia** — mostra quantos serão **criados, atualizados, inativados, sem alteração e ignorados** (por motivo), com exemplos e
+   os **conflitos** para revisão. 4. **Importar** — grava tudo numa transação e registra no **histórico** (com relatório em CSV e na auditoria).
+
+Regras importantes:
+- **Atualizações futuras:** basta importar a nova planilha. Cada pessoa é reconhecida pelo **código no ERP** (que acompanha a
+  pessoa mesmo se a matrícula mudar) e, na falta dele, pela **matrícula** (ignorando zeros à esquerda). Repetir a mesma planilha
+  não altera nada. Também dá para **Exportar cadastro atual** (CSV), editar no Excel e reimportar, ou usar o **Modelo (CSV)**.
+- **Nunca exclui:** quem sai é apenas **inativado**, preservando viagens, despesas e histórico. Cadastros feitos à mão não são
+  inativados por "ausência" no arquivo.
+- **Matrículas repetidas:** mesma matrícula e mesmo nome → fica o cadastro de maior código; mesma matrícula para **pessoas
+  diferentes** → conflito, não é importado e aparece na prévia/relatório; matrícula só em registros inativos não gera conflito.
+- **Dados pessoais:** colunas como CPF, RG, telefone, e-mail e crachá são **descartadas na leitura**, não podem ser mapeadas e nunca
+  são gravadas. O arquivo enviado fica só em memória por 30 minutos (por usuário) e não é guardado.
+- Campos que a planilha não traz (por exemplo **função** e **setor** na exportação "Pessoas") ficam em branco e podem ser
+  completados por outra planilha que os tenha ou à mão; a importação **não apaga** o que já estiver preenchido.
+
 ## Perfis de acesso
 
 As permissões são validadas **no servidor** (a tela apenas esconde o que o perfil não pode fazer).
@@ -98,7 +126,7 @@ As permissões são validadas **no servidor** (a tela apenas esconde o que o per
 | Aprovar ou devolver prestação de contas | | | ✔ | ✔ |
 | Emitir, editar e cancelar autorização de desconto (RE. 0150.09) | | | ✔ | ✔ |
 | Consultar e imprimir a própria autorização de desconto | ✔ | | ✔ | ✔ |
-| Cadastros, usuários e auditoria | | | | ✔ |
+| Cadastros, importação de planilhas, usuários e auditoria | | | | ✔ |
 
 **Segregação de funções:** ninguém aprova (viagem, adiantamento, reembolso, despesa ou prestação) o que ele mesmo
 solicitou ou que é em nome do funcionário vinculado ao seu usuário. Por isso, o ideal é ter ao menos um administrador
@@ -199,7 +227,8 @@ src/
   workflow.js              regras de perfil e de fluxo (fonte única de verdade das permissões)
   financeiro.js            cálculos financeiros por viagem
   descontos.js, extenso.js regras do formulário RE. 0150.09 e valor por extenso
-  routes/                  cadastros, viagens, lancamentos, anexos, descontos, painel
+  planilha.js, importacao.js leitura de .xlsx/.csv e motor de importação de funcionários
+  routes/                  cadastros, viagens, lancamentos, anexos, descontos, importacao, painel
 public/
   index.html, style.css, favicon.svg, img/ (logos e logo do formulário RE), fonts/
   js/                      main (casco, rotas, menu, busca), api, ui, acoes, charts, re (folha do RE), tema e pages/

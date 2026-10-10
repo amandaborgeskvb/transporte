@@ -1,7 +1,7 @@
 // Usuários (perfis de acesso) e auditoria: telas do administrador.
 import { get, post, put, cadastros } from '../api.js';
 import {
-  h, tabela, botao, formulario, toast, secao, badgeTom, rotulo, dataHoraBR, barraFiltros, opcoes, descreverEvento,
+  h, tabela, botao, formulario, toast, secao, badgeTom, rotulo, dataHoraBR, barraFiltros, opcoesFuncionarios, descreverEvento,
   resumirDetalhes, entidadeRotulo, cabecalhoPagina, vazio,
 } from '../ui.js';
 
@@ -51,7 +51,7 @@ export async function usuarios() {
         { nome: 'nome', rotulo: 'Nome', valor: u?.nome, obrigatorio: true, cheio: true },
         novo ? { nome: 'login', rotulo: 'Login', obrigatorio: true, dica: 'Letras, números e . _ @ -' } : null,
         { nome: 'perfil', rotulo: 'Perfil de acesso', tipo: 'select', opcoes: PERFIS.map((p) => ({ valor: p, rotulo: rotulo(p) })), valor: u?.perfil || 'solicitante', obrigatorio: true },
-        { nome: 'funcionario_id', rotulo: 'Funcionário vinculado', tipo: 'select', opcoes: opcoes(c.funcionarios, { somenteAtivos: true }), valor: u?.funcionario_id, vazio: '(nenhum)', dica: 'Obrigatório para solicitantes.' },
+        { nome: 'funcionario_id', rotulo: 'Funcionário vinculado', tipo: 'select', opcoes: opcoesFuncionarios(c.funcionarios, { somenteAtivos: true }), valor: u?.funcionario_id, vazio: '(nenhum)', dica: 'Obrigatório para solicitantes.' },
         { nome: 'senha', rotulo: novo ? 'Senha' : 'Nova senha', tipo: 'password', obrigatorio: novo, dica: novo ? 'Mínimo de 8 caracteres.' : 'Deixe em branco para manter a atual.' },
         novo ? null : { nome: 'ativo', rotulo: 'Usuário ativo', tipo: 'checkbox', valor: u.ativo, cheio: true },
       ].filter(Boolean),
@@ -88,7 +88,7 @@ export async function usuarios() {
   ];
 }
 
-const ENTIDADES = ['viagem', 'adiantamento', 'despesa', 'reembolso', 'autorizacao_desconto', 'usuarios', 'funcionarios', 'motivos_viagem', 'categorias_despesa', 'formas_pagamento', 'status_viagem', 'documentos_re'];
+const ENTIDADES = ['viagem', 'adiantamento', 'despesa', 'reembolso', 'autorizacao_desconto', 'usuarios', 'funcionarios', 'motivos_viagem', 'categorias_despesa', 'formas_pagamento', 'status_viagem', 'documentos_re', 'importacao_funcionarios'];
 
 export async function auditoria({ query, ir }) {
   const qs = new URLSearchParams(query).toString();

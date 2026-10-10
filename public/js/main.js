@@ -7,6 +7,7 @@ import relatorios from './pages/relatorios.js';
 import { lista as listaDescontos, detalhe as detalheDesconto, formularioPagina as formDesconto } from './pages/descontos.js';
 import cadastrosPagina, { TIPOS_CADASTRO } from './pages/cadastros.js';
 import { usuarios, auditoria } from './pages/admin.js';
+import importacao from './pages/importacao.js';
 
 const raiz = document.getElementById('raiz');
 const MARCA = 'CRV Industrial';
@@ -36,6 +37,7 @@ const ROTAS = {
   },
   relatorios: { titulo: 'Relatórios', pagina: relatorios },
   cadastros: { titulo: 'Cadastros', pagina: cadastrosPagina, perfis: ADMIN, voltar: () => '#/dashboard' },
+  importacao: { titulo: 'Importação de funcionários', pagina: importacao, perfis: ADMIN, voltar: () => '#/dashboard' },
   usuarios: { titulo: 'Usuários e perfis', pagina: usuarios, perfis: ADMIN, voltar: () => '#/dashboard' },
   auditoria: { titulo: 'Auditoria', pagina: auditoria, perfis: ADMIN, voltar: () => '#/dashboard' },
 };
@@ -54,6 +56,7 @@ const MENU = [
   { rota: 'relatorios', titulo: 'Relatórios', icone: 'relatorio' },
   { grupo: 'Configurações', perfis: ADMIN },
   { rota: 'cadastros', titulo: 'Cadastros', icone: 'cadastros', perfis: ADMIN, filhos: Object.entries(TIPOS_CADASTRO).map(([k, t]) => ({ href: `#/cadastros/${k}`, titulo: t.titulo })) },
+  { rota: 'importacao', titulo: 'Importação', icone: 'upload', perfis: ADMIN },
   { rota: 'usuarios', titulo: 'Usuários e perfis', icone: 'usuarios', perfis: ADMIN },
   { rota: 'auditoria', titulo: 'Auditoria', icone: 'auditoria', perfis: ADMIN },
 ];
