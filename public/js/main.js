@@ -9,6 +9,7 @@ import cadastrosPagina, { TIPOS_CADASTRO } from './pages/cadastros.js';
 import { usuarios, auditoria } from './pages/admin.js';
 import importacao from './pages/importacao.js';
 import contratacao from './pages/contratacao.js';
+import treinamento from './pages/treinamento.js';
 
 const raiz = document.getElementById('raiz');
 const MARCA = 'CRV Industrial';
@@ -37,6 +38,7 @@ const ROTAS = {
     voltar: (c) => (c.params.length ? '#/descontos' : null),
   },
   contratacao: { titulo: 'Contratação', pagina: contratacao, perfis: ['administrador', 'financeiro'] },
+  treinamento: { titulo: 'Treinamento', pagina: treinamento },
   relatorios: { titulo: 'Relatórios', pagina: relatorios },
   cadastros: { titulo: 'Cadastros', pagina: cadastrosPagina, perfis: ADMIN, voltar: () => '#/dashboard' },
   importacao: { titulo: 'Importação de funcionários', pagina: importacao, perfis: ADMIN, voltar: () => '#/dashboard' },
@@ -61,6 +63,8 @@ const MENU = [
   { rota: 'contratacao', titulo: 'Contratação', icone: 'documento', perfis: ['administrador', 'financeiro'] },
   { grupo: 'Análise' },
   { rota: 'relatorios', titulo: 'Relatórios', icone: 'relatorio' },
+  { grupo: 'Ajuda' },
+  { rota: 'treinamento', titulo: 'Treinamento', icone: 'ajuda' },
   { grupo: 'Configurações', perfis: ADMIN },
   { rota: 'cadastros', titulo: 'Cadastros', icone: 'cadastros', perfis: ADMIN, filhos: Object.entries(TIPOS_CADASTRO).map(([k, t]) => ({ href: `#/cadastros/${k}`, titulo: t.titulo })) },
   { rota: 'importacao', titulo: 'Importação', icone: 'upload', perfis: ADMIN },

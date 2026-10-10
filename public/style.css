@@ -465,3 +465,10 @@ html[data-tema="escuro"] .login-card .logo-escuro { display: block; }
 .imp-avisos { margin: 12px 0; }
 .imp-avisos p { margin: 4px 0; }
 @media (max-width: 900px) { .imp-cartoes { grid-template-columns: minmax(0, 1fr); } }
+
+/* Treinamento */
+.treino { border: 1px solid var(--linha); border-radius: 10px; margin-bottom: 10px; background: var(--card); }
+.treino summary { cursor: pointer; padding: 12px 14px; font-weight: 700; }
+.treino[open] summary { border-bottom: 1px solid var(--linha); color: var(--marca-txt); }
+.treino-corpo { padding: 12px 16px 14px; }
+.passos { margin: 0 0 10px; padding-left: 22px; display: grid; gap: 6px; }
