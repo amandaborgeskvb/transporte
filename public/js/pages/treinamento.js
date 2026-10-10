@@ -78,7 +78,7 @@ export default async function treinamento({ usuario }) {
   const outros = TOPICOS.filter((t) => !t.perfis.includes(usuario.perfil));
   const bloco = (t, aberto) => h('details', { class: 'treino', open: aberto }, h('summary', {}, t.titulo), h('div', { class: 'treino-corpo' }, t.corpo()));
   return [
-    cabecalhoPagina({ migalhas: [['Ajuda'], ['Treinamento']], titulo: 'Treinamento', sub: `Passo a passo do sistema — perfil: ${rotulo(usuario.perfil)}` }),
+    cabecalhoPagina({ migalhas: [['Operação'], ['Treinamento']], titulo: 'Treinamento', sub: `Passo a passo do sistema — perfil: ${rotulo(usuario.perfil)}` }),
     secao('Para o seu perfil', null, ...meus.map((t, i) => bloco(t, i === 0))),
     outros.length ? secao('Outros tópicos', null, ...outros.map((t) => bloco(t, false))) : null,
   ].filter(Boolean);

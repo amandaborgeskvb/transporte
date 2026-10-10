@@ -62,7 +62,6 @@ const MENU = [
     ],
   },
   { rota: 'contratacao', titulo: 'Contratação', icone: 'documento', perfis: ['administrador', 'financeiro'] },
-  { grupo: 'Ajuda' },
   { rota: 'treinamento', titulo: 'Treinamento', icone: 'ajuda' },
   { grupo: 'Configurações', perfis: ADMIN },
   { rota: 'cadastros', titulo: 'Cadastros', icone: 'cadastros', perfis: ADMIN, filhos: Object.entries(TIPOS_CADASTRO).map(([k, t]) => ({ href: `#/cadastros/${k}`, titulo: t.titulo })) },
