@@ -8,6 +8,7 @@ const { criarLancamentos } = require('./routes/lancamentos');
 const { criarAnexos } = require('./routes/anexos');
 const { criarDescontos } = require('./routes/descontos');
 const { criarImportacao } = require('./routes/importacao');
+const { criarGratificacao } = require('./routes/gratificacao');
 const { criarPainel } = require('./routes/painel');
 
 function criarApp({ pool, secret, secure = false }) {
@@ -57,6 +58,7 @@ function criarApp({ pool, secret, secure = false }) {
   api.use(criarAnexos({ pool }));
   api.use(criarDescontos({ pool }));
   api.use(criarImportacao({ pool }));
+  api.use(criarGratificacao({ pool }));
   api.use(criarPainel({ pool }));
   app.use('/api', api);
   app.use('/api', (_req, res) => res.status(404).json({ erro: 'Rota não encontrada.' }));

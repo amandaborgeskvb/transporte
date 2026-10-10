@@ -65,6 +65,15 @@ const TOPICOS = [
     ],
   },
   {
+    titulo: 'Gratificação rescisória', perfis: ['administrador', 'financeiro'], corpo: () => [
+      lista('Em **Gratificação rescisória → Valores mensais**, envie o arquivo (Excel ou CSV) com **Matrícula, BPP, Zelo_Equip, Produtividade e Mês** (ex.: ABRIL - 26). O sistema reconhece as colunas e mostra a prévia antes de gravar.',
+        'Lance as faltas, advertências, suspensões e demais notificações em **Ocorrências** (o tipo vem dos Parâmetros).',
+        'Em **Apuração → Nova apuração**, escolha o funcionário, o tipo de rescisão, a data e os dias trabalhados. O sistema calcula a média dos últimos 3 meses informados, aplica o critério da rescisão e o proporcional (base de 25 dias) e desconta as ocorrências do período conforme o grupo da função.',
+        'Confira o detalhe, marque como **paga** e use o **Relatório de pagamento** (com CSV) para a folha.'),
+      dica('Os percentuais de desconto (auxiliares e demais funções × operadores e motoristas), os critérios por tipo de rescisão e as regras gerais ficam em **Parâmetros** e podem ser ajustados.'),
+    ],
+  },
+  {
     titulo: 'Relatórios, dashboard e pendências', perfis: ['administrador', 'financeiro', 'aprovador', 'solicitante'], corpo: () => [
       lista('O **Dashboard** mostra viagens por situação, adiantamentos, despesas, reembolsos e o que está pendente para você.',
         'Em **Viagem → Relatório de viagem**, filtre por período, funcionário, setor, motivo, destino, status e categoria e exporte em CSV.',

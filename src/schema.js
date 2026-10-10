@@ -252,6 +252,83 @@ UPDATE despesas SET situacao = 'aprovada', analisada_em = now()
   WHERE situacao = 'pendente' AND viagem_id IN (SELECT id FROM viagens WHERE prestacao_situacao = 'enviada');
 UPDATE viagens SET prestacao_situacao = 'aprovada', prestacao_analisada_em = COALESCE(prestacao_analisada_em, now()) WHERE prestacao_situacao = 'enviada';
 
+-- ===== Gratificação rescisória =====
+-- Parâmetros: base de dias, janela de média, cortes e quais componentes sofrem desconto (linha única)
+CREATE TABLE IF NOT EXISTS grat_config (
+  id                INTEGER PRIMARY KEY CHECK (id = 1),
+  base_dias         INTEGER NOT NULL DEFAULT 25 CHECK (base_dias BETWEEN 1 AND 31),
+  meses_media       INTEGER NOT NULL DEFAULT 3 CHECK (meses_media BETWEEN 1 AND 12),
+  dia_corte         INTEGER NOT NULL DEFAULT 16 CHECK (dia_corte BETWEEN 1 AND 28),
+  descontar_bpp     BOOLEAN NOT NULL DEFAULT true,
+  descontar_zelo    BOOLEAN NOT NULL DEFAULT true,
+  descontar_prod    BOOLEAN NOT NULL DEFAULT true,
+  palavras_operador TEXT NOT NULL DEFAULT 'MOTORISTA, OPERADOR'
+);
+
+-- Critério de pagamento por tipo de rescisão
+CREATE TABLE IF NOT EXISTS grat_criterios (
+  id           SERIAL PRIMARY KEY,
+  tipo_rescisao TEXT NOT NULL UNIQUE,
+  pagar_bpp    BOOLEAN NOT NULL DEFAULT true,
+  pagar_zelo   BOOLEAN NOT NULL DEFAULT true,
+  pagar_prod   BOOLEAN NOT NULL DEFAULT true,
+  ativo        BOOLEAN NOT NULL DEFAULT true
+);
+
+-- Descontos por tipo de ocorrência, em dois grupos de funções: auxiliares e demais / operadores e motoristas
+CREATE TABLE IF NOT EXISTS grat_penalidades (
+  id           SERIAL PRIMARY KEY,
+  grupo        TEXT NOT NULL CHECK (grupo IN ('auxiliar','operador')),
+  abrev        TEXT NOT NULL,
+  descricao    TEXT NOT NULL,
+  percentual   NUMERIC(7,4) NOT NULL DEFAULT 0 CHECK (percentual BETWEEN 0 AND 1),
+  desconta_dia BOOLEAN NOT NULL DEFAULT false,
+  UNIQUE (grupo, abrev)
+);
+
+-- Valores mensais pagos (arquivo: matrícula, BPP, Zelo/Equip., Produtividade, mês)
+CREATE TABLE IF NOT EXISTS grat_valores (
+  id             SERIAL PRIMARY KEY,
+  matricula      TEXT NOT NULL,
+  mes            DATE NOT NULL,
+  bpp            NUMERIC(12,2) NOT NULL DEFAULT 0,
+  zelo           NUMERIC(12,2) NOT NULL DEFAULT 0,
+  prod           NUMERIC(12,2) NOT NULL DEFAULT 0,
+  origem         TEXT NOT NULL DEFAULT '',
+  criado_em      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (matricula, mes)
+);
+
+-- Ocorrências (notificações): penalidades, faltas, atestados…
+CREATE TABLE IF NOT EXISTS grat_ocorrencias (
+  id             SERIAL PRIMARY KEY,
+  data           DATE NOT NULL,
+  matricula      TEXT NOT NULL,
+  abrev          TEXT NOT NULL,
+  gestor         TEXT NOT NULL DEFAULT '',
+  observacao     TEXT NOT NULL DEFAULT '',
+  criado_por     INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS grat_ocorrencias_mat_idx ON grat_ocorrencias (matricula, data);
+
+-- Apuração: um registro por rescisão
+CREATE TABLE IF NOT EXISTS grat_rescisoes (
+  id               SERIAL PRIMARY KEY,
+  funcionario_id   INTEGER NOT NULL REFERENCES funcionarios(id),
+  criterio_id      INTEGER NOT NULL REFERENCES grat_criterios(id),
+  dt_rescisao      DATE NOT NULL,
+  dias_trabalhados INTEGER NOT NULL CHECK (dias_trabalhados BETWEEN 0 AND 62),
+  grupo            TEXT CHECK (grupo IS NULL OR grupo IN ('auxiliar','operador')),
+  observacao       TEXT NOT NULL DEFAULT '',
+  situacao         TEXT NOT NULL DEFAULT 'apurada' CHECK (situacao IN ('apurada','paga')),
+  paga_em          DATE,
+  criado_por       INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS grat_rescisoes_func_idx ON grat_rescisoes (funcionario_id, dt_rescisao);
+
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,
   tipo         TEXT NOT NULL,
@@ -301,6 +378,39 @@ INSERT INTO documentos_re (codigo, titulo, versao, data_versao, periodicidade, e
 VALUES ('RE. 0150.09', 'AUTORIZAÇÃO DE DESCONTO', '02', '2023-02-03', 'Sempre que houver desconto',
         'CRV INDUSTRIAL LTDA', 'Capinópolis-MG', 'COORDENADORA DE RH')
 ON CONFLICT (codigo) DO NOTHING;
+-- Gratificação rescisória: parâmetros iniciais (editáveis em Gratificação rescisória → Parâmetros)
+INSERT INTO grat_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO grat_criterios (tipo_rescisao, pagar_bpp, pagar_zelo, pagar_prod) VALUES
+  ('PEDIDO DE DEMISSÃO',             true,  true,  true),
+  ('DEMISSÃO S/ J. CAUSA',           false, false, true),
+  ('TERMINO CONTRATO - FIM DE SAFRA', true,  true,  true),
+  ('FALECIMENTO',                    true,  true,  true),
+  ('DEMISSÃO C/ J. CAUSA',           false, false, false),
+  ('COMUM ACORDO',                   true,  true,  true),
+  ('TERMINO CONTRATO',               true,  true,  true)
+ON CONFLICT (tipo_rescisao) DO NOTHING;
+
+INSERT INTO grat_penalidades (grupo, abrev, descricao, percentual, desconta_dia) VALUES
+  ('auxiliar', 'NC',  'NÃO CONFORMIDADE',        0.04, false),
+  ('auxiliar', 'ADV', 'ADVERTÊNCIA',             0.50, false),
+  ('auxiliar', 'SS',  'SUSPENSÃO',               1.00, true),
+  ('auxiliar', 'ST',  'SEGURANÇA TRABALHO',      0.50, false),
+  ('auxiliar', 'FJ',  'FALTA JUSTIFICADA',       0.04, true),
+  ('auxiliar', 'FF',  'FALTA INJUSTIFICADA',     0.50, true),
+  ('auxiliar', 'L',   'ATESTADOS E LICENÇAS',    0.04, true),
+  ('auxiliar', 'FÉ',  'FÉRIAS',                  0,    false),
+  ('auxiliar', 'ACT', 'ACIDENTE NO TRABALHO',    0,    false),
+  ('operador', 'NC',  'NÃO CONFORMIDADE',        0.04, false),
+  ('operador', 'ADV', 'ADVERTÊNCIA',             0.05, false),
+  ('operador', 'SS',  'SUSPENSÃO',               0.10, true),
+  ('operador', 'FJ',  'FALTA JUSTIFICADA',       0.04, true),
+  ('operador', 'FF',  'FALTA INJUSTIFICADA',     0.05, true),
+  ('operador', 'L',   'ATESTADOS E LICENÇAS',    0.04, true),
+  ('operador', 'DISP_MEC', 'DISPONIBILIDADE MECÂNICA (< 80%)', 0.10, false),
+  ('operador', 'FÉ',  'FÉRIAS',                  0,    false),
+  ('operador', 'ACT', 'ACIDENTE NO TRABALHO',    0,    false)
+ON CONFLICT (grupo, abrev) DO NOTHING;
 `;
 
 module.exports = { SCHEMA, SEEDS, PERFIS };

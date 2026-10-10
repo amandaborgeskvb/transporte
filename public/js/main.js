@@ -10,6 +10,7 @@ import { usuarios, auditoria } from './pages/admin.js';
 import importacao from './pages/importacao.js';
 import contratacao from './pages/contratacao.js';
 import treinamento from './pages/treinamento.js';
+import gratificacao from './pages/gratificacao.js';
 
 const raiz = document.getElementById('raiz');
 const MARCA = 'CRV Industrial';
@@ -38,6 +39,7 @@ const ROTAS = {
     voltar: (c) => (c.params.length ? '#/descontos' : null),
   },
   contratacao: { titulo: 'Contratação', pagina: contratacao, perfis: ['administrador', 'financeiro'] },
+  gratificacao: { titulo: 'Gratificação rescisória', pagina: gratificacao, perfis: ['administrador', 'financeiro'], voltar: (c) => (c.params.length > 1 ? `#/gratificacao/${c.params[0]}` : null) },
   treinamento: { titulo: 'Treinamento', pagina: treinamento },
   relatorios: { titulo: 'Relatório de viagem', pagina: relatorios },
   cadastros: { titulo: 'Cadastros', pagina: cadastrosPagina, perfis: ADMIN, voltar: () => '#/dashboard' },
@@ -59,6 +61,16 @@ const MENU = [
       { rota: 'reembolsos', href: '#/reembolsos', titulo: 'Reembolsos' },
       { rota: 'descontos', href: '#/descontos', titulo: 'Autorização de desconto', perfis: ['administrador', 'financeiro', 'solicitante'] },
       { rota: 'relatorios', href: '#/relatorios', titulo: 'Relatório de viagem' },
+    ],
+  },
+  {
+    rota: 'gratificacao', titulo: 'Gratificação rescisória', icone: 'carteira', perfis: ['administrador', 'financeiro'],
+    filhos: [
+      { href: '#/gratificacao/apuracao', titulo: 'Apuração', prefixo: true },
+      { href: '#/gratificacao/valores', titulo: 'Valores mensais', prefixo: true },
+      { href: '#/gratificacao/ocorrencias', titulo: 'Ocorrências', prefixo: true },
+      { href: '#/gratificacao/relatorio', titulo: 'Relatório de pagamento', prefixo: true },
+      { href: '#/gratificacao/parametros', titulo: 'Parâmetros', prefixo: true },
     ],
   },
   { rota: 'contratacao', titulo: 'Contratação', icone: 'documento', perfis: ['administrador', 'financeiro'] },
@@ -88,9 +100,11 @@ export function ir(caminho, query = {}) {
 function marcarMenu(rota) {
   let atual = location.hash.split('?')[0];
   if (atual === '#/cadastros') atual = '#/cadastros/funcionarios'; // tela padrão dos cadastros
+  if (atual === '#/gratificacao') atual = '#/gratificacao/apuracao';
   app.querySelectorAll('.nav a').forEach((a) => {
     // sub-itens com rota própria acendem em qualquer tela da rota (lista e detalhe); os demais, só no endereço exato
-    a.classList.toggle('ativo', a.dataset.filho ? (a.dataset.rotaFilho ? a.dataset.rotaFilho === rota : a.getAttribute('href') === atual) : a.dataset.rota === rota);
+    const pref = a.dataset.prefixo;
+    a.classList.toggle('ativo', a.dataset.filho ? (a.dataset.rotaFilho ? a.dataset.rotaFilho === rota : pref ? atual === pref || atual.startsWith(`${pref}/`) : a.getAttribute('href') === atual) : a.dataset.rota === rota);
   });
   app.querySelectorAll('.nav .grupo-btn').forEach((b) => {
     const aberto = b.dataset.rotas.split(',').includes(rota) || b.dataset.manual === '1';
@@ -233,7 +247,7 @@ function montarMenu() {
     if (m.filhos) {
       const filhos = m.filhos.filter((f) => permitido(f.perfis));
       if (!filhos.length) continue;
-      const sub = h('div', { class: 'sub', hidden: true }, filhos.map((f) => h('a', { href: f.href, 'data-filho': '1', 'data-rota': m.rota, 'data-rota-filho': f.rota }, h('span', { class: 'rot' }, f.titulo))));
+      const sub = h('div', { class: 'sub', hidden: true }, filhos.map((f) => h('a', { href: f.href, 'data-filho': '1', 'data-rota': m.rota, 'data-rota-filho': f.rota, 'data-prefixo': f.prefixo ? f.href : null }, h('span', { class: 'rot' }, f.titulo))));
       const btn = h('button', { type: 'button', class: 'grupo-btn', 'data-rota': m.rota, 'data-rotas': filhos.map((f) => f.rota || m.rota).join(','), 'aria-expanded': 'false', title: m.titulo },
         icone(m.icone), h('span', { class: 'rot' }, m.titulo), icone('baixo', 'seta'));
       btn.addEventListener('click', () => {

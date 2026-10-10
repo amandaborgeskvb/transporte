@@ -122,6 +122,30 @@ salvamento. Nas listas, nos relatórios (inclusive CSV) e nas buscas (nº, desti
 funcionário vêm do cadastro no momento da consulta, então uma atualização via importador aparece em todo o sistema. O
 perfil *solicitante* enxerga apenas o próprio registro de funcionário.
 
+## Gratificação rescisória
+
+Menu **Gratificação rescisória** (administrador e financeiro), com os subgrupos que correspondem às abas da planilha de controle:
+
+| Subgrupo | O que faz |
+|---|---|
+| **Apuração** | Uma apuração por rescisão (funcionário, tipo de rescisão, data e dias trabalhados). Mostra a composição (média, proporcional, desconto, a receber), as regras aplicadas e as ocorrências do período. Pode ser marcada como **paga** (trava a apuração; dá para reabrir). |
+| **Valores mensais** | BPP, Zelo/Equipamento e Produtividade pagos por matrícula e mês. Atualizado por **arquivo** (Excel ou CSV com *Matrícula, BPP, Zelo_Equip, Produtividade, Mês*), com prévia; reimportar não duplica. Também dá para digitar um valor. |
+| **Ocorrências** | Notificações (NC, ADV, SS, ST, FJ, FF, L, DISP_MEC…), faltas e atestados por funcionário e data. |
+| **Relatório de pagamento** | Por departamento: médias, valores a receber, descontos e total; exportação em CSV e impressão. |
+| **Parâmetros** | Regras gerais, critérios por tipo de rescisão e a tabela de descontos por grupo de função. |
+
+Como o valor é calculado (parametrizável em **Parâmetros**):
+
+1. **Média dos últimos 3 meses** informados (até o mês da rescisão) de cada componente: BPP, Zelo/Equipamento e Produtividade.
+2. **Critério do tipo de rescisão** (pedido de demissão, sem/com justa causa, fim de safra, falecimento, comum acordo, término de contrato): define se paga BPP, Zelo/Equipamento e Produtividade.
+   Padrão: sem justa causa não paga BPP nem Zelo (paga produtividade); com justa causa não paga nada.
+3. **Proporcional**: média ÷ 25 × dias a pagar (limitado a 100%). *Dias a pagar* = dias trabalhados − dias das ocorrências marcadas como "desconta dia" (faltas, suspensão, licença) no período.
+4. **Desconto por ocorrência**, somado e limitado a 100%, aplicado sobre os componentes escolhidos (padrão: todos). O ciclo vai do dia 16 anterior à rescisão até a data da rescisão.
+   O percentual depende do grupo da função: **auxiliares e demais funções** (NC 4%, ADV 50%, SS 100%, ST 50%, FJ 4%, FF 50%, L 4%) ou **operadores e motoristas**
+   (NC 4%, ADV 5%, SS 10%, FJ 4%, FF 5%, L 4%, DISP_MEC 10%). Quem tem "MOTORISTA" ou "OPERADOR" na função entra no segundo grupo (editável); também dá para escolher o grupo em cada apuração.
+
+A planilha original não é guardada no repositório (contém dados pessoais): só as regras foram transpostas para o sistema.
+
 ## Perfis de acesso
 
 As permissões são validadas **no servidor** (a tela apenas esconde o que o perfil não pode fazer).
@@ -242,6 +266,7 @@ src/
   financeiro.js            cálculos financeiros por viagem
   descontos.js, extenso.js regras do formulário RE. 0150.09 e valor por extenso
   layout-erp.js, importacao.js leitura do arquivo do ERP (largura fixa) e motor de importação de funcionários
+  planilha.js, gratificacao.js leitura de .xlsx/.csv e regras de cálculo da gratificação rescisória
   routes/                  cadastros, viagens, lancamentos, anexos, descontos, importacao, painel
 public/
   index.html, style.css, favicon.svg, img/ (logos e logo do formulário RE), fonts/

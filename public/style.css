@@ -472,3 +472,9 @@ html[data-tema="escuro"] .login-card .logo-escuro { display: block; }
 .treino[open] summary { border-bottom: 1px solid var(--linha); color: var(--marca-txt); }
 .treino-corpo { padding: 12px 16px 14px; }
 .passos { margin: 0 0 10px; padding-left: 22px; display: grid; gap: 6px; }
+
+/* Gratificação rescisória */
+td .acoes { display: flex; gap: 6px; flex-wrap: nowrap; justify-content: flex-end; }
+.grade-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+@media (max-width: 1100px) { .grade-2 { grid-template-columns: minmax(0, 1fr); } }
+tfoot th { background: var(--card-2); }
