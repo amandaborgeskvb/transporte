@@ -1,92 +1,65 @@
-// Importação de dados (funcionários) a partir de planilhas .xlsx/.csv, em etapas: arquivo → mapeamento → prévia → confirmação.
-// Só o administrador importa. Nada é gravado antes da confirmação; colunas de dados pessoais sensíveis são descartadas na leitura.
+// Importação de funcionários a partir de até 3 arquivos do ERP (Ativos, Afastados e Demitidos), em etapas:
+// arquivos → prévia → confirmação. Só o administrador importa. Nada é gravado antes da confirmação.
 const crypto = require('crypto');
 const express = require('express');
 const { tx } = require('../db');
-const { wrap, texto, inteiro, idParam, auditar, erro400, erro404, erro409, enviarCsv } = require('../util');
+const { wrap, texto, idParam, auditar, erro400, erro404, erro409, enviarCsv } = require('../util');
 const { exigirPerfil, ADM } = require('../workflow');
-const { abrirPlanilha, MAX_BYTES } = require('../planilha');
-const {
-  ALVOS, CHAVES, ROTULO_CAMPO, MOTIVOS_IGNORADO, DEFAULT_OPCOES, sugerirMapeamento, estatisticasColunas, descartarSensiveis, ehSensivel, planejar,
-} = require('../importacao');
+const { lerArquivo } = require('../layout-erp');
+const { SITUACOES, POR_CHAVE, MOTIVOS_IGNORADO, ROTULO_CAMPO, planejar } = require('../importacao');
 
+const MAX_BYTES = 15 * 1024 * 1024;
 const TTL_MS = 30 * 60 * 1000;
 const MAX_RELATORIO = 20000;
 const AMOSTRA = 15;
 
-// Arquivos enviados aguardando confirmação (em memória, um por usuário, expiram em 30 minutos)
+// Arquivos enviados aguardando confirmação (em memória, um conjunto por usuário, expira em 30 minutos)
 const pendentes = new Map();
-function guardar(usuarioId, dados) {
+function conjunto(usuarioId, criar = false) {
   const agora = Date.now();
   for (const [k, v] of pendentes) if (v.expira < agora) pendentes.delete(k);
-  for (const [k, v] of pendentes) if (v.usuarioId === usuarioId) pendentes.delete(k);
-  const token = crypto.randomBytes(16).toString('hex');
-  pendentes.set(token, { ...dados, usuarioId, expira: agora + TTL_MS });
-  return token;
-}
-function obter(token, usuario) {
-  const p = pendentes.get(String(token || ''));
-  if (!p || p.usuarioId !== usuario.id || p.expira < Date.now()) throw erro404('O arquivo enviado expirou. Envie a planilha novamente.');
-  p.expira = Date.now() + TTL_MS;
-  return p;
+  let c = pendentes.get(usuarioId);
+  if (!c && criar) { c = { arquivos: {} }; pendentes.set(usuarioId, c); }
+  if (c) c.expira = agora + TTL_MS;
+  return c;
 }
 
-function carregarAba(p, indice) {
-  const i = Number.isInteger(indice) && indice >= 0 && indice < p.planilha.abas.length ? indice : 0;
-  const t = p.planilha.ler(i);
-  p.aba = i;
-  p.cabecalho = t.cabecalho;
-  p.linhaCabecalho = t.linhaCabecalho;
-  p.dados = descartarSensiveis(t.cabecalho, t.dados);
-}
+const situacaoParam = (v) => {
+  const s = POR_CHAVE[String(v || '')];
+  if (!s) throw erro400('Escolha a situação do arquivo: Ativos, Afastados ou Demitidos.');
+  return s;
+};
 
-function descreverArquivo(token, p) {
-  return {
-    token, arquivo: p.arquivo, formato: p.planilha.formato, abas: p.planilha.abas, aba: p.aba,
-    linha_cabecalho: p.linhaCabecalho, total_linhas: p.dados.length,
-    colunas: estatisticasColunas(p.cabecalho, p.dados),
-    mapeamento_sugerido: sugerirMapeamento(p.cabecalho, p.dados),
-    alvos: ALVOS,
-    opcoes_padrao: DEFAULT_OPCOES,
-  };
-}
-
-function lerMapeamento(corpo, p) {
-  const m = {};
-  for (const chave of CHAVES) {
-    const v = corpo?.[chave];
-    if (v === null || v === undefined || v === '') { m[chave] = null; continue; }
-    const i = Number(v);
-    if (!Number.isInteger(i) || i < 0 || i >= p.cabecalho.length) throw erro400(`Coluna inválida para "${chave}".`);
-    if (ehSensivel(p.cabecalho[i])) throw erro400(`A coluna "${p.cabecalho[i]}" contém dados pessoais sensíveis e não pode ser importada.`);
-    m[chave] = i;
+// O arquivo de demitidos traz a letra "D" no marcador de cada linha; apontar para uma lista que não combina com o conteúdo
+// é o erro mais provável (e o mais caro), então vira aviso que precisa ser confirmado.
+function avisosDoArquivo(sit, lido) {
+  const total = lido.registros.length || 1;
+  const d = lido.marcadores.D || 0;
+  const avisos = [];
+  if (sit.chave === 'demitido' && d / total < 0.5) avisos.push('Este arquivo não parece ser de demitidos (o marcador "D" não aparece na maioria das linhas).');
+  if (sit.chave !== 'demitido' && d / total >= 0.5) avisos.push(`Este arquivo parece ser de demitidos (marcador "D" em ${d} de ${lido.registros.length} linhas), mas foi enviado como ${sit.plural}.`);
+  if (sit.chave === 'demitido') {
+    const semData = lido.registros.filter((r) => !r.data_situacao).length;
+    if (semData) avisos.push(`${semData} linha(s) sem data de saída.`);
   }
-  const usadas = Object.values(m).filter((v) => v !== null);
-  if (new Set(usadas).size !== usadas.length) throw erro400('A mesma coluna foi escolhida para mais de um campo.');
-  if (m.matricula === null) throw erro400('Escolha a coluna da matrícula.');
-  if (m.nome === null) throw erro400('Escolha a coluna do nome.');
-  return m;
+  return avisos;
 }
 
-function lerOpcoes(b = {}) {
-  const bool = (k) => (b[k] === undefined ? DEFAULT_OPCOES[k] : b[k] === true || b[k] === 'true');
-  const empresas = Array.isArray(b.empresas) ? b.empresas.map((e) => String(e).slice(0, 20)) : null;
-  return {
-    empresas: empresas && empresas.length ? empresas : null,
-    criar: bool('criar'), atualizar: bool('atualizar'), importar_inativos: bool('importar_inativos'),
-    inativar_do_arquivo: bool('inativar_do_arquivo'), inativar_ausentes: bool('inativar_ausentes'), sobrescrever_vazios: bool('sobrescrever_vazios'),
-  };
+function descreverConjunto(c) {
+  const out = {};
+  for (const s of SITUACOES) {
+    const a = c?.arquivos[s.chave];
+    out[s.chave] = a ? { arquivo: a.arquivo, linhas: a.linhas, validas: a.registros.length, invalidas: a.invalidas.length, avisos: a.avisos, amostra_invalidas: a.invalidas.slice(0, 5) } : null;
+  }
+  return out;
 }
 
-const COLUNAS_FUNC = 'id, matricula, nome, funcao, setor, centro_custo, ativo, origem_codigo, empresa_codigo, empregador';
-const detalhe = (mud = {}) => Object.entries(mud).map(([c, m]) => `${ROTULO_CAMPO[c] || c}: ${m.de === '' || m.de === null ? '—' : m.de} → ${m.para === '' ? '—' : m.para}`).join('; ');
-const chaveDoPlano = (plano, mapeamento) => crypto.createHash('sha1').update(JSON.stringify([plano.resumo, plano.opcoes, mapeamento])).digest('hex').slice(0, 16);
+const COLUNAS_FUNC = 'id, matricula, nome, funcao, setor, centro_custo, tipo_contrato, local_trabalho, situacao, data_admissao, data_situacao';
+const detalhe = (mud = {}) => Object.entries(mud).map(([c, m]) => `${ROTULO_CAMPO[c] || c}: ${m.de} → ${m.para}`).join('; ');
+const chaveDoPlano = (plano) => crypto.createHash('sha1').update(JSON.stringify(plano.itens.map((i) => [i.acao, i.id || i.matricula_nova || i.linha, i.situacao, i.final || i.motivo]))).digest('hex').slice(0, 16);
 
 function amostras(plano) {
-  const sem = (it) => ({ linha: it.linha, matricula: it.matricula, nome: it.nome, detalhe: it.detalhe || detalhe(it.mudancas), motivo: it.motivo ? MOTIVOS_IGNORADO[it.motivo] || it.motivo : undefined });
-  const por = (acao) => plano.itens.filter((i) => i.acao === acao && !i.motivo).slice(0, AMOSTRA).map((i) => ({
-    ...sem(i), detalhe: acao === 'criar' ? [i.dados.funcao && `função: ${i.dados.funcao}`, i.dados.setor && `setor: ${i.dados.setor}`, i.dados.empresa_codigo && `empresa: ${i.dados.empresa_codigo}`].filter(Boolean).join('; ') : sem(i).detalhe,
-  }));
+  const sem = (it) => ({ situacao: it.situacao, linha: it.linha, matricula: it.matricula, nome: it.nome, detalhe: it.detalhe || detalhe(it.mudancas) });
   const ignoradas = {};
   for (const it of plano.itens) {
     if (it.acao !== 'ignorar') continue;
@@ -94,106 +67,112 @@ function amostras(plano) {
     if (l.length < 5) l.push(sem(it));
   }
   return {
-    criar: por('criar'), atualizar: por('atualizar'), inativar: plano.itens.filter((i) => i.acao === 'inativar').slice(0, AMOSTRA).map(sem),
-    conflitos: plano.itens.filter((i) => i.acao === 'ignorar' && i.motivo.startsWith('conflito')).slice(0, AMOSTRA).map(sem), ignoradas,
+    criar: plano.itens.filter((i) => i.acao === 'criar').slice(0, AMOSTRA).map((i) => ({ ...sem(i), detalhe: [i.final.funcao && `função: ${i.final.funcao}`, i.final.setor && `setor: ${i.final.setor}`].filter(Boolean).join('; ') })),
+    atualizar: plano.itens.filter((i) => i.acao === 'atualizar').slice(0, AMOSTRA).map(sem),
+    situacao: plano.itens.filter((i) => i.muda_situacao).slice(0, AMOSTRA).map(sem),
+    ignoradas,
   };
 }
 
-async function planoAtual(db, p, mapeamento, opcoes) {
+async function planoAtual(db, c) {
   const { rows } = await db.query(`SELECT ${COLUNAS_FUNC} FROM funcionarios`);
-  return planejar({ dados: p.dados, mapeamento, opcoes, existentes: rows, primeiraLinha: p.linhaCabecalho + 1 });
+  const arquivos = SITUACOES.filter((s) => c.arquivos[s.chave]).map((s) => ({ situacao: s.chave, ...c.arquivos[s.chave] }));
+  return planejar({ arquivos, existentes: rows });
 }
 
 function criarImportacao({ pool }) {
   const router = express.Router();
   router.use('/importacao', exigirPerfil(ADM));
 
-  // ---- Arquivos auxiliares ----
-  router.get('/importacao/funcionarios/modelo.csv', (_req, res) => enviarCsv(res, 'modelo_funcionarios.csv', [
-    ['Matrícula', 'Nome', 'Função', 'Setor', 'Centro de custo', 'Ativo'],
-    ['12345', 'NOME DO FUNCIONÁRIO (exemplo, apague esta linha)', 'MOTORISTA', 'TRANSPORTE', 'CC-01', 'Sim'],
-  ]));
-
   router.get('/importacao/funcionarios/exportar.csv', wrap(async (_req, res) => {
     const { rows } = await pool.query('SELECT * FROM funcionarios ORDER BY nome');
+    const data = (d) => (d ? new Date(d).toISOString().slice(0, 10).split('-').reverse().join('/') : '');
     enviarCsv(res, 'funcionarios.csv', [
-      ['Matrícula', 'Nome', 'Função', 'Setor', 'Centro de custo', 'Ativo', 'Código ERP', 'Empresa', 'Empregador'],
-      ...rows.map((f) => [f.matricula, f.nome, f.funcao, f.setor, f.centro_custo, f.ativo ? 'Sim' : 'Não', f.origem_codigo || '', f.empresa_codigo, f.empregador]),
+      ['Matrícula', 'Nome', 'Situação', 'Função', 'Setor', 'Centro de custo', 'Contrato', 'Local de trabalho', 'Admissão', 'Data da situação'],
+      ...rows.map((f) => [f.matricula, f.nome, f.situacao, f.funcao, f.setor, f.centro_custo, f.tipo_contrato, f.local_trabalho, data(f.data_admissao), data(f.data_situacao)]),
     ]);
   }));
 
-  // ---- 1. Arquivo ----
+  // ---- 1. Arquivos (um por situação, todos opcionais) ----
   router.post('/importacao/funcionarios/arquivo', express.raw({ type: 'application/octet-stream', limit: MAX_BYTES }), wrap(async (req, res) => {
-    const planilha = abrirPlanilha(req.body);
-    const p = { arquivo: texto(req.query.nome, 150) || 'planilha', planilha, buffer: req.body };
-    carregarAba(p, 0);
-    if (!p.dados.length) throw erro400('Não encontrei linhas de dados abaixo do cabeçalho.');
-    const token = guardar(req.usuario.id, p);
-    res.status(201).json(descreverArquivo(token, p));
-  }));
-
-  router.post('/importacao/funcionarios/aba', wrap(async (req, res) => {
-    const p = obter(req.body.token, req.usuario);
-    carregarAba(p, Number(req.body.aba));
-    if (!p.dados.length) throw erro400('Esta aba não tem linhas de dados.');
-    res.json(descreverArquivo(req.body.token, p));
+    const sit = situacaoParam(req.query.situacao);
+    if (!Buffer.isBuffer(req.body) || !req.body.length) throw erro400('O arquivo está vazio.');
+    const lido = lerArquivo(req.body);
+    if (!lido.registros.length) throw erro400('Não encontrei funcionários neste arquivo. Confira se é o arquivo de texto exportado do ERP.');
+    if (lido.invalidas.length > lido.registros.length) throw erro400('Este arquivo não segue o layout esperado (a maior parte das linhas não pôde ser lida).');
+    const c = conjunto(req.usuario.id, true);
+    c.arquivos[sit.chave] = { arquivo: texto(req.query.nome, 150) || 'arquivo.txt', registros: lido.registros, invalidas: lido.invalidas, linhas: lido.linhas, avisos: avisosDoArquivo(sit, lido) };
+    res.status(201).json({ arquivos: descreverConjunto(c) });
   }));
 
   router.delete('/importacao/funcionarios/arquivo', wrap(async (req, res) => {
-    pendentes.delete(String(req.query.token || ''));
-    res.status(204).end();
+    const sit = situacaoParam(req.query.situacao);
+    const c = conjunto(req.usuario.id);
+    if (c) delete c.arquivos[sit.chave];
+    res.json({ arquivos: descreverConjunto(c) });
   }));
 
-  // ---- 2/3. Prévia (não grava nada) ----
+  // ---- 2. Prévia (não grava nada) ----
   router.post('/importacao/funcionarios/previa', wrap(async (req, res) => {
-    const p = obter(req.body.token, req.usuario);
-    const mapeamento = lerMapeamento(req.body.mapeamento, p);
-    const opcoes = lerOpcoes(req.body.opcoes);
-    const plano = await planoAtual(pool, p, mapeamento, opcoes);
-    res.json({ resumo: plano.resumo, empresas: plano.empresas, amostras: amostras(plano), chave: chaveDoPlano(plano, mapeamento), motivos: MOTIVOS_IGNORADO });
+    const c = conjunto(req.usuario.id);
+    if (!c || !Object.keys(c.arquivos).length) throw erro404('Nenhum arquivo enviado (ou o envio expirou). Envie os arquivos novamente.');
+    const plano = await planoAtual(pool, c);
+    res.json({ resumo: plano.resumo, amostras: amostras(plano), chave: chaveDoPlano(plano), motivos: MOTIVOS_IGNORADO, avisos: Object.values(descreverConjunto(c)).flatMap((a) => a?.avisos || []) });
   }));
 
-  // ---- 4. Aplicar ----
+  // ---- 3. Aplicar ----
   router.post('/importacao/funcionarios/aplicar', wrap(async (req, res) => {
-    const p = obter(req.body.token, req.usuario);
-    const mapeamento = lerMapeamento(req.body.mapeamento, p);
-    const opcoes = lerOpcoes(req.body.opcoes);
+    const c = conjunto(req.usuario.id);
+    if (!c || !Object.keys(c.arquivos).length) throw erro404('Nenhum arquivo enviado (ou o envio expirou). Envie os arquivos novamente.');
+    if (Object.values(c.arquivos).some((a) => a.avisos.length) && req.body.ciente !== true) throw erro400('Há avisos nos arquivos. Leia e marque que está ciente para importar.');
 
     const resultado = await tx(pool, async (db) => {
       await db.query('LOCK TABLE funcionarios IN SHARE ROW EXCLUSIVE MODE');
-      const plano = await planoAtual(db, p, mapeamento, opcoes);
-      if (chaveDoPlano(plano, mapeamento) !== req.body.chave) throw erro409('Os dados mudaram desde a prévia. Confira a prévia novamente antes de importar.');
+      const plano = await planoAtual(db, c);
+      if (chaveDoPlano(plano) !== req.body.chave) throw erro409('Os dados mudaram desde a prévia. Confira a prévia novamente antes de importar.');
 
-      const criar = plano.itens.filter((i) => i.acao === 'criar');
-      for (let k = 0; k < criar.length; k += 200) {
-        const lote = criar.slice(k, k + 200).map((i) => i.dados);
+      const lotes = (lista) => { const r = []; for (let k = 0; k < lista.length; k += 200) r.push(lista.slice(k, k + 200)); return r; };
+      const colunas = (lote, id) => [
+        ...(id ? [lote.map((i) => i.id)] : [lote.map((i) => i.matricula_nova)]),
+        lote.map((i) => i.final.nome), lote.map((i) => i.final.situacao), lote.map((i) => i.final.ativo),
+        lote.map((i) => i.final.funcao), lote.map((i) => i.final.setor), lote.map((i) => i.final.centro_custo),
+        lote.map((i) => i.final.tipo_contrato), lote.map((i) => i.final.local_trabalho),
+        lote.map((i) => i.final.data_admissao), lote.map((i) => i.final.data_situacao),
+      ];
+      for (const lote of lotes(plano.itens.filter((i) => i.acao === 'criar'))) {
         await db.query(
-          `INSERT INTO funcionarios (nome, matricula, funcao, setor, centro_custo, ativo, origem_codigo, empresa_codigo, empregador, importado_em)
-           SELECT u.nome, u.matricula, u.funcao, u.setor, u.centro_custo, u.ativo, u.origem, u.empresa, u.empregador, now()
-           FROM unnest($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::boolean[], $7::text[], $8::text[], $9::text[])
-             AS u(nome, matricula, funcao, setor, centro_custo, ativo, origem, empresa, empregador)`,
-          [lote.map((d) => d.nome), lote.map((d) => d.matricula.exibicao), lote.map((d) => d.funcao), lote.map((d) => d.setor), lote.map((d) => d.centro_custo),
-            lote.map((d) => d.ativo ?? true), lote.map((d) => d.origem_codigo || null), lote.map((d) => d.empresa_codigo), lote.map((d) => d.empregador)]);
+          `INSERT INTO funcionarios (matricula, nome, situacao, ativo, funcao, setor, centro_custo, tipo_contrato, local_trabalho, data_admissao, data_situacao, importado_em)
+           SELECT u.matricula, u.nome, u.situacao, u.ativo, u.funcao, u.setor, u.centro_custo, u.contrato, u.local, u.admissao, u.data_sit, now()
+           FROM unnest($1::text[], $2::text[], $3::text[], $4::boolean[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[], $10::date[], $11::date[])
+             AS u(matricula, nome, situacao, ativo, funcao, setor, centro_custo, contrato, local, admissao, data_sit)`, colunas(lote, false));
       }
-      for (const it of plano.itens.filter((i) => ['atualizar', 'inativar'].includes(i.acao))) {
-        const cols = Object.keys(it.mudancas);
-        const sets = cols.map((c, n) => `${c} = $${n + 1}`);
-        const valores = cols.map((c) => (c === 'origem_codigo' ? it.mudancas[c].para || null : it.mudancas[c].para));
-        await db.query(`UPDATE funcionarios SET ${sets.join(', ')}, importado_em = now(), atualizado_em = now() WHERE id = $${cols.length + 1}`, [...valores, it.id]);
+      for (const lote of lotes(plano.itens.filter((i) => i.acao === 'atualizar'))) {
+        await db.query(
+          `UPDATE funcionarios f SET nome = u.nome, situacao = u.situacao, ativo = u.ativo, funcao = u.funcao, setor = u.setor, centro_custo = u.centro_custo,
+             tipo_contrato = u.contrato, local_trabalho = u.local, data_admissao = u.admissao, data_situacao = u.data_sit, importado_em = now(), atualizado_em = now()
+           FROM unnest($1::int[], $2::text[], $3::text[], $4::boolean[], $5::text[], $6::text[], $7::text[], $8::text[], $9::text[], $10::date[], $11::date[])
+             AS u(id, nome, situacao, ativo, funcao, setor, centro_custo, contrato, local, admissao, data_sit)
+           WHERE f.id = u.id`, colunas(lote, true));
       }
 
       const relatorio = plano.itens
-        .filter((i) => !['sem_alteracao'].includes(i.acao) && !['inativo_no_arquivo', 'sem_matricula', 'outra_empresa', 'sem_nome'].includes(i.motivo))
+        .filter((i) => i.acao !== 'sem_alteracao')
         .slice(0, MAX_RELATORIO)
-        .map((i) => ({ linha: i.linha, acao: i.acao, motivo: i.motivo ? MOTIVOS_IGNORADO[i.motivo] || i.motivo : '', matricula: i.matricula, nome: i.nome, detalhe: i.detalhe || detalhe(i.mudancas) }));
+        .map((i) => ({ situacao: i.situacao, linha: i.linha, acao: i.acao, motivo: i.motivo ? MOTIVOS_IGNORADO[i.motivo] || i.motivo : '', matricula: i.matricula, nome: i.nome, detalhe: i.detalhe || detalhe(i.mudancas) }));
+      const nomes = Object.values(c.arquivos).map((a) => a.arquivo).join(' + ');
       const { rows } = await db.query(
-        `INSERT INTO importacoes (tipo, arquivo, usuario_id, usuario_nome, mapeamento, opcoes, resumo, relatorio) VALUES ('funcionarios',$1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-        [p.arquivo, req.usuario.id, req.usuario.nome, JSON.stringify(mapeamento), JSON.stringify(opcoes), JSON.stringify(plano.resumo), JSON.stringify(relatorio)]);
-      await auditar(db, req.usuario, 'importar', 'importacao_funcionarios', rows[0].id, { arquivo: p.arquivo, ...plano.resumo, motivos: undefined });
+        `INSERT INTO importacoes (tipo, arquivo, usuario_id, usuario_nome, mapeamento, opcoes, resumo, relatorio) VALUES ('funcionarios',$1,$2,$3,'{}','{}',$4,$5) RETURNING id`,
+        [nomes.slice(0, 400), req.usuario.id, req.usuario.nome, JSON.stringify(plano.resumo), JSON.stringify(relatorio)]);
+      await auditar(db, req.usuario, 'importar', 'importacao_funcionarios', rows[0].id, { ...plano.resumo, motivos: undefined, por_situacao: undefined, arquivos: plano.resumo.por_situacao.map((r) => `${r.situacao}: ${r.arquivo}`) });
       return { id: rows[0].id, resumo: plano.resumo };
     });
-    pendentes.delete(req.body.token);
+    pendentes.delete(req.usuario.id);
     res.status(201).json(resultado);
+  }));
+
+  router.delete('/importacao/funcionarios', wrap(async (req, res) => {
+    pendentes.delete(req.usuario.id);
+    res.status(204).end();
   }));
 
   // ---- Histórico e relatório ----
@@ -208,8 +187,8 @@ function criarImportacao({ pool }) {
     if (!rows[0]) throw erro404('Importação não encontrada.');
     const nomes = { criar: 'Criado', atualizar: 'Atualizado', inativar: 'Inativado', ignorar: 'Ignorado' };
     enviarCsv(res, `importacao_${id}.csv`, [
-      ['Linha do arquivo', 'Ação', 'Motivo', 'Matrícula', 'Nome', 'Detalhe'],
-      ...rows[0].relatorio.map((r) => [r.linha || '', nomes[r.acao] || r.acao, r.motivo, r.matricula, r.nome, r.detalhe]),
+      ['Arquivo (situação)', 'Linha do arquivo', 'Ação', 'Motivo', 'Matrícula', 'Nome', 'Detalhe'],
+      ...rows[0].relatorio.map((r) => [r.situacao || '', r.linha || '', nomes[r.acao] || r.acao, r.motivo, r.matricula, r.nome, r.detalhe]),
     ]);
   }));
 

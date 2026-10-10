@@ -17,7 +17,7 @@ PostgreSQL como banco. Sem etapa de build e sem frameworks de interface.
 | **Reembolsos** | Solicitação, aprovação e pagamento (depósito em conta, transferência, outros) |
 | **Prestação de contas** | Envio pelo solicitante, aprovação ou devolução pelo financeiro; ao aprovar, a viagem é travada |
 | **Autorizações de desconto** | Formulário padrão **RE. 0150.09** (Autorização de Desconto) emitido a partir da viagem ou avulso, com prévia ao vivo, impressão em A4 e acompanhamento até o desconto em folha |
-| **Importação** | Carga e atualização do cadastro de funcionários por planilha (.xlsx/.csv), com prévia, histórico e relatório |
+| **Importação** | Carga e atualização do cadastro de funcionários por até 3 arquivos do ERP (Ativos, Afastados, Demitidos), com situação, prévia, histórico e relatório |
 | **Relatórios** | Filtros por período, funcionário, setor, motivo, destino, status, categoria e prestação; exportação em CSV |
 | **Cadastros** | Funcionários, motivos de viagem, status, categorias de despesa e formas de pagamento |
 | **Usuários e perfis** | Login individual e quatro perfis de acesso |
@@ -79,32 +79,34 @@ Diferenças em relação à planilha (melhorias): valores com separador de milha
 > **Privacidade:** a planilha original contém abas ocultas com cadastros de funcionários. Esses dados **não** foram para o
 > repositório (que é público) — só a estrutura do formulário. Mantenha arquivos `.xlsx`/`.cdr` fora do Git (já ignorados).
 
-## Importação de funcionários (planilhas do ERP/RH)
+## Importação de funcionários (Ativos, Afastados e Demitidos)
 
-Em **Configurações → Importação** (administrador) o cadastro de funcionários é carregado e atualizado a partir de uma
-planilha **.xlsx ou .csv**, em etapas, sem gravar nada antes da confirmação:
+Em **Configurações → Importação** (administrador) o cadastro é carregado e atualizado com **até 3 arquivos de texto do
+ERP**: um de **Ativos**, um de **Afastados** e um de **Demitidos**. **Os três são opcionais**: carregue só o que precisa
+atualizar. A coluna **Situação** de cada funcionário é gravada conforme o arquivo em que ele veio (Ativo, Afastado ou
+Demitido); só quem está *Ativo* aparece para novas viagens, os demais continuam no histórico e nas consultas.
 
-1. **Arquivo** — o sistema acha sozinho a linha de cabeçalho (exportações de ERP costumam ter títulos antes da tabela) e sugere
-   as colunas.
-2. **Colunas e regras** — escolha qual coluna é matrícula, nome, situação (ativo), função, setor, centro de custo, código da
-   pessoa no ERP, empresa e empregador. Escolha também as **empresas** a importar (a mesma matrícula pode existir em empresas
-   diferentes) e as regras: criar novos, atualizar existentes, inativar quem está inativo no arquivo, inativar quem sumiu do
-   arquivo e se célula vazia apaga o valor cadastrado (padrão: não apaga).
-3. **Prévia** — mostra quantos serão **criados, atualizados, inativados, sem alteração e ignorados** (por motivo), com exemplos e
-   os **conflitos** para revisão. 4. **Importar** — grava tudo numa transação e registra no **histórico** (com relatório em CSV e na auditoria).
+1. **Arquivos:** em cada cartão, escolha (ou arraste) o arquivo daquela situação. O layout é o de largura fixa do ERP
+   (324 posições por linha; leitura em `src/layout-erp.js`). Lê matrícula (sem zeros à esquerda), nome, função, tipo de
+   contrato, local de trabalho, centro de custo, setor, data de admissão e data de saída/afastamento. Sexo, códigos
+   internos e qualquer dado pessoal **não são lidos nem gravados**.
+2. **Prévia:** mostra o que será criado, atualizado ou ignorado (por arquivo), quem **muda de situação** e as linhas
+   fora do layout. Nada é gravado antes da confirmação; se o cadastro mudar entre a prévia e a confirmação, o sistema
+   pede nova prévia.
+3. **Confirmação, histórico e relatório CSV** de cada importação (também na auditoria).
 
-Regras importantes:
-- **Atualizações futuras:** basta importar a nova planilha. Cada pessoa é reconhecida pelo **código no ERP** (que acompanha a
-  pessoa mesmo se a matrícula mudar) e, na falta dele, pela **matrícula** (ignorando zeros à esquerda). Repetir a mesma planilha
-  não altera nada. Também dá para **Exportar cadastro atual** (CSV), editar no Excel e reimportar, ou usar o **Modelo (CSV)**.
-- **Nunca exclui:** quem sai é apenas **inativado**, preservando viagens, despesas e histórico. Cadastros feitos à mão não são
-  inativados por "ausência" no arquivo.
-- **Matrículas repetidas:** mesma matrícula e mesmo nome → fica o cadastro de maior código; mesma matrícula para **pessoas
-  diferentes** → conflito, não é importado e aparece na prévia/relatório; matrícula só em registros inativos não gera conflito.
-- **Dados pessoais:** colunas como CPF, RG, telefone, e-mail e crachá são **descartadas na leitura**, não podem ser mapeadas e nunca
-  são gravadas. O arquivo enviado fica só em memória por 30 minutos (por usuário) e não é guardado.
-- Campos que a planilha não traz (por exemplo **função** e **setor** na exportação "Pessoas") ficam em branco e podem ser
-  completados por outra planilha que os tenha ou à mão; a importação **não apaga** o que já estiver preenchido.
+Regras:
+
+- A pessoa é identificada pela **matrícula** (zeros à esquerda ignorados). Quem já existe é atualizado; quem não existe é criado.
+- **Nunca exclui nem desativa quem não aparece nos arquivos**: só mexe em quem veio. (A prévia informa quantos "Ativos"
+  do cadastro não vieram no arquivo de Ativos, apenas como aviso.)
+- A mesma matrícula em **mais de um arquivo**, ou com **nomes diferentes**, é ignorada e vai para o relatório; linha
+  repetida igual vale a última.
+- Valor vazio no arquivo não apaga o que já está cadastrado; o nome já cadastrado é mantido quando só muda caixa/acento.
+- Se um arquivo parece ser de outra situação (por exemplo, o de demitidos enviado como Ativos), a prévia mostra um
+  aviso e a importação só prossegue com a confirmação explícita.
+- Funcionários que já estavam inativos antes desta versão passam a constar como **Demitido**. Na edição manual do
+  cadastro, escolher a situação já define se o funcionário está ativo.
 
 ## Funcionário sempre vindo do cadastro
 
@@ -135,7 +137,7 @@ As permissões são validadas **no servidor** (a tela apenas esconde o que o per
 | Aprovar ou devolver prestação de contas | | | ✔ | ✔ |
 | Emitir, editar e cancelar autorização de desconto (RE. 0150.09) | | | ✔ | ✔ |
 | Consultar e imprimir a própria autorização de desconto | ✔ | | ✔ | ✔ |
-| Cadastros, importação de planilhas, usuários e auditoria | | | | ✔ |
+| Cadastros, importação de funcionários, usuários e auditoria | | | | ✔ |
 
 **Segregação de funções:** ninguém aprova (viagem, adiantamento, reembolso, despesa ou prestação) o que ele mesmo
 solicitou ou que é em nome do funcionário vinculado ao seu usuário. Por isso, o ideal é ter ao menos um administrador
@@ -236,7 +238,7 @@ src/
   workflow.js              regras de perfil e de fluxo (fonte única de verdade das permissões)
   financeiro.js            cálculos financeiros por viagem
   descontos.js, extenso.js regras do formulário RE. 0150.09 e valor por extenso
-  planilha.js, importacao.js leitura de .xlsx/.csv e motor de importação de funcionários
+  layout-erp.js, importacao.js leitura do arquivo do ERP (largura fixa) e motor de importação de funcionários
   routes/                  cadastros, viagens, lancamentos, anexos, descontos, importacao, painel
 public/
   index.html, style.css, favicon.svg, img/ (logos e logo do formulário RE), fonts/

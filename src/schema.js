@@ -220,6 +220,21 @@ ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS importado_em   TIMESTAMPTZ;
 ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS atualizado_em  TIMESTAMPTZ NOT NULL DEFAULT now();
 CREATE UNIQUE INDEX IF NOT EXISTS funcionarios_origem_idx ON funcionarios (origem_codigo) WHERE origem_codigo IS NOT NULL;
 
+-- Situação do funcionário (Ativo / Afastado / Demitido), vinda dos arquivos da importação ou editada à mão.
+-- "ativo" continua valendo como "pode receber novas viagens" e é sempre derivado da situação (ativo = situação Ativo).
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'funcionarios' AND column_name = 'situacao') THEN
+    ALTER TABLE funcionarios ADD COLUMN situacao TEXT NOT NULL DEFAULT 'Ativo';
+    UPDATE funcionarios SET situacao = 'Demitido' WHERE NOT ativo;
+  END IF;
+END $$;
+ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS data_admissao DATE;
+ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS data_situacao DATE;
+ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS tipo_contrato TEXT NOT NULL DEFAULT '';
+ALTER TABLE funcionarios ADD COLUMN IF NOT EXISTS local_trabalho TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS funcionarios_situacao_idx ON funcionarios (situacao);
+
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,
   tipo         TEXT NOT NULL,

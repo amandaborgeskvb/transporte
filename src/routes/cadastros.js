@@ -7,6 +7,13 @@ const { PERFIS } = require('../schema');
 const bool = (v) => v === true || v === 'true' || v === 1 || v === '1';
 
 // Cadastros simples: leitura para qualquer usuário logado, escrita só do administrador.
+// Situação do funcionário; "ativo" (pode receber viagens) é sempre derivado dela. Sem situação, vale o campo "ativo" (compatibilidade).
+const SITUACOES_FUNC = ['Ativo', 'Afastado', 'Demitido'];
+function situacaoFuncionario(b) {
+  const situacao = b.situacao === undefined ? (b.ativo === undefined || bool(b.ativo) ? 'Ativo' : 'Demitido') : opcaoDe(b.situacao, SITUACOES_FUNC, 'Situação');
+  return { situacao, ativo: situacao === 'Ativo' };
+}
+
 const CADASTROS = {
   funcionarios: {
     tabela: 'funcionarios', rotulo: 'Funcionário', ordem: 'nome',
@@ -16,7 +23,7 @@ const CADASTROS = {
       funcao: texto(b.funcao, 80),
       setor: texto(b.setor, 80),
       centro_custo: texto(b.centro_custo, 40),
-      ativo: b.ativo === undefined ? true : bool(b.ativo),
+      ...situacaoFuncionario(b),
     }),
   },
   motivos: {

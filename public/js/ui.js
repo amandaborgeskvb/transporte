@@ -183,9 +183,9 @@ export const rotuloFuncionario = (f) => `${f.matricula} · ${f.nome}`;
 export function infoFuncionario(f) {
   const itens = [
     ['Matrícula', f.matricula], ['Função', f.funcao || 'não informada'], ['Setor', f.setor || 'não informado'],
-    ['Centro de custo', f.centro_custo || null], ['Empresa', f.empresa_codigo ? `Empresa ${f.empresa_codigo}` : null],
+    ['Centro de custo', f.centro_custo || null], ['Empresa', f.empresa_codigo ? `Empresa ${f.empresa_codigo}` : null], ['Contrato', f.tipo_contrato || null],
   ].filter(([, v]) => v);
-  return h('dl', { class: 'func-info' }, h('div', { class: 'func-nome' }, h('strong', {}, f.nome), f.ativo === false ? h('span', { class: 'badge tom-mute' }, 'Inativo') : null),
+  return h('dl', { class: 'func-info' }, h('div', { class: 'func-nome' }, h('strong', {}, f.nome), f.situacao && f.situacao !== 'Ativo' ? h('span', { class: `badge ${f.situacao === 'Afastado' ? 'tom-warn' : 'tom-mute'}` }, f.situacao) : f.ativo === false ? h('span', { class: 'badge tom-mute' }, 'Inativo') : null),
     itens.map(([t, v]) => h('div', {}, h('dt', {}, t), h('dd', {}, v))));
 }
 
@@ -373,7 +373,7 @@ const EVENTOS = {
   'anexar:despesa': 'anexou comprovante à despesa', 'anexar:adiantamento': 'anexou comprovante ao adiantamento', 'anexar:reembolso': 'anexou comprovante ao reembolso',
   'remover_anexo:despesa': 'removeu comprovante da despesa', 'remover_anexo:adiantamento': 'removeu comprovante do adiantamento', 'remover_anexo:reembolso': 'removeu comprovante do reembolso',
   'trocar_senha:usuarios': 'alterou a própria senha',
-  'importar:importacao_funcionarios': 'importou funcionários de uma planilha',
+  'importar:importacao_funcionarios': 'importou funcionários de arquivos do ERP',
   'emitir:autorizacao_desconto': 'emitiu a autorização de desconto', 'editar:autorizacao_desconto': 'editou a autorização de desconto',
   'assinar:autorizacao_desconto': 'registrou a assinatura da autorização de desconto', 'concluir:autorizacao_desconto': 'concluiu o desconto em folha',
   'cancelar:autorizacao_desconto': 'cancelou a autorização de desconto', 'anexar:autorizacao_desconto': 'anexou arquivo à autorização de desconto',

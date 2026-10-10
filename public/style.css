@@ -421,7 +421,7 @@ html[data-tema="escuro"] .re-mesa { background: #0a1120; }
 .dicas-form { margin: -4px 0 10px; display: grid; gap: 2px; }
 .dicas-form .dica { margin: 0; }
 
-/* ===== Importação de planilhas ===== */
+/* ===== Importação de funcionários ===== */
 .imp-zona { border: 2px dashed var(--campo-borda); border-radius: 12px; padding: 34px 16px; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; text-align: center; background: var(--card-2); margin-bottom: 12px; }
 .imp-zona:hover, .imp-zona.sobre { border-color: var(--marca); background: var(--sel); }
 .imp-zona svg { width: 34px; height: 34px; color: var(--marca-txt); }
@@ -451,3 +451,17 @@ label.faltando select { border-color: var(--bad); }
 .login-card .logo-escuro { display: none; }
 html[data-tema="escuro"] .login-card .logo-claro { display: none; }
 html[data-tema="escuro"] .login-card .logo-escuro { display: block; }
+
+/* Importação com 3 arquivos (Ativos / Afastados / Demitidos) */
+.imp-cartoes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.imp-cartao { border: 1px solid var(--linha); border-radius: 12px; padding: 14px; background: var(--card); display: flex; flex-direction: column; gap: 6px; }
+.imp-cartao.com-arquivo { border-color: var(--marca); }
+.imp-cartao-topo { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.imp-cartao-topo h3 { margin: 0; font-size: 1.05rem; }
+.imp-cartao .imp-zona { padding: 18px 10px; margin: 4px 0 0; }
+.imp-arq { display: flex; align-items: center; gap: 6px; margin: 0; word-break: break-all; }
+.imp-arq svg { width: 16px; height: 16px; color: var(--ok); flex: none; }
+.imp-aviso, .imp-avisos { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 8px 10px; margin: 0; font-size: .85rem; }
+.imp-avisos { margin: 12px 0; }
+.imp-avisos p { margin: 4px 0; }
+@media (max-width: 900px) { .imp-cartoes { grid-template-columns: minmax(0, 1fr); } }

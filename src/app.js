@@ -67,7 +67,7 @@ function criarApp({ pool, secret, secure = false }) {
   app.use((err, _req, res, _next) => {
     if (err instanceof ErroHttp) return res.status(err.status).json({ erro: err.message });
     if (err.type === 'entity.parse.failed') return res.status(400).json({ erro: 'JSON inválido.' });
-    if (err.type === 'entity.too.large') return res.status(413).json({ erro: 'Arquivo grande demais para esta operação (comprovantes: até 5 MB; planilhas: até 15 MB).' });
+    if (err.type === 'entity.too.large') return res.status(413).json({ erro: 'Arquivo grande demais para esta operação (comprovantes: até 5 MB; arquivos de importação: até 15 MB).' });
     switch (err.code) {
       case '23505': return res.status(409).json({ erro: 'Já existe um registro com esse valor.' });
       case '23503': return res.status(409).json({ erro: 'Registro relacionado não encontrado ou em uso. Em vez de excluir, desative-o.' });

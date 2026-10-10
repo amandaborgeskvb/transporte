@@ -6,3 +6,8 @@ node_modules/
 *.xlsx
 *.xls
 *.cdr
+
+# Arquivos de importação do ERP (dados de funcionários não vão para o repositório)
+*.txt
+*.csv
+!public/fonts/*.txt

@@ -44,9 +44,10 @@ export async function enviarAnexo(entidade, id, arquivo) {
   return tratar(r, '/anexos');
 }
 
-// Envia uma planilha (bytes) para o importador; o servidor reconhece o formato pelo conteúdo
-export async function enviarArquivo(url, arquivo) {
-  const r = await fetch(`/api${url}?nome=${encodeURIComponent(arquivo.name)}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: arquivo });
+// Envia um arquivo (bytes) para o importador; o servidor reconhece o formato pelo conteúdo
+export async function enviarArquivo(url, arquivo, params = {}) {
+  const q = new URLSearchParams({ ...params, nome: arquivo.name });
+  const r = await fetch(`/api${url}?${q}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: arquivo });
   return tratar(r, url);
 }
 
