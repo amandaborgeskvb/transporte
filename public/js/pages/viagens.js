@@ -1,7 +1,7 @@
 import { get, del, enviarAnexo, cadastros } from '../api.js';
 import {
   h, brl, dataBR, dataHoraBR, badgeStatus, badgeSituacao, kpi, secao, tabela, barra, vazio, toast, confirmar, opcoes,
-  opcoesSituacao, opcoesFuncionarios, barraFiltros, descreverEvento, resumirDetalhes, cabecalhoPagina, barraComandos, abas, botao, icone,
+  opcoesSituacao, barraFiltros, descreverEvento, resumirDetalhes, cabecalhoPagina, barraComandos, abas, botao, icone,
 } from '../ui.js';
 import {
   formViagem, acaoViagem, acaoPrestacao, solicitarAdiantamento, acaoAdiantamento, formDespesa, acaoDespesa,
@@ -41,7 +41,7 @@ export async function lista({ query, usuario, ir }) {
   const campos = [
     { nome: 'q', rotulo: 'Busca', placeholder: 'Número, destino ou funcionário' },
     { nome: 'status_id', rotulo: 'Status', tipo: 'select', opcoes: opcoes(c.status) },
-    veTodos ? { nome: 'funcionario_id', rotulo: 'Funcionário', tipo: 'select', opcoes: opcoesFuncionarios(c.funcionarios) } : null,
+    veTodos ? { nome: 'funcionario_id', rotulo: 'Funcionário (matrícula ou nome)', tipo: 'funcionario', funcionarios: c.funcionarios } : null,
     { nome: 'motivo_id', rotulo: 'Motivo', tipo: 'select', opcoes: opcoes(c.motivos) },
     { nome: 'prestacao', rotulo: 'Prestação de contas', tipo: 'select', opcoes: opcoesSituacao('prestacao') },
     { nome: 'de', rotulo: 'Saída de', tipo: 'date' },
@@ -50,7 +50,7 @@ export async function lista({ query, usuario, ir }) {
 
   const colunas = [
     { t: 'Número', cls: 'nowrap', f: (v) => h('strong', {}, v.numero) },
-    ...(veTodos ? [{ t: 'Funcionário', f: (v) => v.funcionario_nome }] : []),
+    ...(veTodos ? [{ t: 'Funcionário', f: (v) => [v.funcionario_nome, h('div', { class: 'muted pequeno' }, `Mat. ${v.funcionario_matricula}${v.funcionario_funcao ? ` · ${v.funcionario_funcao}` : ''}`)] }] : []),
     { t: 'Destino', f: (v) => [v.destino, h('div', { class: 'muted pequeno' }, v.motivo_nome)] },
     { t: 'Período', cls: 'nowrap', f: (v) => [dataBR(v.data_saida), v.data_retorno !== v.data_saida ? h('div', { class: 'muted pequeno' }, `até ${dataBR(v.data_retorno)}`) : null] },
     { t: 'Status', f: badgeStatus },
@@ -160,8 +160,8 @@ export async function detalhe({ params, query, usuario, ir, recarregarPagina }) 
   const gasto = v.despesas_aprovadas + v.despesas_pendentes;
   const dados = h('dl', { class: 'dados' },
     ...[
-      ['Funcionário', `${v.funcionario_nome} (mat. ${v.funcionario_matricula})`], ['Setor', v.funcionario_setor || '—'],
-      ['Centro de custo', v.funcionario_centro_custo || '—'], ['Motivo', v.motivo_nome],
+      ['Funcionário', `${v.funcionario_nome} (mat. ${v.funcionario_matricula})`], ['Função', v.funcionario_funcao || '—'], ['Setor', v.funcionario_setor || '—'],
+      ['Centro de custo', v.funcionario_centro_custo || '—'], ['Empresa', v.funcionario_empresa ? `Empresa ${v.funcionario_empresa}` : '—'], ['Motivo', v.motivo_nome],
       ['Saída', dataBR(v.data_saida)], ['Retorno', dataBR(v.data_retorno)],
       ['Realizada em', dataBR(v.realizada_em)], ['Valor estimado', brl(v.valor_estimado)],
       ['Aprovador', v.aprovador_nome ? `${v.aprovador_nome} · ${dataHoraBR(v.aprovado_em)}` : '—'],
@@ -276,7 +276,7 @@ export async function detalhe({ params, query, usuario, ir, recarregarPagina }) 
     cabecalhoPagina({
       migalhas: [['Operação'], ['Viagens', '#/viagens'], [v.numero]],
       titulo: h('span', {}, `${v.numero} · ${v.destino} `, badgeStatus(v)),
-      sub: `${v.funcionario_nome} · ${dataBR(v.data_saida)} a ${dataBR(v.data_retorno)} · ${v.motivo_nome}`,
+      sub: `${v.funcionario_nome} (mat. ${v.funcionario_matricula})${v.funcionario_funcao ? ` · ${v.funcionario_funcao}` : ''} · ${dataBR(v.data_saida)} a ${dataBR(v.data_retorno)} · ${v.motivo_nome}`,
     }),
     faixaEtapas(v),
     barraComandos(itensBarra),

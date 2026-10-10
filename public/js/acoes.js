@@ -1,6 +1,6 @@
 // Diálogos das ações de viagem, adiantamento, despesa e reembolso (usados no detalhe e nas filas).
 import { post, put, del, cadastros, enviarAnexo, limparCadastros } from './api.js';
-import { dialogo, confirmar, opcoes, opcoesFuncionarios, hojeISO, brl, toast } from './ui.js';
+import { h, dialogo, confirmar, opcoes, infoFuncionario, hojeISO, brl, toast } from './ui.js';
 
 const ok = (msg, depois) => () => { toast(msg); depois?.(); };
 
@@ -9,7 +9,7 @@ export async function formViagem({ viagem, usuario, depois }) {
   const c = await cadastros();
   const admin = usuario.perfil === 'administrador';
   const campos = [
-    admin ? { nome: 'funcionario_id', rotulo: 'Funcionário', tipo: 'select', opcoes: opcoesFuncionarios(c.funcionarios, { somenteAtivos: true }), valor: viagem?.funcionario_id, obrigatorio: true, vazio: 'Selecione…', cheio: true } : null,
+    admin ? { nome: 'funcionario_id', rotulo: 'Funcionário (matrícula ou nome)', tipo: 'funcionario', funcionarios: c.funcionarios, valor: viagem?.funcionario_id, obrigatorio: true } : null,
     { nome: 'destino', rotulo: 'Destino', obrigatorio: true, valor: viagem?.destino, cheio: true },
     { nome: 'motivo_id', rotulo: 'Motivo da viagem', tipo: 'select', opcoes: opcoes(c.motivos, { somenteAtivos: true }), valor: viagem?.motivo_id, obrigatorio: true, vazio: 'Selecione…', cheio: true },
     { nome: 'data_saida', rotulo: 'Data de saída', tipo: 'date', obrigatorio: true, valor: viagem?.data_saida || hojeISO() },
@@ -18,8 +18,11 @@ export async function formViagem({ viagem, usuario, depois }) {
     { nome: 'descricao', rotulo: 'Descrição da atividade', tipo: 'textarea', valor: viagem?.descricao, cheio: true, max: 1000 },
   ].filter(Boolean);
   let resultado;
+  // O solicitante viaja sempre como o funcionário vinculado ao seu usuário: mostra os dados dele, vindos do cadastro
+  const meuCadastro = !admin ? c.funcionarios.find((f) => f.id === usuario.funcionario_id) : null;
   const salvou = await dialogo({
-    titulo: viagem ? `Editar viagem ${viagem.numero}` : 'Solicitar viagem', campos,
+    titulo: viagem ? `Editar viagem ${viagem.numero}` : 'Solicitar viagem',
+    descricao: meuCadastro ? h('div', { class: 'perfil-caixa' }, infoFuncionario(meuCadastro)) : undefined, campos,
     confirmar: viagem ? 'Salvar alterações' : 'Solicitar viagem',
     aoSalvar: async (v) => { resultado = viagem ? await put(`/viagens/${viagem.id}`, v) : await post('/viagens', v); },
   });

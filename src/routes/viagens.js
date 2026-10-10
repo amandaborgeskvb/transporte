@@ -13,7 +13,7 @@ const {
 const SELECT_VIAGEM = `
   SELECT v.*, s.codigo AS status_codigo, s.nome AS status_nome, s.cor AS status_cor,
          m.nome AS motivo_nome, f.nome AS funcionario_nome, f.matricula AS funcionario_matricula,
-         f.setor AS funcionario_setor, f.centro_custo AS funcionario_centro_custo,
+         f.setor AS funcionario_setor, f.centro_custo AS funcionario_centro_custo, f.funcao AS funcionario_funcao, f.empresa_codigo AS funcionario_empresa,
          ua.nome AS aprovador_nome, ${FIN_COLS}
   FROM viagens v
   JOIN status_viagem s ON s.id = v.status_id
@@ -44,7 +44,7 @@ function filtrosViagem(q, usuario) {
     const t = `%${String(q.q).slice(0, 80).replace(/[%_\\]/g, '\\$&')}%`;
     params.push(t);
     const i = params.length;
-    cond.push(`(v.numero ILIKE $${i} OR v.destino ILIKE $${i} OR f.nome ILIKE $${i})`);
+    cond.push(`(v.numero ILIKE $${i} OR v.destino ILIKE $${i} OR f.nome ILIKE $${i} OR f.matricula ILIKE $${i})`);
   }
   return { where: cond.join(' AND '), params };
 }

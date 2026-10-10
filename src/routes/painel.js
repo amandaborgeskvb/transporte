@@ -112,7 +112,7 @@ function criarPainel({ pool }) {
   // ---------- Relatórios ----------
   const COLS_VIAGEM_CSV = [
     ['Número', (v) => v.numero], ['Funcionário', (v) => v.funcionario_nome], ['Matrícula', (v) => v.funcionario_matricula],
-    ['Setor', (v) => v.funcionario_setor], ['Destino', (v) => v.destino], ['Motivo', (v) => v.motivo_nome],
+    ['Função', (v) => v.funcionario_funcao], ['Setor', (v) => v.funcionario_setor], ['Destino', (v) => v.destino], ['Motivo', (v) => v.motivo_nome],
     ['Saída', (v) => v.data_saida], ['Retorno', (v) => v.data_retorno], ['Status', (v) => v.status_nome],
     ['Prestação de contas', (v) => v.prestacao_situacao], ['Valor estimado', (v) => moedaCsv(v.valor_estimado)],
     ['Adiantado', (v) => moedaCsv(v.adiantamento_pago)], ['Despesas aprovadas', (v) => moedaCsv(v.despesas_aprovadas)],

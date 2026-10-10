@@ -2,7 +2,7 @@
 import { get, post, put, del, enviarAnexo, cadastros } from '../api.js';
 import {
   h, brl, dataBR, dataHoraBR, badgeSituacao, tabela, botao, cabecalhoPagina, barraComandos, barraFiltros, opcoesSituacao, secao,
-  vazio, toast, confirmar, dialogo, descreverEvento, resumirDetalhes, icone, kpi,
+  vazio, toast, confirmar, dialogo, descreverEvento, resumirDetalhes, icone, kpi, campoFuncionario,
 } from '../ui.js';
 import { mesaRE, ajustarEscala } from '../re.js';
 
@@ -153,7 +153,6 @@ export async function formularioPagina({ params, query, usuario, ir }) {
   const editando = params[1] === 'editar';
   const id = editando ? params[0] : null;
   const c = await cadastros();
-  const funcs = c.funcionarios.filter((f) => f.ativo);
 
   // valores iniciais
   let inicial = {
@@ -172,26 +171,10 @@ export async function formularioPagina({ params, query, usuario, ir }) {
   }
   const estado = { ...inicial };
 
-  const rotuloFunc = (f) => `${f.matricula} · ${f.nome}`;
-  const campoFunc = h('input', { type: 'text', list: 'lista-func', autocomplete: 'off', placeholder: 'Digite a matrícula ou o nome', required: true, 'aria-label': 'Funcionário (matrícula ou nome)' });
-  const listaFunc = h('datalist', { id: 'lista-func' }, funcs.map((f) => h('option', { value: rotuloFunc(f) })));
-  const infoFunc = h('small', { class: 'dica' });
-  const achar = (texto) => {
-    const t = texto.trim().toLowerCase();
-    if (!t) return null;
-    return funcs.find((f) => rotuloFunc(f).toLowerCase() === t) || funcs.find((f) => f.matricula.toLowerCase() === t)
-      || (funcs.filter((f) => f.nome.toLowerCase() === t).length === 1 ? funcs.find((f) => f.nome.toLowerCase() === t) : null);
-  };
-  const aplicarFunc = () => {
-    const f = achar(campoFunc.value);
-    estado.funcionario_id = f ? f.id : '';
-    infoFunc.textContent = f ? `${f.nome} · ${f.funcao || 'sem função'} · ${f.setor || 'sem setor'}` : campoFunc.value ? 'Funcionário não encontrado: escolha um da lista.' : '';
-    previa();
-  };
-  const funcInicial = funcs.find((f) => f.id === estado.funcionario_id);
-  if (funcInicial) { campoFunc.value = rotuloFunc(funcInicial); infoFunc.textContent = `${funcInicial.nome} · ${funcInicial.funcao || 'sem função'} · ${funcInicial.setor || 'sem setor'}`; }
-  campoFunc.addEventListener('input', aplicarFunc);
-  if (viagem) campoFunc.readOnly = true; // a viagem define o funcionário
+  const campoFunc = campoFuncionario({
+    funcionarios: c.funcionarios, valor: estado.funcionario_id, rotulo: 'Funcionário (matrícula ou nome)', obrigatorio: true, bloqueado: !!viagem, // a viagem define o funcionário
+    aoMudar: (f) => { estado.funcionario_id = f ? f.id : ''; previa(); },
+  });
 
   const num = (nome, rotulo, extra = {}) => h('label', { class: extra.cheio ? 'cheio' : '' }, rotulo, h('input', {
     type: extra.tipo || 'number', name: nome, value: estado[nome] ?? '', step: extra.passo, min: extra.min, max: extra.max, required: true,
@@ -213,7 +196,7 @@ export async function formularioPagina({ params, query, usuario, ir }) {
     h('div', { class: 'card-topo' }, h('h2', {}, editando ? 'Editar autorização' : 'Dados da autorização')),
     viagem ? h('p', { class: 'perfil-caixa' }, 'Ligada à viagem ', h('a', { href: `#/viagens/${viagem.id}` }, `${viagem.numero} · ${viagem.destino}`),
       !editando && viagem.desconto_sugerido ? ` — saldo a devolver sugerido: ${brl(viagem.desconto_sugerido)}` : '') : null,
-    h('label', {}, 'Funcionário (matrícula ou nome) *', campoFunc, listaFunc, infoFunc),
+    campoFunc,
     h('div', { class: 'form-grid' },
       num('valor', 'Valor do desconto (R$) *', { passo: '0.01', min: '0.01' }),
       num('parcelas', 'Número de parcelas *', { min: '1', max: '36', passo: '1' }),
@@ -234,7 +217,7 @@ export async function formularioPagina({ params, query, usuario, ir }) {
     atualizarDicas();
     timer = setTimeout(async () => {
       const minha = ++seq;
-      const completo = estado.funcionario_id && Number(estado.valor) > 0 && Number(estado.parcelas) >= 1 && estado.data_inicio && estado.data_documento && estado.motivos.length;
+      const completo = estado.funcionario_id && Number(estado.valor) > 0 && Number(estado.parcelas) >= 1 && estado.data_inicio && estado.data_documento && estado.motivos.length && String(estado.referente).trim();
       if (!completo) { areaPrevia.replaceChildren(avisoPrevia); return; }
       try {
         const doc = await post('/descontos/previa', corpo());
@@ -261,7 +244,7 @@ export async function formularioPagina({ params, query, usuario, ir }) {
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     erro.textContent = '';
-    if (!estado.funcionario_id) { erro.textContent = 'Escolha um funcionário da lista.'; campoFunc.focus(); return; }
+    if (!estado.funcionario_id || campoFunc.textoInvalido()) { erro.textContent = 'Escolha um funcionário da lista.'; campoFunc.entrada.focus(); return; }
     enviar.disabled = true;
     try {
       const r = editando ? (await put(`/descontos/${id}`, corpo()), { id }) : await post('/descontos', corpo());

@@ -436,3 +436,12 @@ label.faltando select { border-color: var(--bad); }
 .imp-motivo { border: 1px solid var(--linha); border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; }
 .imp-motivo summary { cursor: pointer; }
 @media (max-width: 1100px) { .imp-grade { grid-template-columns: minmax(0, 1fr); } }
+
+/* ===== Campo de funcionário (busca por matrícula/nome com os dados do cadastro) ===== */
+.func-area { margin-top: 6px; }
+.func-info { margin: 0; padding: 8px 10px; background: var(--card-2); border: 1px solid var(--linha); border-radius: 8px; display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: baseline; font-weight: 400; }
+.func-info .func-nome { flex: 1 0 100%; display: flex; gap: 8px; align-items: center; color: var(--txt); font-size: .9rem; }
+.func-info dt { font-size: .66rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 650; }
+.func-info dd { margin: 0; color: var(--txt); font-size: .84rem; }
+.dica.aviso { color: var(--warn); }
+.perfil-caixa .func-info { background: transparent; border: 0; padding: 0; }

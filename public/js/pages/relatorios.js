@@ -1,5 +1,5 @@
 import { get, cadastros } from '../api.js';
-import { h, brl, dataBR, badgeStatus, badgeSituacao, tabela, opcoes, opcoesFuncionarios, opcoesSituacao, barraFiltros, kpi, secao, cabecalhoPagina, icone } from '../ui.js';
+import { h, brl, dataBR, badgeStatus, badgeSituacao, tabela, opcoes, opcoesSituacao, barraFiltros, kpi, secao, cabecalhoPagina, icone } from '../ui.js';
 
 export default async function relatorios({ query, usuario, ir }) {
   const c = await cadastros();
@@ -13,7 +13,7 @@ export default async function relatorios({ query, usuario, ir }) {
   const campos = [
     { nome: 'de', rotulo: 'Saída de', tipo: 'date' },
     { nome: 'ate', rotulo: 'até', tipo: 'date' },
-    veTodos ? { nome: 'funcionario_id', rotulo: 'Funcionário', tipo: 'select', opcoes: opcoesFuncionarios(c.funcionarios) } : null,
+    veTodos ? { nome: 'funcionario_id', rotulo: 'Funcionário (matrícula ou nome)', tipo: 'funcionario', funcionarios: c.funcionarios } : null,
     veTodos ? { nome: 'setor', rotulo: 'Setor', tipo: 'select', opcoes: setores } : null,
     { nome: 'motivo_id', rotulo: 'Motivo', tipo: 'select', opcoes: opcoes(c.motivos) },
     { nome: 'destino', rotulo: 'Destino', placeholder: 'Parte do nome' },
@@ -30,7 +30,7 @@ export default async function relatorios({ query, usuario, ir }) {
 
   const tabelaViagens = () => tabela([
     { t: 'Número', cls: 'nowrap', f: (v) => h('a', { href: `#/viagens/${v.id}` }, v.numero) },
-    { t: 'Funcionário', f: (v) => v.funcionario_nome },
+    { t: 'Funcionário', f: (v) => [v.funcionario_nome, h('div', { class: 'muted pequeno' }, `Mat. ${v.funcionario_matricula}${v.funcionario_funcao ? ` · ${v.funcionario_funcao}` : ''}`)] },
     { t: 'Setor', f: (v) => v.funcionario_setor || '—' },
     { t: 'Destino', f: (v) => v.destino },
     { t: 'Motivo', f: (v) => v.motivo_nome },

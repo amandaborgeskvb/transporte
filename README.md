@@ -106,6 +106,15 @@ Regras importantes:
 - Campos que a planilha não traz (por exemplo **função** e **setor** na exportação "Pessoas") ficam em branco e podem ser
   completados por outra planilha que os tenha ou à mão; a importação **não apaga** o que já estiver preenchido.
 
+## Funcionário sempre vindo do cadastro
+
+Em todo campo que pede um funcionário (solicitar viagem, vincular usuário, autorização de desconto, filtros), basta
+digitar a **matrícula** ou o **nome** e escolher na lista (`matrícula · nome`). O sistema recupera do cadastro e mostra
+na hora **função, setor, centro de custo e empresa**; texto que não corresponde a um funcionário cadastrado bloqueia o
+salvamento. Nas listas, nos relatórios (inclusive CSV) e nas buscas (nº, destino, nome ou matrícula) os dados do
+funcionário vêm do cadastro no momento da consulta, então uma atualização via importador aparece em todo o sistema. O
+perfil *solicitante* enxerga apenas o próprio registro de funcionário.
+
 ## Perfis de acesso
 
 As permissões são validadas **no servidor** (a tela apenas esconde o que o perfil não pode fazer).

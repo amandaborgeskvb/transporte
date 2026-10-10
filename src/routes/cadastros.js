@@ -78,8 +78,11 @@ function criarCadastros({ pool }) {
   for (const [chave, cfg] of Object.entries(CADASTROS)) {
     const base = `/cadastros/${chave}`;
 
-    router.get(base, wrap(async (_req, res) => {
-      const { rows } = await pool.query(`SELECT * FROM ${cfg.tabela} ORDER BY ${cfg.ordem}`);
+    router.get(base, wrap(async (req, res) => {
+      // O solicitante só precisa do próprio cadastro (suas viagens são sempre dele); os demais perfis consultam todos.
+      const soDono = chave === 'funcionarios' && req.usuario.perfil === 'solicitante';
+      const { rows } = await pool.query(
+        `SELECT * FROM ${cfg.tabela} ${soDono ? 'WHERE id = $1' : ''} ORDER BY ${cfg.ordem}`, soDono ? [req.usuario.funcionario_id ?? 0] : []);
       res.json(rows);
     }));
 

@@ -34,7 +34,7 @@ function criarLancamentos({ pool }) {
 
   // ---------- Listagens (filas de trabalho, respeitam o escopo do usuário) ----------
   const VIAGEM_COLS = `v.numero, v.destino, v.funcionario_id, v.solicitante_id, v.prestacao_situacao,
-    s.codigo AS status_codigo, f.nome AS funcionario_nome`;
+    s.codigo AS status_codigo, f.nome AS funcionario_nome, f.matricula AS funcionario_matricula`;
   const JOIN_VIAGEM = `JOIN viagens v ON v.id = x.viagem_id JOIN status_viagem s ON s.id = v.status_id
     JOIN funcionarios f ON f.id = v.funcionario_id`;
 

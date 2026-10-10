@@ -17,7 +17,7 @@ function fila({ titulo, rota, tipo, colunas, acoes, fn, rotulos }) {
       barraFiltros([{ nome: 'situacao', rotulo: 'Situação', tipo: 'select', opcoes: opcoesSituacao(tipo) }], query, (v) => ir(`#/${rota}`, v)),
       h('div', { class: 'card' }, tabela([
         { t: 'Viagem', cls: 'nowrap', f: verViagem },
-        ...(veTodos ? [{ t: 'Funcionário', f: (x) => x.funcionario_nome }] : []),
+        ...(veTodos ? [{ t: 'Funcionário', f: (x) => [x.funcionario_nome, h('div', { class: 'muted pequeno' }, `Mat. ${x.funcionario_matricula}`)] }] : []),
         ...colunas,
         { t: 'Situação', f: (x) => badgeSituacao(tipo, x.situacao) },
         { t: '', f: (x) => botoes(x, acoes, fn, rotulos, recarregarPagina) },

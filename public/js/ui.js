@@ -172,6 +172,71 @@ export function toast(msg, tipo = 'ok') {
   setTimeout(() => t.remove(), tipo === 'erro' ? 6000 : 3500);
 }
 
+
+// ---------- Campo de funcionário: busca no cadastro por matrícula ou nome e mostra os dados associados ----------
+let seqListaFunc = 0;
+const semAcentoUi = (t) => String(t ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+const chaveMatricula = (t) => String(t ?? '').trim().replace(/\.0+$/, '').replace(/^0+(?=\d)/, '').toLowerCase();
+export const rotuloFuncionario = (f) => `${f.matricula} · ${f.nome}`;
+
+// Dados do cadastro do funcionário (matrícula, função, setor, centro de custo, empresa)
+export function infoFuncionario(f) {
+  const itens = [
+    ['Matrícula', f.matricula], ['Função', f.funcao || 'não informada'], ['Setor', f.setor || 'não informado'],
+    ['Centro de custo', f.centro_custo || null], ['Empresa', f.empresa_codigo ? `Empresa ${f.empresa_codigo}` : null],
+  ].filter(([, v]) => v);
+  return h('dl', { class: 'func-info' }, h('div', { class: 'func-nome' }, h('strong', {}, f.nome), f.ativo === false ? h('span', { class: 'badge tom-mute' }, 'Inativo') : null),
+    itens.map(([t, v]) => h('div', {}, h('dt', {}, t), h('dd', {}, v))));
+}
+
+// Campo "digite a matrícula ou o nome": resolve o funcionário no cadastro e mostra os dados dele.
+// Devolve um <label> com: valorId() → id ou '', funcionario() → registro, textoInvalido(), definir(id).
+export function campoFuncionario({ funcionarios, valor = '', rotulo = 'Funcionário', obrigatorio = false, somenteAtivos = true, bloqueado = false, dica, aoMudar, mostrarDados = true }) {
+  const lista = funcionarios.filter((f) => !somenteAtivos || f.ativo !== false || String(f.id) === String(valor));
+  const idLista = `lista-func-${++seqListaFunc}`;
+  const entrada = h('input', { type: 'text', list: idLista, autocomplete: 'off', placeholder: 'Digite a matrícula ou o nome', readonly: bloqueado, required: obrigatorio, 'aria-label': rotulo });
+  const datalist = h('datalist', { id: idLista }, lista.map((f) => h('option', { value: rotuloFuncionario(f) })));
+  const area = h('div', { class: 'func-area' });
+  let atual = null;
+
+  const achar = (texto) => {
+    const t = texto.trim();
+    if (!t) return null;
+    const tl = t.toLowerCase();
+    const nomeIgual = lista.filter((f) => semAcentoUi(f.nome) === semAcentoUi(t));
+    return lista.find((f) => rotuloFuncionario(f).toLowerCase() === tl)
+      || lista.find((f) => chaveMatricula(f.matricula) === chaveMatricula(t))
+      || (nomeIgual.length === 1 ? nomeIgual[0] : null); // homônimos: precisa escolher pela matrícula
+  };
+  const desenhar = () => {
+    if (!mostrarDados) { area.replaceChildren(); return; }
+    if (atual) area.replaceChildren(infoFuncionario(atual));
+    else if (entrada.value.trim()) area.replaceChildren(h('small', { class: 'dica aviso' }, 'Não encontrei esse funcionário no cadastro. Escolha um da lista.'));
+    else area.replaceChildren();
+  };
+  const definir = (f) => {
+    const mudou = String(f?.id ?? '') !== String(atual?.id ?? '');
+    atual = f;
+    desenhar();
+    if (mudou) aoMudar?.(f);
+  };
+  entrada.addEventListener('input', () => definir(achar(entrada.value)));
+  entrada.addEventListener('change', () => { if (atual) entrada.value = rotuloFuncionario(atual); }); // "5001" vira "5001 · NOME"
+
+  const el = h('label', { class: 'cheio campo-func' }, `${rotulo}${obrigatorio ? ' *' : ''}`, entrada, datalist, area, dica ? h('small', { class: 'dica' }, dica) : null);
+  el.valorId = () => (atual ? atual.id : '');
+  el.funcionario = () => atual;
+  el.textoInvalido = () => entrada.value.trim() !== '' && !atual;
+  el.definir = (id) => {
+    const f = funcionarios.find((x) => String(x.id) === String(id)) || null;
+    entrada.value = f ? rotuloFuncionario(f) : '';
+    definir(f);
+  };
+  el.entrada = entrada;
+  if (valor !== '' && valor !== null && valor !== undefined) { const f0 = funcionarios.find((x) => String(x.id) === String(valor)); if (f0) { entrada.value = rotuloFuncionario(f0); atual = f0; desenhar(); } }
+  return el;
+}
+
 // ---------- Formulários ----------
 // campos: [{ nome, rotulo, tipo: text|number|date|select|textarea|file|checkbox|password|color, valor, opcoes:[{valor,rotulo}],
 //            obrigatorio, cheio, passo, min, max, dica, accept, vazio }]
@@ -181,6 +246,11 @@ export function formulario({ campos = [], confirmar = 'Salvar', perigo = false, 
   const entradas = {};
 
   const montarCampo = (c) => {
+    if (c.tipo === 'funcionario') {
+      const campo = campoFuncionario({ funcionarios: c.funcionarios, valor: c.valor, rotulo: c.rotulo, obrigatorio: c.obrigatorio, somenteAtivos: c.somenteAtivos !== false, bloqueado: c.bloqueado, dica: c.dica, aoMudar: c.aoMudar });
+      entradas[c.nome] = { el: campo, c };
+      return campo;
+    }
     let el;
     if (c.tipo === 'select') {
       el = h('select', { name: c.nome, required: c.obrigatorio },
@@ -212,10 +282,13 @@ export function formulario({ campos = [], confirmar = 'Salvar', perigo = false, 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const valores = {};
-    for (const [nome, { el, c }] of Object.entries(entradas)) {
-      valores[nome] = c.tipo === 'checkbox' ? el.checked : c.tipo === 'file' ? el.files[0] || null : el.value;
-    }
     erro.textContent = '';
+    for (const [nome, { el, c }] of Object.entries(entradas)) {
+      if (c.tipo === 'funcionario') {
+        if (el.textoInvalido() || (c.obrigatorio && !el.valorId())) { erro.textContent = 'Escolha um funcionário da lista (digite a matrícula ou o nome).'; el.entrada.focus(); return; }
+        valores[nome] = el.valorId();
+      } else valores[nome] = c.tipo === 'checkbox' ? el.checked : c.tipo === 'file' ? el.files[0] || null : el.value;
+    }
     enviar.disabled = true;
     try {
       await aoSalvar?.(valores);
@@ -225,7 +298,7 @@ export function formulario({ campos = [], confirmar = 'Salvar', perigo = false, 
       enviar.disabled = false;
     }
   });
-  form.focarPrimeiro = () => (form.querySelector('input:not([type=checkbox]):not([type=hidden]),select,textarea') || enviar).focus();
+  form.focarPrimeiro = () => (form.querySelector('input:not([type=checkbox]):not([type=hidden]):not([readonly]),select,textarea') || enviar).focus();
   return form;
 }
 
@@ -238,7 +311,8 @@ export function dialogo({ titulo, descricao, campos = [], confirmar = 'Salvar', 
       aoSalvar: async (v) => { await aoSalvar?.(v); dlg.close(); resolve(true); },
     });
     dlg.addEventListener('close', () => resolve(false), { once: true });
-    dlg.replaceChildren(h('h2', {}, titulo), descricao ? h('p', { class: 'muted' }, descricao) : null, form);
+    const intro = typeof descricao === 'string' ? h('p', { class: 'muted' }, descricao) : descricao;
+    dlg.replaceChildren(...[h('h2', {}, titulo), intro, form].filter(Boolean));
     dlg.showModal();
     form.focarPrimeiro();
   });
@@ -260,19 +334,26 @@ export const opcoes = (lista, { valor = 'id', rotulo = 'nome', somenteAtivos = f
 // Constrói um formulário de filtros que chama aoFiltrar(valores) e mantém o estado na URL
 export function barraFiltros(campos, valores, aoFiltrar) {
   const form = h('form', { class: 'filtros' });
-  const els = {};
+  const leitores = {};
   for (const c of campos) {
+    if (c.tipo === 'funcionario') {
+      const campo = campoFuncionario({ funcionarios: c.funcionarios, valor: valores[c.nome] ?? '', rotulo: c.rotulo, somenteAtivos: false, mostrarDados: false });
+      campo.classList.remove('cheio');
+      leitores[c.nome] = () => String(campo.valorId() || '');
+      form.append(campo);
+      continue;
+    }
     const el = c.tipo === 'select'
       ? h('select', { name: c.nome }, h('option', { value: '' }, c.vazio || 'Todos'), c.opcoes.map((o) => h('option', { value: o.valor, selected: String(o.valor) === String(valores[c.nome] ?? '') }, o.rotulo)))
       : h('input', { type: c.tipo || 'text', name: c.nome, value: valores[c.nome] ?? '', placeholder: c.placeholder });
-    els[c.nome] = el;
+    leitores[c.nome] = () => el.value;
     form.append(h('label', {}, c.rotulo, el));
   }
   form.append(h('button', { type: 'submit' }, 'Filtrar'), h('button', { type: 'button', class: 'sec', onclick: () => aoFiltrar({}) }, 'Limpar'));
   form.addEventListener('submit', (e) => {
     e.preventDefault();
     const v = {};
-    for (const [k, el] of Object.entries(els)) if (el.value) v[k] = el.value;
+    for (const [k, ler] of Object.entries(leitores)) { const valor = ler(); if (valor) v[k] = valor; }
     aoFiltrar(v);
   });
   return form;
