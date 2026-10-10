@@ -60,7 +60,7 @@ export default async function relatorios({ query, usuario, ir }) {
 
   return [
     cabecalhoPagina({
-      migalhas: [['Análise'], ['Relatórios']], titulo: 'Relatórios', sub: 'Filtre, confira os totais e exporte para o Excel (CSV)',
+      migalhas: [['Viagem'], ['Relatório de viagem']], titulo: 'Relatório de viagem', sub: 'Filtre, confira os totais e exporte para o Excel (CSV)',
       acoes: h('a', { class: 'btn', href: `/api/relatorios/${tipo}.csv${qs ? `?${qs}` : ''}`, download: '' }, icone('baixar'), 'Exportar CSV'),
     }),
     abas,

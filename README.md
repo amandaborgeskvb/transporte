@@ -32,8 +32,8 @@ conceitos de ERPs e plataformas de operação agrícola:
   Arquivos em `public/img/` (versões otimizadas; os originais em alta resolução e os `.cdr` ficam fora do repositório).
 - **Barra superior** azul-marinho com a linha verde da marca, busca **"Buscar tela ou viagem" (`Ctrl K`)**, tema
   claro/escuro, menu do usuário (alterar senha, sair) e a logo.
-- **Menu lateral por grupos** (Operação, Análise, Ajuda, Configurações), recolhível, com o item ativo destacado. O menu **Viagem** reúne
-  Programação de viagens, Adiantamentos, Despesas, Reembolsos e Autorização de desconto; **Contratação** é um menu novo (administrador e
+- **Menu lateral por grupos** (Operação, Ajuda, Configurações), recolhível, com o item ativo destacado. O menu **Viagem** reúne
+  Programação de viagens, Adiantamentos, Despesas, Reembolsos, Autorização de desconto e Relatório de viagem; **Contratação** é um menu novo (administrador e
   financeiro), por enquanto só a estrutura, à espera da definição do que será controlado ali. **Treinamento** (todos os perfis) é um
   passo a passo do sistema, com os tópicos do perfil de quem está logado em destaque.
 - **Telas lista + detalhe** em Usuários e Cadastros (busca à esquerda, formulário do item à direita).

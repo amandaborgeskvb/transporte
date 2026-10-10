@@ -67,7 +67,7 @@ const TOPICOS = [
   {
     titulo: 'Relatórios, dashboard e pendências', perfis: ['administrador', 'financeiro', 'aprovador', 'solicitante'], corpo: () => [
       lista('O **Dashboard** mostra viagens por situação, adiantamentos, despesas, reembolsos e o que está pendente para você.',
-        'Em **Relatórios**, filtre por período, funcionário, setor, motivo, destino, status e categoria e exporte em CSV.',
+        'Em **Viagem → Relatório de viagem**, filtre por período, funcionário, setor, motivo, destino, status e categoria e exporte em CSV.',
         'Use **Ctrl + K** em qualquer tela para buscar telas e viagens pelo número, destino ou funcionário.'),
     ],
   },
