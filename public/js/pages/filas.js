@@ -13,7 +13,7 @@ function fila({ titulo, rota, tipo, colunas, acoes, fn, rotulos }) {
     const itens = await get(`/${rota}${qs ? `?${qs}` : ''}`);
     const veTodos = usuario.perfil !== 'solicitante';
     return [
-      cabecalhoPagina({ migalhas: [['Financeiro'], [titulo]], titulo, sub: `${itens.length} registro${itens.length === 1 ? '' : 's'}` }),
+      cabecalhoPagina({ migalhas: [['Viagem'], [titulo]], titulo, sub: `${itens.length} registro${itens.length === 1 ? '' : 's'}` }),
       barraFiltros([{ nome: 'situacao', rotulo: 'Situação', tipo: 'select', opcoes: opcoesSituacao(tipo) }], query, (v) => ir(`#/${rota}`, v)),
       h('div', { class: 'card' }, tabela([
         { t: 'Viagem', cls: 'nowrap', f: verViagem },

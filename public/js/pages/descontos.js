@@ -33,7 +33,7 @@ export async function lista({ query, usuario, ir }) {
 
   return [
     cabecalhoPagina({
-      migalhas: [['Financeiro'], ['Autorizações de desconto']], titulo: 'Autorizações de desconto',
+      migalhas: [['Viagem'], ['Autorizações de desconto']], titulo: 'Autorizações de desconto',
       sub: `Formulário RE. 0150.09 · ${itens.length} registro${itens.length === 1 ? '' : 's'}`,
       acoes: gestor ? [
         h('a', { class: 'btn sec', href: `/api/descontos.csv${qs ? `?${qs}` : ''}`, download: '' }, icone('baixar'), 'Exportar CSV'),
@@ -138,7 +138,7 @@ export async function detalhe({ params, usuario, ir, recarregarPagina }) {
   const semResponsavel = gestor && !doc.responsavel.nome;
   return [
     h('div', { class: 'nao-imprime' }, cabecalhoPagina({
-      migalhas: [['Financeiro'], ['Autorizações de desconto', '#/descontos'], [d.numero]],
+      migalhas: [['Viagem'], ['Autorizações de desconto', '#/descontos'], [d.numero]],
       titulo: h('span', {}, `${d.numero} `, badgeSituacao('desconto', d.situacao)),
       sub: `${d.func_nome} · matrícula ${d.func_matricula} · ${brl(d.valor)} em ${d.parcelas}x`,
     }), semResponsavel ? h('p', { class: 'perfil-caixa' }, 'O nome e a matrícula da pessoa responsável (RH) que aparecem abaixo do quadro de assinatura ainda não foram informados. ',
@@ -313,7 +313,7 @@ export async function formularioPagina({ params, query, usuario, ir }) {
 
   return [
     cabecalhoPagina({
-      migalhas: [['Financeiro'], ['Autorizações de desconto', '#/descontos'], [editando ? 'Editar' : 'Nova autorização']],
+      migalhas: [['Viagem'], ['Autorizações de desconto', '#/descontos'], [editando ? 'Editar' : 'Nova autorização']],
       titulo: editando ? 'Editar autorização de desconto' : 'Nova autorização de desconto', sub: 'Formulário RE. 0150.09 — o documento ao lado é o que será impresso',
     }),
     h('div', { class: 're-edicao' }, form, h('section', { class: 'card re-previa' }, h('div', { class: 'card-topo' }, h('h2', {}, 'Prévia do documento')), areaPrevia)),

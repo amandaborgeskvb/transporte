@@ -32,7 +32,9 @@ conceitos de ERPs e plataformas de operação agrícola:
   Arquivos em `public/img/` (versões otimizadas; os originais em alta resolução e os `.cdr` ficam fora do repositório).
 - **Barra superior** azul-marinho com a linha verde da marca, busca **"Buscar tela ou viagem" (`Ctrl K`)**, tema
   claro/escuro, menu do usuário (alterar senha, sair) e a logo.
-- **Menu lateral por grupos** (Operação, Financeiro, Análise, Configurações), recolhível, com o item ativo destacado.
+- **Menu lateral por grupos** (Operação, Análise, Configurações), recolhível, com o item ativo destacado. O menu **Viagem** reúne
+  Programação de viagens, Adiantamentos, Despesas, Reembolsos e Autorização de desconto; **Contratação** é um menu novo (administrador e
+  financeiro), por enquanto só a estrutura, à espera da definição do que será controlado ali.
 - **Telas lista + detalhe** em Usuários e Cadastros (busca à esquerda, formulário do item à direita).
 - **Registro da viagem** no estilo Dynamics 365: faixa de etapas (Programada → Realizada →
   Prestação de contas), barra de comandos com as ações liberadas para o perfil e abas (Resumo, Adiantamentos, Despesas,

@@ -60,7 +60,7 @@ export async function lista({ query, usuario, ir }) {
 
   return [
     cabecalhoPagina({
-      migalhas: [['Operação'], ['Viagens']], titulo: 'Viagens', sub: `${viagens.length} registro${viagens.length === 1 ? '' : 's'}`,
+      migalhas: [['Viagem'], ['Programação de viagens']], titulo: 'Viagens', sub: `${viagens.length} registro${viagens.length === 1 ? '' : 's'}`,
       acoes: podeSolicitar ? botao('Solicitar viagem', () => formViagem({ usuario, depois: (r) => ir(`#/viagens/${r.id}`) }), { icone: 'mais' }) : null,
     }),
     h('div', { class: 'visoes', role: 'group', 'aria-label': 'Visões' }, VISOES.map((v) => h('button', {
@@ -264,7 +264,7 @@ export async function detalhe({ params, query, usuario, ir, recarregarPagina }) 
 
   return [
     cabecalhoPagina({
-      migalhas: [['Operação'], ['Viagens', '#/viagens'], [v.numero]],
+      migalhas: [['Viagem'], ['Programação de viagens', '#/viagens'], [v.numero]],
       titulo: h('span', {}, `${v.numero} · ${v.destino} `, badgeStatus(v)),
       sub: `${v.funcionario_nome} (mat. ${v.funcionario_matricula})${v.funcionario_funcao ? ` · ${v.funcionario_funcao}` : ''} · ${dataBR(v.data_saida)} a ${dataBR(v.data_retorno)} · ${v.motivo_nome}`,
     }),

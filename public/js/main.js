@@ -8,6 +8,7 @@ import { lista as listaDescontos, detalhe as detalheDesconto, formularioPagina a
 import cadastrosPagina, { TIPOS_CADASTRO } from './pages/cadastros.js';
 import { usuarios, auditoria } from './pages/admin.js';
 import importacao from './pages/importacao.js';
+import contratacao from './pages/contratacao.js';
 
 const raiz = document.getElementById('raiz');
 const MARCA = 'CRV Industrial';
@@ -35,6 +36,7 @@ const ROTAS = {
     pagina: (c) => (!c.params.length ? listaDescontos(c) : c.params[0] === 'novo' || c.params[1] === 'editar' ? formDesconto(c) : detalheDesconto(c)),
     voltar: (c) => (c.params.length ? '#/descontos' : null),
   },
+  contratacao: { titulo: 'Contratação', pagina: contratacao, perfis: ['administrador', 'financeiro'] },
   relatorios: { titulo: 'Relatórios', pagina: relatorios },
   cadastros: { titulo: 'Cadastros', pagina: cadastrosPagina, perfis: ADMIN, voltar: () => '#/dashboard' },
   importacao: { titulo: 'Importação de funcionários', pagina: importacao, perfis: ADMIN, voltar: () => '#/dashboard' },
@@ -46,12 +48,17 @@ const ROTAS = {
 const MENU = [
   { rota: 'dashboard', titulo: 'Início / Dashboard', icone: 'dashboard' },
   { grupo: 'Operação' },
-  { rota: 'viagens', titulo: 'Viagens', icone: 'viagem' },
-  { grupo: 'Financeiro' },
-  { rota: 'adiantamentos', titulo: 'Adiantamentos', icone: 'adiantamento' },
-  { rota: 'despesas', titulo: 'Despesas', icone: 'despesa' },
-  { rota: 'reembolsos', titulo: 'Reembolsos', icone: 'reembolso' },
-  { rota: 'descontos', titulo: 'Autorizações de desconto', icone: 'documento', perfis: ['administrador', 'financeiro', 'solicitante'] },
+  {
+    rota: 'viagem', titulo: 'Viagem', icone: 'viagem',
+    filhos: [
+      { rota: 'viagens', href: '#/viagens', titulo: 'Programação de viagens' },
+      { rota: 'adiantamentos', href: '#/adiantamentos', titulo: 'Adiantamentos' },
+      { rota: 'despesas', href: '#/despesas', titulo: 'Despesas' },
+      { rota: 'reembolsos', href: '#/reembolsos', titulo: 'Reembolsos' },
+      { rota: 'descontos', href: '#/descontos', titulo: 'Autorização de desconto', perfis: ['administrador', 'financeiro', 'solicitante'] },
+    ],
+  },
+  { rota: 'contratacao', titulo: 'Contratação', icone: 'documento', perfis: ['administrador', 'financeiro'] },
   { grupo: 'Análise' },
   { rota: 'relatorios', titulo: 'Relatórios', icone: 'relatorio' },
   { grupo: 'Configurações', perfis: ADMIN },
@@ -80,10 +87,11 @@ function marcarMenu(rota) {
   let atual = location.hash.split('?')[0];
   if (atual === '#/cadastros') atual = '#/cadastros/funcionarios'; // tela padrão dos cadastros
   app.querySelectorAll('.nav a').forEach((a) => {
-    a.classList.toggle('ativo', a.dataset.filho ? a.getAttribute('href') === atual : a.dataset.rota === rota);
+    // sub-itens com rota própria acendem em qualquer tela da rota (lista e detalhe); os demais, só no endereço exato
+    a.classList.toggle('ativo', a.dataset.filho ? (a.dataset.rotaFilho ? a.dataset.rotaFilho === rota : a.getAttribute('href') === atual) : a.dataset.rota === rota);
   });
   app.querySelectorAll('.nav .grupo-btn').forEach((b) => {
-    const aberto = b.dataset.rota === rota || b.dataset.manual === '1';
+    const aberto = b.dataset.rotas.split(',').includes(rota) || b.dataset.manual === '1';
     b.nextElementSibling.hidden = !aberto;
     b.setAttribute('aria-expanded', String(aberto));
   });
@@ -140,9 +148,12 @@ function botaoTema(classe = 'icone-btn') {
 
 // ---------- Busca de telas (Ctrl K) ----------
 function montarBusca() {
-  const telas = MENU.flatMap((m) => (m.rota && permitido(m.perfis)
-    ? [{ titulo: m.titulo, href: `#/${m.rota}`, icone: m.icone, sub: 'Tela' }, ...(m.filhos || []).map((f) => ({ titulo: `${m.titulo} › ${f.titulo}`, href: f.href, icone: m.icone, sub: 'Cadastro' }))]
-    : []));
+  const telas = MENU.flatMap((m) => {
+    if (!m.rota || !permitido(m.perfis)) return [];
+    const filhos = (m.filhos || []).filter((f) => permitido(f.perfis));
+    if (m.filhos?.some((f) => f.rota)) return filhos.map((f) => ({ titulo: f.titulo, href: f.href, icone: m.icone, sub: `Tela · ${m.titulo}` })); // grupo de telas
+    return [{ titulo: m.titulo, href: `#/${m.rota}`, icone: m.icone, sub: 'Tela' }, ...filhos.map((f) => ({ titulo: `${m.titulo} › ${f.titulo}`, href: f.href, icone: m.icone, sub: 'Cadastro' }))];
+  });
   const campo = h('input', { type: 'search', placeholder: 'Buscar tela ou viagem', 'aria-label': 'Buscar tela ou viagem', autocomplete: 'off', role: 'combobox', 'aria-expanded': 'false' });
   const caixa = h('div', { class: 'campo' }, icone('buscar'), campo, h('kbd', {}, 'Ctrl K'));
   const lista = h('div', { class: 'busca-lista', role: 'listbox', hidden: true });
@@ -218,8 +229,10 @@ function montarMenu() {
     if (!permitido(m.perfis)) continue;
     if (m.grupo) { nav.append(h('div', { class: 'grupo-titulo' }, m.grupo)); continue; }
     if (m.filhos) {
-      const sub = h('div', { class: 'sub', hidden: true }, m.filhos.map((f) => h('a', { href: f.href, 'data-filho': '1', 'data-rota': m.rota }, h('span', { class: 'rot' }, f.titulo))));
-      const btn = h('button', { type: 'button', class: 'grupo-btn', 'data-rota': m.rota, 'aria-expanded': 'false', title: m.titulo },
+      const filhos = m.filhos.filter((f) => permitido(f.perfis));
+      if (!filhos.length) continue;
+      const sub = h('div', { class: 'sub', hidden: true }, filhos.map((f) => h('a', { href: f.href, 'data-filho': '1', 'data-rota': m.rota, 'data-rota-filho': f.rota }, h('span', { class: 'rot' }, f.titulo))));
+      const btn = h('button', { type: 'button', class: 'grupo-btn', 'data-rota': m.rota, 'data-rotas': filhos.map((f) => f.rota || m.rota).join(','), 'aria-expanded': 'false', title: m.titulo },
         icone(m.icone), h('span', { class: 'rot' }, m.titulo), icone('baixo', 'seta'));
       btn.addEventListener('click', () => {
         const aberto = btn.getAttribute('aria-expanded') === 'true';
