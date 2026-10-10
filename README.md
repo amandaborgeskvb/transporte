@@ -69,8 +69,10 @@ justificado**. O sistema reproduz o modelo original e mantém as característica
 - **Fluxo:** *Aguardando assinatura → Assinada → Descontado* (ou *Cancelada*, com motivo). Dá para anexar a **cópia assinada** (PDF/JPG/PNG).
   Só é possível editar enquanto aguarda assinatura. Tudo fica na auditoria.
 - **Ligação com a viagem:** quando há **saldo a devolver**, a viagem mostra *Gerar autorização de desconto (RE. 0150.09)* já com o
-  funcionário, o valor (saldo sem autorização) e o texto "SALDO DE ADIANTAMENTO DA VIAGEM …". O desconto concluído abate o saldo a
-  devolver da viagem. Há também a aba **Descontos (RE)** na viagem.
+  funcionário, o valor (saldo sem autorização) e o texto "SALDO DE ADIANTAMENTO DA VIAGEM … (DESTINO), DE <saída> A <retorno>".
+  Na **Nova autorização** também dá para escolher a **programação de viagem** (lista com as viagens que têm saldo a devolver
+  em primeiro lugar): o formulário preenche funcionário, valor sugerido e "referente a" (trocar o funcionário desfaz a ligação).
+  O desconto concluído abate o saldo a devolver da viagem. Há também a aba **Descontos (RE)** na viagem.
 - **Folha de pagamento:** **Exportar CSV** na lista (matrícula, valor, parcelas, valor da parcela, competência inicial, situação…).
 
 Diferenças em relação à planilha (melhorias): valores com separador de milhar e centavos (R$ 1.000,00); o mês de "A PARTIR DE"

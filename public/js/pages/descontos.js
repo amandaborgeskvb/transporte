@@ -9,6 +9,8 @@ import { mesaRE, ajustarEscala } from '../re.js';
 const GESTORES = ['administrador', 'financeiro'];
 const MOTIVOS = [['mau_uso', 'Mau uso'], ['sumico', 'Sumiço'], ['aquisicao', 'Aquisição'], ['outros', 'Outros']];
 const hojeISO = () => new Date().toLocaleDateString('sv-SE');
+// Texto "referente a" montado a partir da programação da viagem
+const textoReferente = (v) => `SALDO DE ADIANTAMENTO DA VIAGEM ${v.numero} (${String(v.destino).toUpperCase()}), DE ${dataBR(v.data_saida)} A ${dataBR(v.data_retorno)}`.slice(0, 300);
 const primeiroDiaProximoMes = () => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth() + 1, 1).toLocaleDateString('sv-SE'); };
 
 // ---------------- Lista ----------------
@@ -171,14 +173,63 @@ export async function formularioPagina({ params, query, usuario, ir }) {
   } else if (query.viagem) {
     const v = await get(`/viagens/${query.viagem}`);
     viagem = v;
-    inicial = { ...inicial, funcionario_id: v.funcionario_id, valor: v.desconto_sugerido || '', viagem_id: v.id, referente: `SALDO DE ADIANTAMENTO DA VIAGEM ${v.numero} (${v.destino.toUpperCase()})` };
+    inicial = { ...inicial, funcionario_id: v.funcionario_id, valor: v.desconto_sugerido || '', viagem_id: v.id, referente: textoReferente(v) };
   }
   const estado = { ...inicial };
+  let referenteAuto = !editando && viagem ? estado.referente : ''; // último texto preenchido pela viagem (pode ser trocado quando escolher outra)
+  let viagemSel = viagem; // viagem escolhida (da lista ou da URL)
+  let viagens = [];
 
   const campoFunc = campoFuncionario({
-    funcionarios: c.funcionarios, valor: estado.funcionario_id, rotulo: 'Funcionário (matrícula ou nome)', obrigatorio: true, bloqueado: !!viagem, // a viagem define o funcionário
-    aoMudar: (f) => { estado.funcionario_id = f ? f.id : ''; previa(); },
+    funcionarios: c.funcionarios, valor: estado.funcionario_id, rotulo: 'Funcionário (matrícula ou nome)', obrigatorio: true, bloqueado: editando && !!viagem, // a viagem define o funcionário
+    aoMudar: (f) => {
+      estado.funcionario_id = f ? f.id : '';
+      if (!editando && viagemSel && (!f || f.id !== viagemSel.funcionario_id)) escolherViagem(null); // outro funcionário: a viagem escolhida não vale mais
+      if (!editando) carregarViagens();
+      previa();
+    },
   });
+
+  // ---- Programação de viagem (opcional): preenche funcionário, valor sugerido e "referente a" ----
+  const selViagem = h('select', { name: 'viagem_id', 'aria-label': 'Programação de viagem', onchange: (e) => escolherViagem(viagens.find((x) => String(x.id) === e.target.value) || null) });
+  const rotuloViagem = (v) => `${v.numero} · ${v.destino} · ${v.funcionario_nome} · ${dataBR(v.data_saida)}${v.desconto_sugerido > 0 ? ` · saldo a devolver ${brl(v.desconto_sugerido)}` : ''}`;
+  function desenharOpcoesViagem() {
+    const lista = viagemSel && !viagens.some((x) => x.id === viagemSel.id) ? [viagemSel, ...viagens] : viagens;
+    const comSaldo = lista.filter((x) => x.desconto_sugerido > 0);
+    const demais = lista.filter((x) => !(x.desconto_sugerido > 0));
+    const opcao = (x) => h('option', { value: x.id, selected: viagemSel?.id === x.id }, rotuloViagem(x));
+    selViagem.replaceChildren(h('option', { value: '' }, 'Nenhuma (autorização avulsa)'),
+      comSaldo.length ? h('optgroup', { label: 'Com saldo a devolver' }, comSaldo.map(opcao)) : null,
+      demais.length ? h('optgroup', { label: 'Outras viagens' }, demais.map(opcao)) : null);
+    selViagem.value = viagemSel ? String(viagemSel.id) : '';
+  }
+  async function carregarViagens() {
+    const q = estado.funcionario_id ? `?funcionario_id=${estado.funcionario_id}` : '';
+    try { viagens = (await get(`/viagens${q}`)).filter((x) => x.status_codigo !== 'cancelada'); } catch { viagens = []; }
+    desenharOpcoesViagem();
+  }
+  function escolherViagem(v) {
+    viagemSel = v;
+    estado.viagem_id = v ? v.id : null;
+    if (v) {
+      if (String(estado.funcionario_id) !== String(v.funcionario_id)) campoFunc.definir(v.funcionario_id);
+      if (v.desconto_sugerido > 0) { estado.valor = v.desconto_sugerido; form.elements.valor.value = v.desconto_sugerido; }
+      if (!String(estado.referente).trim() || estado.referente === referenteAuto) {
+        referenteAuto = textoReferente(v);
+        estado.referente = referenteAuto;
+        form.elements.referente.value = referenteAuto;
+      }
+    } else if (estado.referente === referenteAuto) { referenteAuto = ''; estado.referente = ''; form.elements.referente.value = ''; }
+    desenharOpcoesViagem();
+    atualizarDicasViagem();
+    previa();
+  }
+  const dicaViagem = h('small', { class: 'dica' });
+  function atualizarDicasViagem() {
+    dicaViagem.textContent = viagemSel
+      ? (viagemSel.desconto_sugerido > 0 ? `Saldo a devolver sugerido: ${brl(viagemSel.desconto_sugerido)} (adiantamento pago − despesas aprovadas, sem descontos já emitidos).` : 'Esta viagem não tem saldo a devolver; informe o valor manualmente.')
+      : 'Escolha a viagem para preencher funcionário, valor e "referente a" automaticamente.';
+  }
 
   const num = (nome, rotulo, extra = {}) => h('label', { class: extra.cheio ? 'cheio' : '' }, rotulo, h('input', {
     type: extra.tipo || 'number', name: nome, value: estado[nome] ?? '', step: extra.passo, min: extra.min, max: extra.max, required: true,
@@ -198,8 +249,8 @@ export async function formularioPagina({ params, query, usuario, ir }) {
 
   const form = h('form', { class: 'card re-form' },
     h('div', { class: 'card-topo' }, h('h2', {}, editando ? 'Editar autorização' : 'Dados da autorização')),
-    viagem ? h('p', { class: 'perfil-caixa' }, 'Ligada à viagem ', h('a', { href: `#/viagens/${viagem.id}` }, `${viagem.numero} · ${viagem.destino}`),
-      !editando && viagem.desconto_sugerido ? ` — saldo a devolver sugerido: ${brl(viagem.desconto_sugerido)}` : '') : null,
+    editando && viagem ? h('p', { class: 'perfil-caixa' }, 'Ligada à viagem ', h('a', { href: `#/viagens/${viagem.id}` }, `${viagem.numero} · ${viagem.destino}`)) : null,
+    editando ? null : h('label', { class: 'cheio' }, 'Programação de viagem (opcional)', selViagem, dicaViagem),
     campoFunc,
     h('div', { class: 'form-grid' },
       num('valor', 'Valor do desconto (R$) *', { passo: '0.01', min: '0.01' }),
@@ -257,6 +308,7 @@ export async function formularioPagina({ params, query, usuario, ir }) {
     } catch (err) { erro.textContent = err.message; enviar.disabled = false; }
   });
   atualizarDicas();
+  if (!editando) { desenharOpcoesViagem(); atualizarDicasViagem(); carregarViagens(); }
   previa();
 
   return [
