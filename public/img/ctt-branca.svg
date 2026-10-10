@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 156 34" width="156" height="34" role="img" aria-label="CTT — Transporte">
+  <g fill="none" stroke="#fff" stroke-width="5.5" stroke-linecap="butt" stroke-linejoin="miter">
+    <path d="M25 8.5A10.5 10.5 0 1 0 25 25.5"/>
+    <path d="M32 5.5h22M43 5.5V28"/>
+    <path d="M58 5.5h22M69 5.5V28"/>
+  </g>
+  <rect x="86" y="5" width="2.5" height="23" fill="#7fd28b"/>
+  <text x="94" y="19.5" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="8" letter-spacing=".5">TRANSPORTE</text>
+</svg>

@@ -1,4 +1,4 @@
-/* ===== CRV Industrial · Gestão de Viagens e Despesas =====
+/* ===== CRV Industrial · TRANSPORTE - CTT · viagens e despesas =====
    Identidade: azul #28549c e verde #74c04c (logomarca). Layout inspirado no padrão dos sistemas
    corporativos da empresa (barra superior com linha verde, menu lateral por grupos, telas lista + detalhe). */
 
@@ -316,7 +316,7 @@ dialog h2 { margin-bottom: 8px; font-family: var(--fonte-titulo); font-size: 1.4
 .login { min-height: 100vh; display: grid; place-items: center; padding: 16px; background: radial-gradient(1100px 560px at 15% -10%, #2b57a6, transparent 60%), linear-gradient(160deg, var(--nav), var(--nav-2)); position: relative; }
 .login::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: var(--acento); }
 .login-card { background: var(--card); width: min(400px, 100%); border-radius: 14px; padding: 30px 28px 22px; text-align: center; box-shadow: var(--sombra-2); border-top: 4px solid var(--acento); }
-.login-card .logo { width: 220px; max-width: 80%; height: auto; margin: 0 auto 6px; display: block; }
+.login-card .logo { width: 220px; max-width: 80%; height: auto; margin: 0 auto 6px; }
 .login-card h1 { margin: 10px 0 2px; color: var(--marca-txt); font-size: 1.7rem; }
 .login-card label { text-align: left; }
 .login-card button[type=submit] { width: 100%; margin-top: 4px; justify-content: center; padding: 9px; }
@@ -445,3 +445,9 @@ label.faltando select { border-color: var(--bad); }
 .func-info dd { margin: 0; color: var(--txt); font-size: .84rem; }
 .dica.aviso { color: var(--warn); }
 .perfil-caixa .func-info { background: transparent; border: 0; padding: 0; }
+
+/* Login: mostra só a versão da logo adequada ao tema */
+.login-card .logo-claro { display: block; }
+.login-card .logo-escuro { display: none; }
+html[data-tema="escuro"] .login-card .logo-claro { display: none; }
+html[data-tema="escuro"] .login-card .logo-escuro { display: block; }

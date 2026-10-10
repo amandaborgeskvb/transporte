@@ -250,12 +250,12 @@ function montarApp() {
   document.addEventListener('click', () => { menuUsuario.hidden = true; });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') menuUsuario.hidden = true; });
 
-  const logo = h('img', { class: 'logo-topo', src: '/img/crv-industrial-branca.png', alt: 'CRV Industrial — Açúcar, Etanol e Energia', width: 104, height: 34 });
+  const logo = h('img', { class: 'logo-topo', src: '/img/ctt-branca.svg', alt: 'CTT — Transporte', width: 156, height: 34 });
 
   app = h('div', { class: 'app', 'data-nav': lembrado('nav') === 'recolhido' ? 'recolhido' : 'aberto' },
     h('header', { class: 'topbar' },
       h('button', { type: 'button', class: 'icone-btn', 'aria-label': 'Abrir ou recolher o menu', onclick: alternarMenu }, icone('menu')),
-      h('div', { class: 'titulo-app' }, h('strong', {}, 'Gestão de Viagens'), h('small', {}, `${MARCA} · Despesas e prestação de contas`)),
+      h('div', { class: 'titulo-app' }, h('strong', {}, 'TRANSPORTE - CTT'), h('small', {}, `${MARCA} · Viagens, despesas e prestação de contas`)),
       montarBusca(),
       h('div', { class: 'topbar-dir' }, botaoTema(), chip, logo)),
     montarMenu(),
@@ -273,7 +273,7 @@ function telaLogin(aviso) {
   const form = h('form', { class: 'login-card' },
     h('img', { class: 'logo logo-claro', src: '/img/crv-industrial-azul.png', alt: 'CRV Industrial — Açúcar, Etanol e Energia', width: 220, height: 71 }),
     h('img', { class: 'logo logo-escuro', src: '/img/crv-industrial-branca.png', alt: 'CRV Industrial — Açúcar, Etanol e Energia', width: 220, height: 71 }),
-    h('h1', {}, 'Gestão de Viagens e Despesas'),
+    h('h1', {}, 'TRANSPORTE - CTT'),
     h('p', { class: 'muted' }, 'Acesse com seu usuário e senha'),
     h('label', {}, 'Usuário', h('input', { name: 'usuario', autocomplete: 'username', required: true, autofocus: true })),
     h('label', {}, 'Senha', h('input', { name: 'senha', type: 'password', autocomplete: 'current-password', required: true })),
