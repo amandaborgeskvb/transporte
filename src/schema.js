@@ -418,10 +418,15 @@ ON CONFLICT (codigo) DO NOTHING;
 -- Gratificação rescisória: parâmetros iniciais (editáveis em Gratificação rescisória → Parâmetros)
 INSERT INTO grat_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
--- Cargos que assinam o demonstrativo (os nomes são preenchidos pelo administrador em Parâmetros)
+-- Quem assina o demonstrativo (como no modelo da aba Diversos); editável em Gratificação rescisória → Parâmetros
 INSERT INTO grat_signatarios (cargo, ordem)
 SELECT c, o FROM (VALUES ('COORDENADOR AGRÍCOLA', 1), ('GERENTE TRANSPORTE E MECANIZAÇÃO', 2), ('SUPERINTENDENTE AGRÍCOLA', 3), ('GERENTE EXECUTIVO', 4)) AS v(c, o)
 WHERE NOT EXISTS (SELECT 1 FROM grat_signatarios);
+-- Nomes do modelo; só preenche quem ainda está sem nome (não sobrescreve o que o administrador alterou)
+UPDATE grat_signatarios s SET nome = v.nome
+FROM (VALUES ('COORDENADOR AGRÍCOLA', '29117 - AURENIO DE OLIVEIRA LIMA'), ('GERENTE TRANSPORTE E MECANIZAÇÃO', '34939 - JOAO EDUARDO DOS SANTOS'),
+             ('SUPERINTENDENTE AGRÍCOLA', 'CLOVES RODRIGUES DE OLIVEIRA JUNIOR'), ('GERENTE EXECUTIVO', 'LEONARDO DIAS ALMEIDA')) AS v(cargo, nome)
+WHERE s.cargo = v.cargo AND s.nome = '';
 
 INSERT INTO grat_criterios (tipo_rescisao, pagar_bpp, pagar_zelo, pagar_prod) VALUES
   ('PEDIDO DE DEMISSÃO',             true,  true,  true),

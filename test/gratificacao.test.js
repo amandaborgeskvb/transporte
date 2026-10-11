@@ -343,7 +343,7 @@ test('parâmetros: grupo define onde desconta; assinaturas do demonstrativo', as
   const p = (await davi.get('/api/gratificacao/parametros')).corpo;
   assert.deepEqual([p.config.desconto_auxiliar, p.config.desconto_operador], ['bpp', 'prod']);
   assert.deepEqual(p.signatarios.map((x) => x.cargo), ['COORDENADOR AGRÍCOLA', 'GERENTE TRANSPORTE E MECANIZAÇÃO', 'SUPERINTENDENTE AGRÍCOLA', 'GERENTE EXECUTIVO']);
-  assert.ok(p.signatarios.every((x) => x.nome === '')); // os nomes são preenchidos pelo administrador
+  assert.deepEqual(p.signatarios.map((x) => x.nome), ['29117 - AURENIO DE OLIVEIRA LIMA', '34939 - JOAO EDUARDO DOS SANTOS', 'CLOVES RODRIGUES DE OLIVEIRA JUNIOR', 'LEONARDO DIAS ALMEIDA']);
   assert.equal((await davi.put('/api/gratificacao/config', { ...p.config, desconto_auxiliar: 'xx' })).status, 400);
   const s1 = p.signatarios[0];
   const r = await davi.put(`/api/gratificacao/signatarios/${s1.id}`, { ...s1, nome: 'Fulano de Tal' });
