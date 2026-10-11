@@ -13,6 +13,8 @@ const GRUPOS = { auxiliar: 'Auxiliares e demais funções', operador: 'Operadore
 const SIT = { apurada: ['Apurada', 'warn'], paga: ['Paga', 'ok'] };
 const badgeSit = (s) => badgeTom(SIT[s]?.[0] || s, SIT[s]?.[1]);
 const BASE = [['Gratificação rescisória'], ['Apuração']];
+const ESCALAS = [['A', 'Letra A (escala 5×1)'], ['B', 'Letra B (escala 5×1)'], ['C', 'Letra C (escala 5×1)'], ['D', 'Letra D (escala 5×1)'], ['E', 'Letra E (escala 5×1)'], ['F', 'Letra F (escala 5×1)'], ['DOM', 'Folga aos domingos'], ['5X2', 'Folga sábado e domingo (5×2 / ADM)']];
+const valorOuTraco = (v) => (v === null || v === undefined ? '—' : brl(v));
 
 // ======================================================================
 // Apuração
@@ -60,13 +62,14 @@ async function formApuracao({ ir, apuracao }) {
       { nome: 'funcionario_id', rotulo: 'Funcionário (matrícula ou nome)', tipo: 'funcionario', funcionarios: c.funcionarios, valor: apuracao?.funcionario_id ?? '', obrigatorio: true, somenteAtivos: false, cheio: true },
       { nome: 'criterio_id', rotulo: 'Tipo de rescisão', tipo: 'select', opcoes: ativos.map((x) => ({ valor: x.id, rotulo: x.tipo_rescisao })), valor: apuracao?.criterio_id, vazio: 'Selecione…', obrigatorio: true, cheio: true },
       { nome: 'dt_rescisao', rotulo: 'Data da rescisão', tipo: 'date', valor: apuracao?.dt_rescisao || hojeISO(), obrigatorio: true },
-      { nome: 'dias_trabalhados', rotulo: 'Dias trabalhados no período', tipo: 'number', passo: '1', min: '0', max: '62', valor: apuracao?.dias_trabalhados, obrigatorio: true, dica: 'Conforme a escala. As faltas e suspensões lançadas em Ocorrências são descontadas automaticamente.' },
+      { nome: 'escala', rotulo: 'Escala de folga (letra)', tipo: 'select', opcoes: ESCALAS.map(([valor, rotulo]) => ({ valor, rotulo })), valor: apuracao?.escala || '', vazio: 'Sem escala (informar os dias)', dica: 'Com a letra de folga, os dias trabalhados do ciclo (dia 16 até a rescisão) são contados pelo calendário de folgas, como na aba BD.' },
+      { nome: 'dias_trabalhados', rotulo: 'Dias trabalhados (opcional)', tipo: 'number', passo: '1', min: '0', max: '62', valor: apuracao?.dias_trabalhados ?? '', dica: 'Preencha só para substituir a contagem pela escala. As ocorrências (faltas, suspensão…) são descontadas depois.' },
       { nome: 'grupo', rotulo: 'Grupo da função', tipo: 'select', opcoes: [{ valor: 'auxiliar', rotulo: GRUPOS.auxiliar }, { valor: 'operador', rotulo: GRUPOS.operador }], valor: apuracao?.grupo || '', vazio: 'Automático (pela função)', cheio: true },
       { nome: 'observacao', rotulo: 'Observação', tipo: 'textarea', valor: apuracao?.observacao, cheio: true, max: 300 },
     ],
     confirmar: apuracao ? 'Salvar' : 'Calcular e salvar',
     aoSalvar: async (v) => {
-      const corpo = { ...v, dias_trabalhados: Number(v.dias_trabalhados) };
+      const corpo = { ...v, dias_trabalhados: v.dias_trabalhados === '' ? null : Number(v.dias_trabalhados) };
       if (apuracao) { await put(`/gratificacao/rescisoes/${apuracao.id}`, corpo); ir(`#/gratificacao/apuracao/${apuracao.id}`); } else { const r = await post('/gratificacao/rescisoes', corpo); ir(`#/gratificacao/apuracao/${r.id}`); }
     },
   });
@@ -110,6 +113,9 @@ async function detalheApuracao({ params, ir, recarregarPagina }) {
       kpi('Bruto proporcional', brl(c.bruto), { icone: 'documento' }),
       kpi('Desconto', brl(c.desconto), { sub: `${pct(c.desconto_pct)} das ocorrências`, tom: c.desconto ? 'alerta' : 'neutro', icone: 'proibido' }),
       kpi('Dias a pagar', `${c.dias_pagar} de ${c.base_dias}`, { sub: `${pct(c.proporcao)} da média`, icone: 'calendario' })),
+    h('div', { class: 'kpis compactos' },
+      kpi('Gratificação em folha', brl(c.folha), { sub: 'Produtividade líquida (Diversos!V)', icone: 'carteira' }),
+      kpi('Cartão prêmio', brl(c.cartao_premio), { sub: 'BPP + Zelo/Equipamento (LISTA BPP)', icone: 'carteira' })),
     secao('Composição', null, h('div', { class: 'scroll' }, h('table', {},
       h('thead', {}, h('tr', {}, ['Componente', `Média (${c.meses.length} mês${c.meses.length === 1 ? '' : 'es'})`, 'Pago nesta rescisão?', 'Proporcional', 'Desconto', 'A receber'].map((t, i) => h('th', { class: i > 0 && i !== 2 ? 'num' : '' }, t)))),
       h('tbody', {}, componentes.map((l) => h('tr', {}, l.map((v, i) => h('td', { class: i > 0 && i !== 2 ? 'num' : '' }, v))))),
@@ -119,15 +125,16 @@ async function detalheApuracao({ params, ir, recarregarPagina }) {
         dado('Tipo de rescisão', `${r.tipo_rescisao} · ${dataBR(r.dt_rescisao)}`),
         dado('Grupo da função', `${GRUPOS[c.grupo]}${r.grupo ? ' (informado)' : ' (pela função)'}`),
         dado('Meses da média', c.meses.length ? c.meses.map(mesRotulo).join(', ') : 'nenhum mês informado'),
-        dado('Dias', `${c.dias_trabalhados} trabalhados − ${c.dias_descontados} descontados = ${c.dias_pagar} (base ${c.base_dias})`),
-        dado('Período das ocorrências', `${dataBR(c.periodo.inicio)} a ${dataBR(c.periodo.fim)}`),
+        dado('Dias', `${c.dias_trabalhados} trabalhados − ${c.dias_descontados} das ocorrências = ${c.dias_pagar} a pagar (base ${c.base_dias})`),
+        dado('Origem dos dias trabalhados', c.dias_informados ? 'informados na apuração' : c.escala ? `escala ${ESCALAS.find(([k]) => k === c.escala)?.[1] || c.escala}` : '—'),
+        dado('Período (ciclo)', `${dataBR(c.periodo.inicio)} a ${dataBR(c.periodo.fim)}`),
         r.paga_em ? dado('Paga em', dataBR(r.paga_em)) : null,
         r.observacao ? dado('Observação', r.observacao) : null)),
       secao('Ocorrências do período', null, c.ocorrencias.length ? tabela([
         { t: 'Data', cls: 'nowrap', f: (o) => dataBR(o.data) },
         { t: 'Tipo', f: (o) => [h('strong', {}, o.abrev), h('div', { class: 'muted pequeno' }, o.descricao || 'sem parâmetro')] },
         { t: 'Desconto', num: true, f: (o) => pct(o.percentual) },
-        { t: 'Dia', f: (o) => (o.desconta_dia ? '−1 dia' : '') },
+        { t: 'Dias', f: (o) => (o.dias_desconto ? `−${o.dias_desconto} dia${o.dias_desconto > 1 ? 's' : ''}` : '') },
       ], c.ocorrencias) : vazio('Nenhuma ocorrência no período.'))),
   ].filter(Boolean);
 }
@@ -188,7 +195,7 @@ async function paginaValores({ query, ir, recarregarPagina }) {
       const s = r.resumo;
       const amostra = (lista) => tabela([
         { t: 'Linha', num: true, f: (x) => x.linha }, { t: 'Matrícula', f: (x) => [x.matricula, x.no_cadastro ? '' : h('small', { class: 'muted' }, ' (fora do cadastro)')] },
-        { t: 'Mês', f: (x) => mesRotulo(x.mes) }, { t: 'BPP', num: true, f: (x) => brl(x.bpp) }, { t: 'Zelo/Equip.', num: true, f: (x) => brl(x.zelo) }, { t: 'Produtividade', num: true, f: (x) => brl(x.prod) },
+        { t: 'Mês', f: (x) => mesRotulo(x.mes) }, { t: 'BPP', num: true, f: (x) => valorOuTraco(x.bpp) }, { t: 'Zelo/Equip.', num: true, f: (x) => valorOuTraco(x.zelo) }, { t: 'Produtividade', num: true, f: (x) => valorOuTraco(x.prod) },
       ], lista);
       area.replaceChildren(h('section', { class: 'card' },
         h('div', { class: 'card-topo' }, h('h2', {}, 'Prévia'), h('span', { class: 'muted pequeno' }, `${fmt(s.linhas)} linhas · meses: ${s.meses.map((m) => mesRotulo(`${m}-01`)).join(', ') || '—'}`)),
@@ -213,9 +220,9 @@ async function paginaValores({ query, ir, recarregarPagina }) {
     campos: [
       { nome: 'funcionario_id', rotulo: 'Funcionário (matrícula ou nome)', tipo: 'funcionario', funcionarios: c.funcionarios, obrigatorio: true, somenteAtivos: false, cheio: true },
       { nome: 'mes', rotulo: 'Mês', tipo: 'month', valor: hojeISO().slice(0, 7), obrigatorio: true },
-      { nome: 'bpp', rotulo: 'BPP (R$)', tipo: 'number', passo: '0.01', min: '0', valor: 0 },
-      { nome: 'zelo', rotulo: 'Zelo / Equipamento (R$)', tipo: 'number', passo: '0.01', min: '0', valor: 0 },
-      { nome: 'prod', rotulo: 'Produtividade (R$)', tipo: 'number', passo: '0.01', min: '0', valor: 0 },
+      { nome: 'bpp', rotulo: 'BPP (R$)', tipo: 'number', passo: '0.01', min: '0', dica: 'Vazio = não entra na média.' },
+      { nome: 'zelo', rotulo: 'Zelo / Equipamento (R$)', tipo: 'number', passo: '0.01', min: '0' },
+      { nome: 'prod', rotulo: 'Produtividade (R$)', tipo: 'number', passo: '0.01', min: '0' },
     ], confirmar: 'Salvar', aoSalvar: (v) => post('/gratificacao/valores', v),
   }).then((s) => { if (s) { toast('Valor salvo.'); recarregarPagina(); } });
 
@@ -232,7 +239,7 @@ async function paginaValores({ query, ir, recarregarPagina }) {
       { t: 'Matrícula', cls: 'nowrap', f: (v) => v.matricula },
       { t: 'Funcionário', f: (v) => v.funcionario_nome || h('span', { class: 'muted' }, 'fora do cadastro') },
       { t: 'Mês', f: (v) => mesRotulo(v.mes) },
-      { t: 'BPP', num: true, f: (v) => brl(v.bpp) }, { t: 'Zelo/Equip.', num: true, f: (v) => brl(v.zelo) }, { t: 'Produtividade', num: true, f: (v) => brl(v.prod) },
+      { t: 'BPP', num: true, f: (v) => valorOuTraco(v.bpp) }, { t: 'Zelo/Equip.', num: true, f: (v) => valorOuTraco(v.zelo) }, { t: 'Produtividade', num: true, f: (v) => valorOuTraco(v.prod) },
       { t: 'Origem', f: (v) => h('small', { class: 'muted' }, v.origem || '') },
       { t: '', f: (v) => botao('Excluir', async () => { if (await confirmar('Excluir valor', `${v.funcionario_nome || v.matricula} · ${mesRotulo(v.mes)}`, { rotulo: 'Excluir', perigo: true })) { await del(`/gratificacao/valores/${v.id}`); recarregarPagina(); } }, { tom: 'perigo sec', pequeno: true }) },
     ], itens, { vazioMsg: 'Nenhum valor mensal cadastrado. Envie o arquivo acima.' })),
@@ -317,14 +324,14 @@ async function paginaParametros({ recarregarPagina }) {
       { nome: 'descricao', rotulo: 'Descrição', valor: x?.descricao, obrigatorio: true, max: 80, cheio: true },
       { nome: 'abrev', rotulo: 'Abreviação', valor: x?.abrev, obrigatorio: true, max: 12 },
       { nome: 'percentual', rotulo: 'Desconto (%)', tipo: 'number', passo: '0.01', min: '0', max: '100', valor: x ? Math.round(x.percentual * 10000) / 100 : '', obrigatorio: true },
-      { nome: 'desconta_dia', rotulo: 'Também desconta 1 dia trabalhado (faltas, suspensão, licença)', tipo: 'checkbox', valor: x?.desconta_dia ?? false, cheio: true },
+      { nome: 'dias_desconto', rotulo: 'Dias trabalhados descontados por ocorrência', tipo: 'number', passo: '1', min: '0', max: '5', valor: x?.dias_desconto ?? 1, obrigatorio: true, dica: 'Na planilha: toda ocorrência que não é ADV tira 1 dia; a suspensão tira 2.' },
     ], confirmar: 'Salvar',
-    aoSalvar: (v) => { const corpo = { ...v, grupo: x?.grupo || grupo, percentual: Number(v.percentual) / 100 }; return x ? put(`/gratificacao/penalidades/${x.id}`, corpo) : post('/gratificacao/penalidades', corpo); },
+    aoSalvar: (v) => { const corpo = { ...v, grupo: x?.grupo || grupo, percentual: Number(v.percentual) / 100, dias_desconto: Number(v.dias_desconto) }; return x ? put(`/gratificacao/penalidades/${x.id}`, corpo) : post('/gratificacao/penalidades', corpo); },
   }).then((s) => { if (s) { toast('Desconto salvo.'); recarregarPagina(); } });
 
   const tabelaGrupo = (grupo) => secao(GRUPOS[grupo], botao('Novo', () => editarPenalidade(null, grupo), { tom: 'sec', pequeno: true, icone: 'mais' }),
     tabela([
-      { t: 'Descrição', f: (x) => x.descricao }, { t: 'Abrev.', f: (x) => h('strong', {}, x.abrev) }, { t: '%', num: true, f: (x) => pct(x.percentual) }, { t: 'Desc. dia', f: (x) => sim(x.desconta_dia) },
+      { t: 'Descrição', f: (x) => x.descricao }, { t: 'Abrev.', f: (x) => h('strong', {}, x.abrev) }, { t: '%', num: true, f: (x) => pct(x.percentual) }, { t: 'Dias', num: true, f: (x) => x.dias_desconto },
       { t: '', f: (x) => h('span', { class: 'acoes' }, botao('Editar', () => editarPenalidade(x, grupo), { tom: 'sec', pequeno: true }),
         botao('Excluir', async () => { if (await confirmar('Excluir desconto', `${x.abrev} — ${x.descricao}`, { rotulo: 'Excluir', perigo: true })) { await del(`/gratificacao/penalidades/${x.id}`); recarregarPagina(); } }, { tom: 'perigo sec', pequeno: true })) },
     ], p.penalidades.filter((x) => x.grupo === grupo)));
@@ -366,6 +373,9 @@ async function paginaRelatorio({ query, ir }) {
     h('div', { class: 'kpis compactos' },
       kpi('Colaboradores', fmt(totais.qtd), { icone: 'usuarios' }), kpi('BPP', brl(totais.bpp), { icone: 'carteira' }), kpi('Zelo / Equip.', brl(totais.zelo), { icone: 'carteira' }),
       kpi('Produtividade', brl(totais.prod), { icone: 'carteira' }), kpi('Descontos', brl(totais.desconto), { tom: totais.desconto ? 'alerta' : 'neutro', icone: 'proibido' }), kpi('Total a receber', brl(totais.total), { tom: 'ok', icone: 'ok' })),
+    h('div', { class: 'kpis compactos' },
+      kpi('Gratificação em folha', brl(totais.folha), { sub: 'Produtividade líquida', icone: 'documento' }),
+      kpi('Depósito cartão prêmio', brl(totais.cartao_premio), { sub: 'BPP + Zelo/Equipamento', icone: 'carteira' })),
     h('div', { class: 'card' }, tabela([
       { t: 'Departamento', f: (r) => r.funcionario_setor || '—' },
       { t: 'Matrícula', cls: 'nowrap', f: (r) => r.funcionario_matricula },
@@ -374,6 +384,7 @@ async function paginaRelatorio({ query, ir }) {
       { t: 'Média Zelo', num: true, f: (r) => brl(r.calculo.zelo.media) }, { t: 'Receber Zelo', num: true, f: (r) => brl(r.calculo.zelo.receber) },
       { t: 'Média Prod.', num: true, f: (r) => brl(r.calculo.prod.media) }, { t: 'Receber Prod.', num: true, f: (r) => brl(r.calculo.prod.receber) },
       { t: 'Dias', num: true, f: (r) => `${r.calculo.dias_pagar}/${r.calculo.base_dias}` },
+      { t: 'Folha', num: true, f: (r) => brl(r.calculo.folha) }, { t: 'Cartão prêmio', num: true, f: (r) => brl(r.calculo.cartao_premio) },
       { t: 'Tipo de rescisão', f: (r) => r.tipo_rescisao }, { t: 'Rescisão', cls: 'nowrap', f: (r) => dataBR(r.dt_rescisao) },
       { t: 'Total a receber', num: true, f: (r) => h('strong', {}, brl(r.calculo.total)) },
       { t: 'Situação', f: (r) => badgeSit(r.situacao) },

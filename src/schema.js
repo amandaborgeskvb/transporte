@@ -259,8 +259,8 @@ CREATE TABLE IF NOT EXISTS grat_config (
   base_dias         INTEGER NOT NULL DEFAULT 25 CHECK (base_dias BETWEEN 1 AND 31),
   meses_media       INTEGER NOT NULL DEFAULT 3 CHECK (meses_media BETWEEN 1 AND 12),
   dia_corte         INTEGER NOT NULL DEFAULT 16 CHECK (dia_corte BETWEEN 1 AND 28),
-  descontar_bpp     BOOLEAN NOT NULL DEFAULT true,
-  descontar_zelo    BOOLEAN NOT NULL DEFAULT true,
+  descontar_bpp     BOOLEAN NOT NULL DEFAULT false,
+  descontar_zelo    BOOLEAN NOT NULL DEFAULT false,
   descontar_prod    BOOLEAN NOT NULL DEFAULT true,
   palavras_operador TEXT NOT NULL DEFAULT 'MOTORISTA, OPERADOR'
 );
@@ -329,6 +329,27 @@ CREATE TABLE IF NOT EXISTS grat_rescisoes (
 );
 CREATE INDEX IF NOT EXISTS grat_rescisoes_func_idx ON grat_rescisoes (funcionario_id, dt_rescisao);
 
+-- Ajustes para seguir as fórmulas da planilha (idempotentes):
+-- valores vazios não entram na média; dias descontados por ocorrência; escala de folga na apuração
+ALTER TABLE grat_valores ALTER COLUMN bpp DROP NOT NULL, ALTER COLUMN bpp DROP DEFAULT,
+  ALTER COLUMN zelo DROP NOT NULL, ALTER COLUMN zelo DROP DEFAULT,
+  ALTER COLUMN prod DROP NOT NULL, ALTER COLUMN prod DROP DEFAULT;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'grat_penalidades' AND column_name = 'dias_desconto') THEN
+    ALTER TABLE grat_penalidades ADD COLUMN dias_desconto INTEGER NOT NULL DEFAULT 1 CHECK (dias_desconto BETWEEN 0 AND 5);
+    UPDATE grat_penalidades SET dias_desconto = CASE WHEN abrev = 'ADV' OR abrev = 'DISP_MEC' THEN 0 WHEN abrev = 'SS' THEN 2 ELSE 1 END;
+  END IF;
+END $$;
+ALTER TABLE grat_rescisoes ADD COLUMN IF NOT EXISTS escala TEXT;
+ALTER TABLE grat_rescisoes ALTER COLUMN dias_trabalhados DROP NOT NULL;
+-- Padrões da planilha nas instalações que ainda não mexeram nos parâmetros: desconto só na produtividade;
+-- "sem justa causa" paga o Zelo (a fórmula só zera na justa causa; o texto do critério fala apenas do BPP)
+UPDATE grat_config SET descontar_bpp = false, descontar_zelo = false
+  WHERE descontar_bpp AND descontar_zelo AND descontar_prod AND NOT EXISTS (SELECT 1 FROM auditoria WHERE entidade = 'grat_config');
+UPDATE grat_criterios SET pagar_zelo = true
+  WHERE tipo_rescisao = 'DEMISSÃO S/ J. CAUSA' AND NOT pagar_zelo AND NOT EXISTS (SELECT 1 FROM auditoria WHERE entidade = 'grat_criterio');
+
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,
   tipo         TEXT NOT NULL,
@@ -383,7 +404,7 @@ INSERT INTO grat_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO grat_criterios (tipo_rescisao, pagar_bpp, pagar_zelo, pagar_prod) VALUES
   ('PEDIDO DE DEMISSÃO',             true,  true,  true),
-  ('DEMISSÃO S/ J. CAUSA',           false, false, true),
+  ('DEMISSÃO S/ J. CAUSA',           false, true,  true),
   ('TERMINO CONTRATO - FIM DE SAFRA', true,  true,  true),
   ('FALECIMENTO',                    true,  true,  true),
   ('DEMISSÃO C/ J. CAUSA',           false, false, false),
@@ -391,25 +412,25 @@ INSERT INTO grat_criterios (tipo_rescisao, pagar_bpp, pagar_zelo, pagar_prod) VA
   ('TERMINO CONTRATO',               true,  true,  true)
 ON CONFLICT (tipo_rescisao) DO NOTHING;
 
-INSERT INTO grat_penalidades (grupo, abrev, descricao, percentual, desconta_dia) VALUES
-  ('auxiliar', 'NC',  'NÃO CONFORMIDADE',        0.04, false),
-  ('auxiliar', 'ADV', 'ADVERTÊNCIA',             0.50, false),
-  ('auxiliar', 'SS',  'SUSPENSÃO',               1.00, true),
-  ('auxiliar', 'ST',  'SEGURANÇA TRABALHO',      0.50, false),
-  ('auxiliar', 'FJ',  'FALTA JUSTIFICADA',       0.04, true),
-  ('auxiliar', 'FF',  'FALTA INJUSTIFICADA',     0.50, true),
-  ('auxiliar', 'L',   'ATESTADOS E LICENÇAS',    0.04, true),
-  ('auxiliar', 'FÉ',  'FÉRIAS',                  0,    false),
-  ('auxiliar', 'ACT', 'ACIDENTE NO TRABALHO',    0,    false),
-  ('operador', 'NC',  'NÃO CONFORMIDADE',        0.04, false),
-  ('operador', 'ADV', 'ADVERTÊNCIA',             0.05, false),
-  ('operador', 'SS',  'SUSPENSÃO',               0.10, true),
-  ('operador', 'FJ',  'FALTA JUSTIFICADA',       0.04, true),
-  ('operador', 'FF',  'FALTA INJUSTIFICADA',     0.05, true),
-  ('operador', 'L',   'ATESTADOS E LICENÇAS',    0.04, true),
-  ('operador', 'DISP_MEC', 'DISPONIBILIDADE MECÂNICA (< 80%)', 0.10, false),
-  ('operador', 'FÉ',  'FÉRIAS',                  0,    false),
-  ('operador', 'ACT', 'ACIDENTE NO TRABALHO',    0,    false)
+INSERT INTO grat_penalidades (grupo, abrev, descricao, percentual, desconta_dia, dias_desconto) VALUES
+  ('auxiliar', 'NC',  'NÃO CONFORMIDADE',        0.04, true,  1),
+  ('auxiliar', 'ADV', 'ADVERTÊNCIA',             0.50, false, 0),
+  ('auxiliar', 'SS',  'SUSPENSÃO',               1.00, true,  2),
+  ('auxiliar', 'ST',  'SEGURANÇA TRABALHO',      0.50, true,  1),
+  ('auxiliar', 'FJ',  'FALTA JUSTIFICADA',       0.04, true,  1),
+  ('auxiliar', 'FF',  'FALTA INJUSTIFICADA',     0.50, true,  1),
+  ('auxiliar', 'L',   'ATESTADOS E LICENÇAS',    0.04, true,  1),
+  ('auxiliar', 'FÉ',  'FÉRIAS',                  0,    true,  1),
+  ('auxiliar', 'ACT', 'ACIDENTE NO TRABALHO',    0,    true,  1),
+  ('operador', 'NC',  'NÃO CONFORMIDADE',        0.04, true,  1),
+  ('operador', 'ADV', 'ADVERTÊNCIA',             0.05, false, 0),
+  ('operador', 'SS',  'SUSPENSÃO',               0.10, true,  2),
+  ('operador', 'FJ',  'FALTA JUSTIFICADA',       0.04, true,  1),
+  ('operador', 'FF',  'FALTA INJUSTIFICADA',     0.05, true,  1),
+  ('operador', 'L',   'ATESTADOS E LICENÇAS',    0.04, true,  1),
+  ('operador', 'DISP_MEC', 'DISPONIBILIDADE MECÂNICA (< 80%)', 0.10, false, 0),
+  ('operador', 'FÉ',  'FÉRIAS',                  0,    true,  1),
+  ('operador', 'ACT', 'ACIDENTE NO TRABALHO',    0,    true,  1)
 ON CONFLICT (grupo, abrev) DO NOTHING;
 `;
 

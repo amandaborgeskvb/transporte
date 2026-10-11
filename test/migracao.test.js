@@ -74,3 +74,25 @@ test('prestações que estavam "enviadas" ficam encerradas e as despesas em aná
   assert.equal((await q('SELECT prestacao_situacao FROM viagens WHERE id=$1', [v])).rows[0].prestacao_situacao, 'aprovada');
   assert.equal((await q('SELECT situacao FROM despesas WHERE viagem_id=$1', [v])).rows[0].situacao, 'aprovada');
 });
+
+test('gratificação: instalação anterior ganha dias por ocorrência, valores sem zero forçado e os padrões das fórmulas', async () => {
+  const { migrate } = require('../src/db');
+  const q = (sql, p) => t.pool.query(sql, p);
+  // estado da versão anterior do módulo
+  await q('ALTER TABLE grat_penalidades DROP COLUMN dias_desconto');
+  await q('UPDATE grat_config SET descontar_bpp = true, descontar_zelo = true, descontar_prod = true');
+  await q(`UPDATE grat_criterios SET pagar_zelo = false WHERE tipo_rescisao = 'DEMISSÃO S/ J. CAUSA'`);
+  await migrate(t.pool);
+  const dias = Object.fromEntries((await q(`SELECT abrev, dias_desconto FROM grat_penalidades WHERE grupo = 'auxiliar'`)).rows.map((r) => [r.abrev, r.dias_desconto]));
+  assert.deepEqual([dias.SS, dias.ADV, dias.FF, dias.NC], [2, 0, 1, 1]);
+  const cfg = (await q('SELECT descontar_bpp, descontar_zelo, descontar_prod FROM grat_config')).rows[0];
+  assert.deepEqual(cfg, { descontar_bpp: false, descontar_zelo: false, descontar_prod: true });
+  assert.equal((await q(`SELECT pagar_zelo FROM grat_criterios WHERE tipo_rescisao = 'DEMISSÃO S/ J. CAUSA'`)).rows[0].pagar_zelo, true);
+  await q(`INSERT INTO grat_valores (matricula, mes, bpp) VALUES ('77', '2026-01-01', 10)`); // zelo e prod ficam vazios
+  assert.deepEqual((await q(`SELECT zelo, prod FROM grat_valores WHERE matricula = '77'`)).rows[0], { zelo: null, prod: null });
+  // se o administrador já mexeu nos parâmetros, a migração não sobrescreve
+  await q(`UPDATE grat_config SET descontar_bpp = true, descontar_zelo = true`);
+  await q(`INSERT INTO auditoria (usuario_nome, acao, entidade, entidade_id, detalhes) VALUES ('adm', 'editar', 'grat_config', 1, '{}')`);
+  await migrate(t.pool);
+  assert.equal((await q('SELECT descontar_bpp FROM grat_config')).rows[0].descontar_bpp, true);
+});

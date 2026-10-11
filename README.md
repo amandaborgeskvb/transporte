@@ -134,15 +134,21 @@ Menu **Gratificação rescisória** (administrador e financeiro), com os subgrup
 | **Relatório de pagamento** | Por departamento: médias, valores a receber, descontos e total; exportação em CSV e impressão. |
 | **Parâmetros** | Regras gerais, critérios por tipo de rescisão e a tabela de descontos por grupo de função. |
 
-Como o valor é calculado (parametrizável em **Parâmetros**):
+Como o valor é calculado: transposição das fórmulas da planilha *GRATIFICAÇÃO - RESCISÓRIA* (parametrizável em **Parâmetros**):
 
-1. **Média dos últimos 3 meses** informados (até o mês da rescisão) de cada componente: BPP, Zelo/Equipamento e Produtividade.
-2. **Critério do tipo de rescisão** (pedido de demissão, sem/com justa causa, fim de safra, falecimento, comum acordo, término de contrato): define se paga BPP, Zelo/Equipamento e Produtividade.
-   Padrão: sem justa causa não paga BPP nem Zelo (paga produtividade); com justa causa não paga nada.
-3. **Proporcional**: média ÷ 25 × dias a pagar (limitado a 100%). *Dias a pagar* = dias trabalhados − dias das ocorrências marcadas como "desconta dia" (faltas, suspensão, licença) no período.
-4. **Desconto por ocorrência**, somado e limitado a 100%, aplicado sobre os componentes escolhidos (padrão: todos). O ciclo vai do dia 16 anterior à rescisão até a data da rescisão.
-   O percentual depende do grupo da função: **auxiliares e demais funções** (NC 4%, ADV 50%, SS 100%, ST 50%, FJ 4%, FF 50%, L 4%) ou **operadores e motoristas**
-   (NC 4%, ADV 5%, SS 10%, FJ 4%, FF 5%, L 4%, DISP_MEC 10%). Quem tem "MOTORISTA" ou "OPERADOR" na função entra no segundo grupo (editável); também dá para escolher o grupo em cada apuração.
+| Etapa | Na planilha | No sistema |
+|---|---|---|
+| Médias | `Digit_Gratif!J:L = AVERAGEIF(MÉDIA_GRAT…)`: tabela dinâmica da aba GRAT filtrada pelos meses | Média de BPP, Zelo/Equip. e Produtividade dos **3 meses de calendário** que terminam no último mês com valores do funcionário (até o mês da rescisão). **Célula vazia não entra na média**; zero entra. |
+| Período | `Diversos!L4 = MÁXIMO(admissão; BD!AT1)`: do dia 16 do ciclo até a rescisão | Do dia 16 anterior à rescisão (ou da admissão, se posterior) até a data da rescisão. |
+| Dias trabalhados | `BD!AU:CT`: calendário "TRAB"/"FOL" pela letra de folga (`BD_Letras`, ciclo A–F) e `BD!AT` = dias trabalhados | Conta os dias "TRAB" pela **escala de folga** escolhida na apuração (letras A–F com o mesmo ciclo do BD_Letras — 01/01/2022 = D —, folga aos domingos ou 5×2). O dia da admissão ("INÍCIO") e os anteriores não contam. Também dá para digitar os dias. |
+| Dias a pagar | `Diversos!N = AT − O`, com `O = CONT.SES(ocorrências ≠ "ADV") + CONT.SES("SS")` | Dias trabalhados − dias das ocorrências do período: cada ocorrência tira os dias configurados no tipo (padrão: 1; ADV 0; SS 2). |
+| Proporcional | `Diversos!F, I, L = média ÷ 25 × N` (justa causa = 0) | Média ÷ 25 × dias a pagar, sem limite (como na planilha). O **critério do tipo de rescisão** define o que é pago (o texto da coluna "Critérios" da planilha virou regra: sem justa causa não paga BPP; justa causa não paga nada). |
+| Desconto | `Diversos!X = SOMASE(% das ocorrências)`, `Y = proporcional Prod × X`, `L = proporcional − Y` | Soma dos percentuais das ocorrências do período (tabela do grupo da função), limitada a 100%, aplicada sobre a **produtividade** (pode ser estendida a BPP e Zelo nos Parâmetros). |
+| Totais | `M = F + I + L`; `V = L` (gratificação em folha); `LISTA BPP` (depósito do cartão prêmio) | **Total** = BPP + Zelo + Produtividade líquida; **em folha** = produtividade líquida; **cartão prêmio** = BPP + Zelo. |
+
+Descontos por ocorrência, conforme o grupo da função: **auxiliares e demais funções** (NC 4%, ADV 50%, SS 100%, ST 50%, FJ 4%, FF 50%, L 4%) ou
+**operadores e motoristas** (NC 4%, ADV 5%, SS 10%, FJ 4%, FF 5%, L 4%, DISP_MEC 10%). Quem tem "MOTORISTA" ou "OPERADOR" na função entra no segundo
+grupo (editável); também dá para escolher o grupo em cada apuração.
 
 A planilha original não é guardada no repositório (contém dados pessoais): só as regras foram transpostas para o sistema.
 

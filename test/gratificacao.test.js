@@ -2,7 +2,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { iniciar } = require('./setup');
 const { criarXlsx } = require('./xlsx-util');
-const { calcular, lerMes, lerNumero, periodoDe, grupoDaFuncao, sugerirColunas, lerValores } = require('../src/gratificacao');
+const { calcular, lerMes, lerNumero, periodoDe, grupoDaFuncao, sugerirColunas, lerValores, diasTrabalhados, letraDoDia } = require('../src/gratificacao');
 
 const CONFIG = { base_dias: 25, meses_media: 3, dia_corte: 16, descontar_bpp: true, descontar_zelo: true, descontar_prod: true, palavras_operador: 'MOTORISTA, OPERADOR' };
 const PEN = [
@@ -78,8 +78,50 @@ test('cálculo: critério da rescisão define o que é pago; auxiliar usa a tabe
   });
   assert.equal(teto.grupo, 'auxiliar'); // o grupo informado vale mais que a função
   assert.equal(teto.desconto_pct, 1);
-  assert.equal(teto.proporcao, 1);
+  assert.equal(teto.proporcao, 1.2); // como na planilha: dias acima da base não são limitados
   assert.equal(teto.total, 0);
+  assert.ok(teto.avisos.some((a) => a.includes('150%')));
+});
+
+test('escala de folgas (BD_Letras): ciclo A–F a partir de 01/01/2022 = D, igual ao calendário da aba BD', () => {
+  assert.equal([0, 1, 2, 3, 4, 5, 6].map((i) => letraDoDia(Date.UTC(2022, 0, 1 + i))).join(''), 'DEFABCD');
+  // BD de 16/09 a 29/09/2026: letra F folga 21 e 27; letra A folga 16, 22 e 28; letra C folga 18 e 24
+  assert.equal(diasTrabalhados({ inicio: '2026-09-16', fim: '2026-09-29', admissao: '2025-06-04', escala: 'F' }), 12);
+  assert.equal(diasTrabalhados({ inicio: '2026-09-16', fim: '2026-09-29', admissao: '2025-04-15', escala: 'A' }), 11);
+  assert.equal(diasTrabalhados({ inicio: '2026-09-16', fim: '2026-09-29', admissao: '2025-04-15', escala: 'C' }), 12);
+  // dia da admissão ("INÍCIO") e dias antes dela não contam; DOM = folga aos domingos
+  assert.equal(diasTrabalhados({ inicio: '2026-09-16', fim: '2026-09-20', admissao: '2026-09-17', escala: 'F' }), 3);
+  assert.equal(diasTrabalhados({ inicio: '2026-09-14', fim: '2026-09-20', admissao: null, escala: 'DOM' }), 6);
+});
+
+test('fórmulas da planilha: média ignora célula vazia, janela de 3 meses do calendário, SS tira 2 dias e o desconto vale só para a produtividade', () => {
+  const r = calcular({
+    config: { ...CONFIG, descontar_bpp: false, descontar_zelo: false, descontar_prod: true },
+    criterio: { tipo_rescisao: 'PEDIDO DE DEMISSÃO', pagar_bpp: true, pagar_zelo: true, pagar_prod: true },
+    rescisao: { dt_rescisao: '2026-09-29', escala: 'F' }, funcao: 'MOTORISTA', admissao: '2025-06-04',
+    valores: [
+      { mes: '2026-05-01', bpp: 999, zelo: 999, prod: 999 }, // fora da janela (jul–set)
+      { mes: '2026-07-01', bpp: 300, zelo: null, prod: 100 }, { mes: '2026-09-01', bpp: 500, zelo: 80, prod: null }, // agosto sem valores
+    ],
+    ocorrencias: [{ data: '2026-09-20', abrev: 'SS' }, { data: '2026-09-23', abrev: 'ADV' }],
+    penalidades: [
+      { grupo: 'operador', abrev: 'SS', descricao: 'SUSPENSÃO', percentual: 0.1, dias_desconto: 2 },
+      { grupo: 'operador', abrev: 'ADV', descricao: 'ADVERTÊNCIA', percentual: 0.05, dias_desconto: 0 },
+    ],
+  });
+  assert.deepEqual(r.meses, ['2026-09-01', '2026-07-01']);
+  assert.deepEqual(r.medias, { bpp: 400, zelo: 80, prod: 100 });
+  assert.equal(r.dias_trabalhados, 12); // escala F, 16 a 29/09
+  assert.equal(r.dias_descontados, 2); // SS = 2, ADV = 0
+  assert.equal(r.dias_pagar, 10);
+  assert.equal(r.desconto_pct, 0.15);
+  assert.equal(r.bpp.receber, 160); // 400 ÷ 25 × 10, sem desconto
+  assert.equal(r.zelo.receber, 32);
+  assert.equal(r.prod.proporcional, 40);
+  assert.equal(r.prod.receber, 34); // 40 − 15%
+  assert.equal(r.folha, 34);
+  assert.equal(r.cartao_premio, 192);
+  assert.equal(r.total, 226);
 });
 
 test('leitura do arquivo: cabeçalhos do GRAT, matrícula com zeros, mês por extenso e erros', () => {
@@ -91,6 +133,7 @@ test('leitura do arquivo: cabeçalhos do GRAT, matrícula com zeros, mês por ex
   ], mapa);
   assert.equal(validos.length, 2);
   assert.deepEqual(validos[0], { matricula: '123', mes: '2026-04-01', bpp: 700, zelo: 0, prod: 450.5, linha: 2, repetida: false });
+  assert.equal(validos[1].zelo, null); // célula vazia não vira zero (não entra na média)
   assert.equal(erros.length, 3);
 });
 
@@ -116,6 +159,10 @@ test('acesso: só administrador e financeiro', async () => {
   assert.equal(p.corpo.criterios.length, 7);
   assert.equal(p.corpo.penalidades.filter((x) => x.grupo === 'auxiliar' && x.abrev === 'ADV')[0].percentual, 0.5);
   assert.equal(p.corpo.penalidades.filter((x) => x.grupo === 'operador' && x.abrev === 'DISP_MEC')[0].percentual, 0.1);
+  const pen = (g, a) => p.corpo.penalidades.find((x) => x.grupo === g && x.abrev === a);
+  assert.deepEqual([pen('auxiliar', 'SS').dias_desconto, pen('auxiliar', 'ADV').dias_desconto, pen('operador', 'NC').dias_desconto], [2, 0, 1]);
+  assert.deepEqual([p.corpo.config.descontar_bpp, p.corpo.config.descontar_zelo, p.corpo.config.descontar_prod], [false, false, true]);
+  assert.equal(p.corpo.criterios.find((c) => c.tipo_rescisao === 'DEMISSÃO S/ J. CAUSA').pagar_zelo, true);
 });
 
 test('valores mensais: importa o arquivo (prévia → aplicar) e reimportar não duplica', async () => {
@@ -164,13 +211,25 @@ test('apuração: operador (Ana) e auxiliar (Carlos) com os valores do arquivo e
   ids.apuracaoAna = a.corpo.id;
   assert.equal((await davi.post('/api/gratificacao/rescisoes', { funcionario_id: ids.ana, criterio_id: pedido, dt_rescisao: '2026-04-20', dias_trabalhados: 20 })).status, 409); // duplicada
   assert.equal((await davi.post('/api/gratificacao/rescisoes', { funcionario_id: ids.ana, criterio_id: pedido, dt_rescisao: '2026-04-21', dias_trabalhados: 99 })).status, 400);
+  assert.equal((await davi.post('/api/gratificacao/rescisoes', { funcionario_id: ids.ana, criterio_id: pedido, dt_rescisao: '2026-04-22' })).status, 400); // sem escala e sem dias
+  const pelaEscala = await davi.post('/api/gratificacao/rescisoes', { funcionario_id: ids.ana, criterio_id: pedido, dt_rescisao: '2026-04-29', escala: 'f' });
+  assert.equal(pelaEscala.status, 201);
+  const pe = (await davi.get(`/api/gratificacao/rescisoes/${pelaEscala.corpo.id}`)).corpo.calculo;
+  assert.equal(pe.escala, 'F');
+  assert.equal(pe.dias_informados, false);
+  assert.ok(pe.dias_trabalhados > 0 && pe.dias_trabalhados <= 14);
+  await davi.del(`/api/gratificacao/rescisoes/${pelaEscala.corpo.id}`);
   const c = (await davi.post('/api/gratificacao/rescisoes', { funcionario_id: ids.carlos, criterio_id: semJusta, dt_rescisao: '2026-04-10', dias_trabalhados: 25 })).corpo.id;
 
   const da = (await davi.get(`/api/gratificacao/rescisoes/${ids.apuracaoAna}`)).corpo.calculo;
   assert.equal(da.grupo, 'operador');
   assert.deepEqual(da.medias, { bpp: 700, zelo: 100, prod: 600 });
   assert.equal(da.dias_pagar, 19);
-  assert.equal(da.total, 957.6);
+  assert.equal(da.bruto, 1064);
+  assert.equal(da.desconto, 45.6); // padrão da planilha: desconto só na produtividade (456 × 10%)
+  assert.equal(da.total, 1018.4);
+  assert.equal(da.folha, 410.4);
+  assert.equal(da.cartao_premio, 608);
   assert.deepEqual(da.ocorrencias.map((o) => o.abrev), ['FF', 'ADV']); // a NC é de outro ciclo
   const dc = (await davi.get(`/api/gratificacao/rescisoes/${c}`)).corpo.calculo;
   assert.equal(dc.grupo, 'auxiliar');
@@ -204,13 +263,13 @@ test('pagar trava a apuração; relatório com totais e CSV', async () => {
   assert.equal((await davi.del(`/api/gratificacao/rescisoes/${ids.apuracaoAna}`)).status, 409);
   const rel = (await davi.get('/api/gratificacao/relatorio?situacao=paga')).corpo;
   assert.equal(rel.itens.length, 1);
-  assert.equal(rel.totais.total, 957.6);
+  assert.equal(rel.totais.total, 1018.4);
   const todos = (await davi.get('/api/gratificacao/relatorio')).corpo;
-  assert.equal(todos.totais.total, 1207.6); // 957,60 + 250,00
+  assert.equal(todos.totais.total, 1268.4); // 1.018,40 + 250,00
   const csv = await davi.get('/api/gratificacao/relatorio.csv');
   assert.equal(csv.status, 200);
   assert.match(csv.corpo, /Departamento;Matrícula;Nome/);
-  assert.match(csv.corpo, /957,60/);
+  assert.match(csv.corpo, /1018,40/);
   assert.equal((await davi.post(`/api/gratificacao/rescisoes/${ids.apuracaoAna}/acao`, { acao: 'reabrir' })).status, 200);
   assert.equal((await davi.del(`/api/gratificacao/rescisoes/${ids.apuracaoAna}`)).status, 204);
 });

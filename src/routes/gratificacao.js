@@ -8,7 +8,7 @@ const {
 } = require('../util');
 const { exigirPerfil, ADM, FIN } = require('../workflow');
 const { abrirPlanilha, MAX_BYTES } = require('../planilha');
-const { calcular, sugerirColunas, lerValores, normMatricula, CAMPOS_VALORES } = require('../gratificacao');
+const { calcular, sugerirColunas, lerValores, normMatricula, CAMPOS_VALORES, ESCALAS } = require('../gratificacao');
 
 const bool = (v) => v === true || v === 'true' || v === 1 || v === '1';
 const TTL_MS = 30 * 60 * 1000;
@@ -24,6 +24,8 @@ function obterPendente(usuarioId) {
 }
 
 const dataLocal = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : d);
+const numOuNulo = (v) => (v === null || v === undefined ? null : Number(v));
+const mesmoValor = (a, b) => (a === null || a === undefined ? b === null : b !== null && Number(a) === b);
 
 function criarGratificacao({ pool }) {
   const router = express.Router();
@@ -94,18 +96,20 @@ function criarGratificacao({ pool }) {
   const lerPenalidade = (b) => {
     const pct = Number(b.percentual);
     if (!Number.isFinite(pct) || pct < 0 || pct > 1) throw erro400('Percentual: informe um valor entre 0% e 100%.');
+    const dias = Number(b.dias_desconto ?? 0);
+    if (!Number.isInteger(dias) || dias < 0 || dias > 5) throw erro400('Dias descontados: informe um número inteiro de 0 a 5.');
     return {
       grupo: opcaoDe(b.grupo, ['auxiliar', 'operador'], 'Grupo'),
       abrev: texto(b.abrev, 12, { obrigatorio: true, rotulo: 'Abreviação' }).toUpperCase(),
       descricao: texto(b.descricao, 80, { obrigatorio: true, rotulo: 'Descrição' }).toUpperCase(),
-      percentual: Math.round(pct * 10000) / 10000, desconta_dia: bool(b.desconta_dia),
+      percentual: Math.round(pct * 10000) / 10000, dias_desconto: dias,
     };
   };
   router.post('/gratificacao/penalidades', wrap(async (req, res) => {
     const p = lerPenalidade(req.body);
     const { rows } = await pool.query(
-      'INSERT INTO grat_penalidades (grupo, abrev, descricao, percentual, desconta_dia) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-      [p.grupo, p.abrev, p.descricao, p.percentual, p.desconta_dia]);
+      'INSERT INTO grat_penalidades (grupo, abrev, descricao, percentual, dias_desconto, desconta_dia) VALUES ($1,$2,$3,$4,$5,$5 > 0) RETURNING *',
+      [p.grupo, p.abrev, p.descricao, p.percentual, p.dias_desconto]);
     await auditar(pool, req.usuario, 'criar', 'grat_penalidade', rows[0].id, p);
     res.status(201).json({ ...rows[0], percentual: Number(rows[0].percentual) });
   }));
@@ -115,8 +119,8 @@ function criarGratificacao({ pool }) {
     const antes = (await pool.query('SELECT * FROM grat_penalidades WHERE id=$1', [id])).rows[0];
     if (!antes) throw erro404('Penalidade não encontrada.');
     const { rows } = await pool.query(
-      'UPDATE grat_penalidades SET grupo=$1, abrev=$2, descricao=$3, percentual=$4, desconta_dia=$5 WHERE id=$6 RETURNING *',
-      [p.grupo, p.abrev, p.descricao, p.percentual, p.desconta_dia, id]);
+      'UPDATE grat_penalidades SET grupo=$1, abrev=$2, descricao=$3, percentual=$4, dias_desconto=$5, desconta_dia=($5 > 0) WHERE id=$6 RETURNING *',
+      [p.grupo, p.abrev, p.descricao, p.percentual, p.dias_desconto, id]);
     await auditar(pool, req.usuario, 'editar', 'grat_penalidade', id, diff({ ...antes, percentual: Number(antes.percentual) }, p, Object.keys(p)));
     res.json({ ...rows[0], percentual: Number(rows[0].percentual) });
   }));
@@ -139,7 +143,7 @@ function criarGratificacao({ pool }) {
        FROM grat_valores v LEFT JOIN funcionarios f ON ${SQL_MAT_FUNC} = v.matricula
        WHERE ${cond.join(' AND ')} ORDER BY v.mes DESC, v.matricula LIMIT 1500`, params);
     const meses = (await pool.query(`SELECT to_char(mes,'YYYY-MM') AS mes, COUNT(*)::int AS qtd FROM grat_valores GROUP BY mes ORDER BY mes DESC LIMIT 36`)).rows;
-    res.json({ itens: rows.map((r) => ({ ...r, mes: dataLocal(r.mes), bpp: Number(r.bpp), zelo: Number(r.zelo), prod: Number(r.prod) })), meses });
+    res.json({ itens: rows.map((r) => ({ ...r, mes: dataLocal(r.mes), bpp: numOuNulo(r.bpp), zelo: numOuNulo(r.zelo), prod: numOuNulo(r.prod) })), meses });
   }));
 
   router.post('/gratificacao/valores', wrap(async (req, res) => {
@@ -147,8 +151,9 @@ function criarGratificacao({ pool }) {
     if (!f) throw erro400('Funcionário não encontrado.');
     const mesTxt = String(req.body.mes || '');
     if (!/^\d{4}-\d{2}$/.test(mesTxt)) throw erro400('Mês inválido.');
-    const num = (v, r) => { const n = v === '' || v === undefined || v === null ? 0 : Number(v); if (!Number.isFinite(n) || n < 0) throw erro400(`${r} inválido.`); return round2(n); };
+    const num = (v, r) => { if (v === '' || v === undefined || v === null) return null; const n = Number(v); if (!Number.isFinite(n) || n < 0) throw erro400(`${r} inválido.`); return round2(n); };
     const v = { matricula: normMatricula(f.matricula), mes: `${mesTxt}-01`, bpp: num(req.body.bpp, 'BPP'), zelo: num(req.body.zelo, 'Zelo/Equipamento'), prod: num(req.body.prod, 'Produtividade') };
+    if (v.bpp === null && v.zelo === null && v.prod === null) throw erro400('Informe ao menos um valor.');
     const { rows } = await pool.query(
       `INSERT INTO grat_valores (matricula, mes, bpp, zelo, prod, origem) VALUES ($1,$2,$3,$4,$5,'digitado')
        ON CONFLICT (matricula, mes) DO UPDATE SET bpp = EXCLUDED.bpp, zelo = EXCLUDED.zelo, prod = EXCLUDED.prod, origem = 'digitado' RETURNING id`,
@@ -201,7 +206,7 @@ function criarGratificacao({ pool }) {
     const cad = new Set((await db.query(`SELECT ${SQL_MAT_FUNC} AS m FROM funcionarios f`)).rows.map((r) => r.m));
     const itens = validos.map((v) => {
       const e = existentes.get(`${v.matricula}|${v.mes}`);
-      const igual = e && Number(e.bpp) === v.bpp && Number(e.zelo) === v.zelo && Number(e.prod) === v.prod;
+      const igual = e && mesmoValor(e.bpp, v.bpp) && mesmoValor(e.zelo, v.zelo) && mesmoValor(e.prod, v.prod);
       return { ...v, acao: !e ? 'criar' : igual ? 'igual' : 'atualizar', no_cadastro: cad.has(v.matricula) };
     });
     const resumo = {
@@ -331,8 +336,8 @@ function criarGratificacao({ pool }) {
     return rows.map((r) => {
       const mat = normMatricula(r.funcionario_matricula);
       const calculo = calcular({
-        config, criterio: criterios.get(r.criterio_id), rescisao: { dt_rescisao: r.dt_rescisao, dias_trabalhados: r.dias_trabalhados, grupo: r.grupo },
-        funcao: r.funcionario_funcao, valores: vm.get(mat) || [], ocorrencias: om.get(mat) || [], penalidades: penalidades.map((p) => ({ ...p, percentual: Number(p.percentual) })),
+        config, criterio: criterios.get(r.criterio_id), rescisao: { dt_rescisao: r.dt_rescisao, dias_trabalhados: r.dias_trabalhados, escala: r.escala, grupo: r.grupo },
+        funcao: r.funcionario_funcao, admissao: dataLocal(r.funcionario_admissao), valores: vm.get(mat) || [], ocorrencias: om.get(mat) || [], penalidades: penalidades.map((p) => ({ ...p, percentual: Number(p.percentual) })),
       });
       return { ...r, dt_rescisao: dataLocal(r.dt_rescisao), paga_em: dataLocal(r.paga_em), funcionario_admissao: dataLocal(r.funcionario_admissao), calculo };
     });
@@ -369,20 +374,23 @@ function criarGratificacao({ pool }) {
     if (!f) throw erro400('Funcionário não encontrado.');
     const criterio = (await db.query('SELECT id, tipo_rescisao, ativo FROM grat_criterios WHERE id = $1', [inteiro(b.criterio_id, 'Tipo de rescisão')])).rows[0];
     if (!criterio || (!criterio.ativo && !idAtual)) throw erro400('Tipo de rescisão inválido.');
-    const dias = Number(b.dias_trabalhados);
-    if (!Number.isInteger(dias) || dias < 0 || dias > 62) throw erro400('Dias trabalhados: informe um número inteiro entre 0 e 62.');
+    const semDias = b.dias_trabalhados === '' || b.dias_trabalhados === null || b.dias_trabalhados === undefined;
+    const dias = semDias ? null : Number(b.dias_trabalhados);
+    if (!semDias && (!Number.isInteger(dias) || dias < 0 || dias > 62)) throw erro400('Dias trabalhados: informe um número inteiro entre 0 e 62.');
+    const escala = b.escala ? opcaoDe(String(b.escala).toUpperCase(), ESCALAS, 'Escala de folga') : null;
+    if (semDias && !escala) throw erro400('Informe a escala de folga (para calcular os dias) ou os dias trabalhados.');
     const grupo = b.grupo ? opcaoDe(b.grupo, ['auxiliar', 'operador'], 'Grupo') : null;
     const dup = await db.query('SELECT id FROM grat_rescisoes WHERE funcionario_id = $1 AND dt_rescisao = $2 AND ($3::int IS NULL OR id <> $3)', [f.id, data(b.dt_rescisao, 'Data da rescisão'), idAtual]);
     if (dup.rowCount) throw erro409('Já existe uma apuração deste funcionário para essa data de rescisão.');
-    return { funcionario_id: f.id, funcionario_nome: f.nome, criterio_id: criterio.id, dt_rescisao: b.dt_rescisao, dias_trabalhados: dias, grupo, observacao: texto(b.observacao, 300) };
+    return { funcionario_id: f.id, funcionario_nome: f.nome, criterio_id: criterio.id, dt_rescisao: b.dt_rescisao, dias_trabalhados: dias, escala, grupo, observacao: texto(b.observacao, 300) };
   }
 
   router.post('/gratificacao/rescisoes', wrap(async (req, res) => {
     const r = await lerRescisao(pool, req.body);
     const { rows } = await pool.query(
-      `INSERT INTO grat_rescisoes (funcionario_id, criterio_id, dt_rescisao, dias_trabalhados, grupo, observacao, criado_por) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-      [r.funcionario_id, r.criterio_id, r.dt_rescisao, r.dias_trabalhados, r.grupo, r.observacao, req.usuario.id]);
-    await auditar(pool, req.usuario, 'criar', 'grat_rescisao', rows[0].id, { funcionario: r.funcionario_nome, dt_rescisao: r.dt_rescisao, dias: r.dias_trabalhados });
+      `INSERT INTO grat_rescisoes (funcionario_id, criterio_id, dt_rescisao, dias_trabalhados, escala, grupo, observacao, criado_por) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+      [r.funcionario_id, r.criterio_id, r.dt_rescisao, r.dias_trabalhados, r.escala, r.grupo, r.observacao, req.usuario.id]);
+    await auditar(pool, req.usuario, 'criar', 'grat_rescisao', rows[0].id, { funcionario: r.funcionario_nome, dt_rescisao: r.dt_rescisao, dias: r.dias_trabalhados, escala: r.escala });
     res.status(201).json({ id: rows[0].id });
   }));
 
@@ -393,9 +401,9 @@ function criarGratificacao({ pool }) {
     if (antes.situacao === 'paga') throw erro409('Apuração já paga: reabra antes de alterar.');
     const r = await lerRescisao(pool, req.body, id);
     await pool.query(
-      `UPDATE grat_rescisoes SET funcionario_id=$1, criterio_id=$2, dt_rescisao=$3, dias_trabalhados=$4, grupo=$5, observacao=$6, atualizado_em=now() WHERE id=$7`,
-      [r.funcionario_id, r.criterio_id, r.dt_rescisao, r.dias_trabalhados, r.grupo, r.observacao, id]);
-    await auditar(pool, req.usuario, 'editar', 'grat_rescisao', id, diff({ ...antes, dt_rescisao: dataLocal(antes.dt_rescisao) }, r, ['funcionario_id', 'criterio_id', 'dt_rescisao', 'dias_trabalhados', 'grupo', 'observacao']));
+      `UPDATE grat_rescisoes SET funcionario_id=$1, criterio_id=$2, dt_rescisao=$3, dias_trabalhados=$4, escala=$5, grupo=$6, observacao=$7, atualizado_em=now() WHERE id=$8`,
+      [r.funcionario_id, r.criterio_id, r.dt_rescisao, r.dias_trabalhados, r.escala, r.grupo, r.observacao, id]);
+    await auditar(pool, req.usuario, 'editar', 'grat_rescisao', id, diff({ ...antes, dt_rescisao: dataLocal(antes.dt_rescisao) }, r, ['funcionario_id', 'criterio_id', 'dt_rescisao', 'dias_trabalhados', 'escala', 'grupo', 'observacao']));
     res.json({ ok: true });
   }));
 
@@ -438,18 +446,19 @@ function criarGratificacao({ pool }) {
   router.get('/gratificacao/relatorio', wrap(async (req, res) => {
     const itens = await dadosRelatorio(req);
     const soma = (campo) => round2(itens.reduce((t, r) => t + campo(r.calculo), 0));
-    res.json({ itens, totais: { qtd: itens.length, bpp: soma((c) => c.bpp.receber), zelo: soma((c) => c.zelo.receber), prod: soma((c) => c.prod.receber), bruto: soma((c) => c.bruto), desconto: soma((c) => c.desconto), total: soma((c) => c.total) } });
+    res.json({ itens, totais: { qtd: itens.length, bpp: soma((c) => c.bpp.receber), zelo: soma((c) => c.zelo.receber), prod: soma((c) => c.prod.receber), bruto: soma((c) => c.bruto), desconto: soma((c) => c.desconto), total: soma((c) => c.total), folha: soma((c) => c.folha), cartao_premio: soma((c) => c.cartao_premio) } });
   }));
   router.get('/gratificacao/relatorio.csv', wrap(async (req, res) => {
     const itens = await dadosRelatorio(req);
     const pct = (n) => `${(n * 100).toFixed(2).replace('.', ',')}%`;
     enviarCsv(res, 'gratificacao_rescisoria.csv', [
       ['Departamento', 'Matrícula', 'Nome', 'Função', 'Média BPP (R$)', 'Receber BPP (R$)', 'Média Zelo/Equip. (R$)', 'Receber Zelo/Equip. (R$)', 'Média Prod. (R$)', 'Receber Prod. (R$)',
-        'BPP + Zelo + Prod (R$)', 'Dias trabalhados', 'Dias descontados', 'Dias a pagar', 'Desconto (%)', 'Desconto (R$)', 'Tipo de rescisão', 'Admissão', 'Rescisão', 'Total a receber (R$)', 'Situação'],
+        'BPP + Zelo + Prod (R$)', 'Escala', 'Dias trabalhados', 'Dias descontados', 'Dias a pagar', 'Desconto (%)', 'Desconto (R$)', 'Tipo de rescisão', 'Admissão', 'Rescisão',
+        'Gratificação em folha (R$)', 'Cartão prêmio - BPP + Zelo (R$)', 'Total a receber (R$)', 'Situação'],
       ...itens.map((r) => { const c = r.calculo; return [
         r.funcionario_setor, r.funcionario_matricula, r.funcionario_nome, r.funcionario_funcao, moedaCsv(c.bpp.media), moedaCsv(c.bpp.receber), moedaCsv(c.zelo.media), moedaCsv(c.zelo.receber),
-        moedaCsv(c.prod.media), moedaCsv(c.prod.receber), moedaCsv(c.bruto), c.dias_trabalhados, c.dias_descontados, c.dias_pagar, pct(c.desconto_pct), moedaCsv(c.desconto),
-        r.tipo_rescisao, r.funcionario_admissao || '', r.dt_rescisao, moedaCsv(c.total), r.situacao]; }),
+        moedaCsv(c.prod.media), moedaCsv(c.prod.receber), moedaCsv(c.total), c.escala || 'informado', c.dias_trabalhados, c.dias_descontados, c.dias_pagar, pct(c.desconto_pct), moedaCsv(c.desconto),
+        r.tipo_rescisao, r.funcionario_admissao || '', r.dt_rescisao, moedaCsv(c.folha), moedaCsv(c.cartao_premio), moedaCsv(c.total), r.situacao]; }),
     ]);
   }));
 
