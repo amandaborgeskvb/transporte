@@ -41,19 +41,27 @@ function textoRico(xml) {
 }
 
 // ---------- XLSX ----------
-function lerXlsx(buf) {
-  let arquivos;
+// Descompacta só os arquivos pedidos (as abas são extraídas uma de cada vez, quando lidas: uma pasta de trabalho
+// grande pode ter dezenas de abas e passar de 100 MB descompactada)
+function extrair(buf, aceita) {
   try {
-    arquivos = unzipSync(buf, {
+    return unzipSync(buf, {
       filter: (f) => {
+        if (!aceita(f.name)) return false;
         if (f.originalSize > MAX_DESCOMPRIMIDO) throw erro('Planilha grande demais.');
-        return /^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml|worksheets\/[^/]+\.xml)$/.test(f.name);
+        return true;
       },
     });
   } catch (e) {
     if (e instanceof ErroHttp) throw e;
     throw erro('Não foi possível abrir a planilha. Confira se o arquivo é um .xlsx válido.');
   }
+}
+
+function lerXlsx(buf) {
+  const arquivos = extrair(buf, (n) => /^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml)$/.test(n));
+  const existentes = new Set();
+  extrair(buf, (n) => { if (/^xl\/worksheets\/[^/]+\.xml$/.test(n)) existentes.add(n); return false; });
   if (!arquivos['xl/workbook.xml']) throw erro('Arquivo .xlsx inválido (sem pasta de trabalho).');
 
   const texto = (nome) => (arquivos[nome] ? strFromU8(arquivos[nome]) : '');
@@ -66,7 +74,7 @@ function lerXlsx(buf) {
   const abas = [];
   for (const m of texto('xl/workbook.xml').matchAll(/<sheet\b[^>]*>/g)) {
     const alvo = rels[atributo(m[0], 'r:id')];
-    if (alvo && arquivos[alvo]) abas.push({ nome: atributo(m[0], 'name') || `Aba ${abas.length + 1}`, oculta: /state="(hidden|veryHidden)"/.test(m[0]), arquivo: alvo });
+    if (alvo && existentes.has(alvo)) abas.push({ nome: atributo(m[0], 'name') || `Aba ${abas.length + 1}`, oculta: /state="(hidden|veryHidden)"/.test(m[0]), arquivo: alvo });
   }
   if (!abas.length) throw erro('A planilha não tem abas legíveis.');
 
@@ -74,7 +82,7 @@ function lerXlsx(buf) {
   for (const m of texto('xl/sharedStrings.xml').matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)) compartilhadas.push(textoRico(m[1]));
 
   const lerAba = (aba) => {
-    const xml = strFromU8(arquivos[aba.arquivo]);
+    const xml = strFromU8(extrair(buf, (n) => n === aba.arquivo)[aba.arquivo]);
     const linhas = [];
     let linhaAtual = 0;
     for (const lm of xml.matchAll(/<row\b([^>]*?)(?:\/>|>([\s\S]*?)<\/row>)/g)) {

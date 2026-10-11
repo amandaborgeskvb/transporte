@@ -234,7 +234,9 @@ test('apuração: operador (Ana) e auxiliar (Carlos) com os valores do arquivo e
   const dc = (await davi.get(`/api/gratificacao/rescisoes/${c}`)).corpo.calculo;
   assert.equal(dc.grupo, 'auxiliar');
   assert.equal(dc.desconto_pct, 0.5);
-  assert.equal(dc.total, 250);
+  assert.deepEqual(dc.desconto_em, ['bpp']); // auxiliar: ocorrências descontam do BPP (que a rescisão sem justa causa não paga)
+  assert.equal(dc.total, 500);
+  assert.deepEqual(da.desconto_em, ['prod']); // operador/motorista: descontam da produtividade
 
   const lista = (await davi.get('/api/gratificacao/rescisoes')).corpo;
   assert.equal(lista.length, 2);
@@ -265,7 +267,7 @@ test('pagar trava a apuração; relatório com totais e CSV', async () => {
   assert.equal(rel.itens.length, 1);
   assert.equal(rel.totais.total, 1018.4);
   const todos = (await davi.get('/api/gratificacao/relatorio')).corpo;
-  assert.equal(todos.totais.total, 1268.4); // 1.018,40 + 250,00
+  assert.equal(todos.totais.total, 1518.4); // 1.018,40 + 500,00
   const csv = await davi.get('/api/gratificacao/relatorio.csv');
   assert.equal(csv.status, 200);
   assert.match(csv.corpo, /Departamento;Matrícula;Nome/);
@@ -317,4 +319,74 @@ test('prévia do período: rescisão no dia 10 conta do dia 16 do mês anterior 
   const depois = await davi.post('/api/gratificacao/rescisoes/previa', { funcionario_id: ids.carlos, dt_rescisao: '2026-04-20', dias_trabalhados: 3 });
   assert.deepEqual(depois.corpo.periodo, { inicio: '2026-04-16', fim: '2026-04-20' });
   assert.equal(depois.corpo.dias_trabalhados, 3);
+});
+
+test('desconto por grupo: auxiliar desconta do BPP, operador da produtividade (Parâmetros)', () => {
+  const base = {
+    config: { ...CONFIG, desconto_auxiliar: 'bpp', desconto_operador: 'prod' },
+    criterio: { tipo_rescisao: 'PEDIDO DE DEMISSÃO', pagar_bpp: true, pagar_zelo: true, pagar_prod: true },
+    rescisao: { dt_rescisao: '2026-04-20', dias_trabalhados: 25 },
+    valores: [{ mes: '2026-04-01', bpp: 400, zelo: 100, prod: 600 }],
+    ocorrencias: [{ data: '2026-04-18', abrev: 'ADV' }], penalidades: PEN,
+  };
+  const aux = calcular({ ...base, funcao: 'AUXILIAR AGRICOLA' }); // ADV auxiliar = 50%
+  assert.deepEqual([aux.bpp.desconto, aux.zelo.desconto, aux.prod.desconto], [200, 0, 0]);
+  assert.equal(aux.total, 900);
+  const op = calcular({ ...base, funcao: 'MOTORISTA' }); // ADV operador = 5%
+  assert.deepEqual([op.bpp.desconto, op.zelo.desconto, op.prod.desconto], [0, 0, 30]);
+  assert.equal(op.criterio_texto, 'PAGAR BPP E PRODUTIV. PROPORCIONAIS');
+  const ambos = calcular({ ...base, funcao: 'AUXILIAR', config: { ...base.config, desconto_auxiliar: 'bpp_prod' } });
+  assert.deepEqual([ambos.bpp.desconto, ambos.prod.desconto], [200, 300]);
+});
+
+test('parâmetros: grupo define onde desconta; assinaturas do demonstrativo', async () => {
+  const p = (await davi.get('/api/gratificacao/parametros')).corpo;
+  assert.deepEqual([p.config.desconto_auxiliar, p.config.desconto_operador], ['bpp', 'prod']);
+  assert.deepEqual(p.signatarios.map((x) => x.cargo), ['COORDENADOR AGRÍCOLA', 'GERENTE TRANSPORTE E MECANIZAÇÃO', 'SUPERINTENDENTE AGRÍCOLA', 'GERENTE EXECUTIVO']);
+  assert.ok(p.signatarios.every((x) => x.nome === '')); // os nomes são preenchidos pelo administrador
+  assert.equal((await davi.put('/api/gratificacao/config', { ...p.config, desconto_auxiliar: 'xx' })).status, 400);
+  const s1 = p.signatarios[0];
+  const r = await davi.put(`/api/gratificacao/signatarios/${s1.id}`, { ...s1, nome: 'Fulano de Tal' });
+  assert.equal(r.corpo.nome, 'FULANO DE TAL');
+  const novo = await davi.post('/api/gratificacao/signatarios', { cargo: 'Diretor', ordem: 5 });
+  assert.equal(novo.status, 201);
+  assert.equal((await davi.del(`/api/gratificacao/signatarios/${novo.corpo.id}`)).status, 204);
+  assert.equal((await davi.post('/api/gratificacao/signatarios', { nome: 'X' })).status, 400); // cargo obrigatório
+});
+
+test('carga mensal: arquivo sem coluna de mês usa o mês de referência escolhido; médias dos 3 meses', async () => {
+  const xlsx = criarXlsx([{ nome: 'GRAT', linhas: [['Matricula', 'BPP', 'Zelo_Equip', 'Produtivid'], [1, 900, '', 300], [3, '', '', 100]] }]);
+  const up = await enviarArquivo(davi, xlsx);
+  assert.equal(up.corpo.mapa_sugerido.mes, null);
+  assert.equal((await davi.post('/api/gratificacao/importacao/previa', { mapa: up.corpo.mapa_sugerido })).status, 400); // sem coluna e sem mês
+  const previa = (await davi.post('/api/gratificacao/importacao/previa', { mapa: up.corpo.mapa_sugerido, opcoes: { mes: '2026-05' } })).corpo;
+  assert.deepEqual(previa.resumo.meses, ['2026-05']);
+  assert.equal(previa.resumo.criar, 2);
+  assert.equal((await davi.post('/api/gratificacao/importacao/aplicar', { mapa: up.corpo.mapa_sugerido, opcoes: { mes: '2026-05' }, chave: previa.chave })).status, 201);
+
+  // médias com referência em maio/2026: março, abril e maio; vazio não entra na média
+  const m = (await davi.get('/api/gratificacao/medias?mes=2026-05')).corpo;
+  assert.deepEqual(m.meses, ['2026-03', '2026-04', '2026-05']);
+  const ana_ = m.itens.find((x) => x.matricula === '1');
+  assert.deepEqual([ana_.bpp, ana_.zelo, ana_.prod, ana_.meses], [800, 150, 600, 3]); // (700+800+900)/3; zelo (100+200)/2; prod (600+900+300)/3
+  const carlos = m.itens.find((x) => x.matricula === '3');
+  assert.deepEqual([carlos.bpp, carlos.prod], [500, 366.67]); // BPP vazio em maio não entra
+  assert.equal((await davi.get('/api/gratificacao/medias')).corpo.ref, '2026-05'); // padrão: último mês carregado
+  const csv = await davi.get('/api/gratificacao/medias.csv?mes=2026-05');
+  assert.match(csv.corpo, /Matrícula;Nome;Função/);
+});
+
+test('planilha inteira: a importação abre direto a aba GRAT (valores) e a aba de notificações (ocorrências)', async () => {
+  const xlsx = criarXlsx([
+    { nome: 'Base_geral', linhas: [['Mat-Func', 'Nome do colaborador'], [1, 'X']] },
+    { nome: 'GRAT', linhas: [['Matricula', 'BPP ', 'Zelo_Equip', 'Produtivid', 'Mês'], [1, 700, '', 600, 'SETEMBRO - 26']] },
+    { nome: 'Digitar_Notif', linhas: [['Data', 'Mat-Func', 'Gestor', 'Penalid Notific'], ['10/09/2026', 1, 'X', 'FF']] },
+  ]);
+  const v = await enviarArquivo(davi, xlsx);
+  assert.equal(v.corpo.abas[v.corpo.aba], 'GRAT');
+  assert.deepEqual(v.corpo.mapa_sugerido, { matricula: 0, bpp: 1, zelo: 2, prod: 3, mes: 4 });
+  const o = await davi.req('POST', '/api/gratificacao/importacao-ocorrencias/arquivo?nome=x.xlsx', undefined, { bruto: xlsx, tipo: 'application/octet-stream' });
+  assert.equal(o.corpo.abas[o.corpo.aba], 'Digitar_Notif');
+  await davi.del('/api/gratificacao/importacao/arquivo');
+  await davi.del('/api/gratificacao/importacao-ocorrencias/arquivo');
 });

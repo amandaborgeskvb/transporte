@@ -74,6 +74,17 @@ function periodoDe(dtRescisao, diaCorte) {
   return { inicio: iso(inicio), fim: dataIso(dtRescisao) };
 }
 
+// Componentes que recebem o desconto das ocorrências, conforme a opção do grupo de função
+const ALVOS_DESCONTO = { bpp: ['bpp'], zelo: ['zelo'], prod: ['prod'], bpp_prod: ['bpp', 'prod'], todos: ['bpp', 'zelo', 'prod'], nenhum: [] };
+
+// Texto do critério da rescisão, como na coluna "Critérios da Rescisão" da planilha
+function textoCriterio(c) {
+  if (!c.pagar_bpp && !c.pagar_zelo && !c.pagar_prod) return 'NÃO PAGAR GRATIFICAÇÃO';
+  if (c.pagar_bpp && c.pagar_prod) return 'PAGAR BPP E PRODUTIV. PROPORCIONAIS';
+  if (!c.pagar_bpp && c.pagar_prod) return 'NÃO PAGAR BPP, E PAGAR PROD. PROPORC.';
+  return 'PAGAR BPP PROPORCIONAL, NÃO PAGAR PROD.';
+}
+
 // ---------- Escala de folgas (BD_Letras) ----------
 // Ciclo de 6 dias A–F: 01/01/2022 = D, 02/01 = E, 03/01 = F, 04/01 = A… Quem tem a letra do dia está de folga.
 const ESCALAS = ['A', 'B', 'C', 'D', 'E', 'F', 'DOM', '5X2'];
@@ -160,9 +171,12 @@ function calcular({ config, criterio, rescisao, funcao, admissao, valores, ocorr
     const desconto = desconta ? round2(proporcional * descontoPct) : 0;
     return { media: medias[chave], paga, proporcional, desconto, receber: round2(proporcional - desconto) };
   };
-  const bpp = componente('bpp', !!criterio.pagar_bpp, config.descontar_bpp);
-  const zelo = componente('zelo', !!criterio.pagar_zelo, config.descontar_zelo);
-  const prod = componente('prod', !!criterio.pagar_prod, config.descontar_prod);
+  // Onde as ocorrências descontam: por grupo (auxiliares → BPP; operadores e motoristas → produtividade)
+  const alvoGrupo = grupo === 'operador' ? config.desconto_operador : config.desconto_auxiliar;
+  const alvo = alvoGrupo ? new Set(ALVOS_DESCONTO[alvoGrupo] || []) : new Set(['bpp', 'zelo', 'prod'].filter((k) => config[`descontar_${k}`]));
+  const bpp = componente('bpp', !!criterio.pagar_bpp, alvo.has('bpp'));
+  const zelo = componente('zelo', !!criterio.pagar_zelo, alvo.has('zelo'));
+  const prod = componente('prod', !!criterio.pagar_prod, alvo.has('prod'));
 
   const avisos = [];
   if (!meses.length) avisos.push('Sem valores mensais (BPP/produtividade) até o mês da rescisão.');
@@ -173,7 +187,7 @@ function calcular({ config, criterio, rescisao, funcao, admissao, valores, ocorr
   if (diasPagar > config.base_dias) avisos.push(`Dias a pagar (${diasPagar}) acima da base de ${config.base_dias}: o valor passa da média, como na planilha.`);
 
   return {
-    grupo, periodo, criterio: criterio.tipo_rescisao,
+    grupo, periodo, criterio: criterio.tipo_rescisao, criterio_texto: textoCriterio(criterio), desconto_em: [...alvo],
     meses: meses.map((v) => v.mes), medias,
     ocorrencias: doPeriodo, desconto_pct: descontoPct, dias_descontados: diasDescontados,
     escala: escala || null, dias_informados: informado,
@@ -194,7 +208,7 @@ const CAMPOS_VALORES = [
   { chave: 'bpp', rotulo: 'BPP', sinonimos: ['bpp', 'valor bpp', 'boas praticas'] },
   { chave: 'zelo', rotulo: 'Zelo / Equipamento', sinonimos: ['zelo_equip', 'zelo equip', 'zelo', 'zelo equipamento', 'zelo_equipamento'] },
   { chave: 'prod', rotulo: 'Produtividade', sinonimos: ['produtivid', 'produtividade', 'prod', 'valor prod'] },
-  { chave: 'mes', rotulo: 'Mês', obrigatorio: true, sinonimos: ['mes', 'mês', 'competencia', 'periodo', 'referencia'] },
+  { chave: 'mes', rotulo: 'Mês (coluna)', sinonimos: ['mes', 'mês', 'competencia', 'periodo', 'referencia'] },
 ];
 const normCab = (s) => semAcento(s).toLowerCase().replace(/[^a-z0-9_ -]+/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -210,17 +224,17 @@ function sugerirColunas(cabecalho, campos = CAMPOS_VALORES) {
 }
 
 // dados: linhas (arrays) abaixo do cabeçalho; mapa: { matricula, bpp, zelo, prod, mes } → índice da coluna
-function lerValores(dados, mapa, primeiraLinha = 2) {
+function lerValores(dados, mapa, primeiraLinha = 2, mesFixo = null) {
   const validos = new Map();
   const erros = [];
   dados.forEach((l, i) => {
     const linha = primeiraLinha + i;
     const cel = (k) => (mapa[k] === null || mapa[k] === undefined ? undefined : l[mapa[k]]);
     const matricula = normMatricula(cel('matricula'));
-    const mes = lerMes(cel('mes'));
+    const mes = mesFixo || lerMes(cel('mes'));
     if (!matricula && !cel('mes') && cel('bpp') === undefined && cel('prod') === undefined) return; // linha vazia
     if (!/^\d{1,12}$/.test(matricula)) { erros.push({ linha, motivo: 'Matrícula inválida ou vazia.' }); return; }
-    if (!mes) { erros.push({ linha, matricula, motivo: `Mês não reconhecido: "${cel('mes') ?? ''}".` }); return; }
+    if (!mes) { erros.push({ linha, matricula, motivo: `Mês não reconhecido: "${cel('mes') ?? ''}". Escolha o mês de referência do arquivo.` }); return; }
     const nums = {};
     for (const k of ['bpp', 'zelo', 'prod']) {
       const bruto = cel(k);
@@ -293,6 +307,6 @@ function lerOcorrencias(dados, mapa, primeiraLinha, tipos) {
 }
 
 module.exports = {
-  lerData, lerOcorrencias, CAMPOS_OCORRENCIAS,
+  lerData, lerOcorrencias, CAMPOS_OCORRENCIAS, ALVOS_DESCONTO, textoCriterio,
   lerMes, lerNumero, grupoDaFuncao, periodoDe, calcular, diasTrabalhados, letraDoDia, ESCALAS, sugerirColunas, lerValores, normMatricula, semAcento, CAMPOS_VALORES, MESES,
 };

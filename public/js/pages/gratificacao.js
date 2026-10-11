@@ -14,6 +14,8 @@ const SIT = { apurada: ['Apurada', 'warn'], paga: ['Paga', 'ok'] };
 const badgeSit = (s) => badgeTom(SIT[s]?.[0] || s, SIT[s]?.[1]);
 const BASE = [['Gratificação rescisória'], ['Apuração']];
 const ESCALAS = [['A', 'Letra A (escala 5×1)'], ['B', 'Letra B (escala 5×1)'], ['C', 'Letra C (escala 5×1)'], ['D', 'Letra D (escala 5×1)'], ['E', 'Letra E (escala 5×1)'], ['F', 'Letra F (escala 5×1)'], ['DOM', 'Folga aos domingos'], ['5X2', 'Folga sábado e domingo (5×2 / ADM)']];
+const ALVOS = [['bpp', 'BPP'], ['prod', 'Produtividade'], ['zelo', 'Zelo / Equipamento'], ['bpp_prod', 'BPP e Produtividade'], ['todos', 'BPP, Zelo e Produtividade'], ['nenhum', 'Nenhum (não descontar)']].map(([valor, rotulo]) => ({ valor, rotulo }));
+const rotuloAlvo = (k) => ALVOS.find((a) => a.valor === k)?.rotulo || k;
 const valorOuTraco = (v) => (v === null || v === undefined ? '—' : brl(v));
 
 // ======================================================================
@@ -188,6 +190,7 @@ function cartaoImportacao(cfg) {
   const area = h('div', { class: 'imp-previa' });
   let arq = null;
   let mapa = {};
+  let opcoes = {};
   let previa = null;
   let seq = 0;
   const descartar = () => del(`${cfg.url}/arquivo`).catch(() => {});
@@ -198,7 +201,7 @@ function cartaoImportacao(cfg) {
     const enviar = async (arquivo) => {
       if (!arquivo) return;
       status.textContent = `Lendo ${arquivo.name}…`;
-      try { arq = await enviarArquivo(`${cfg.url}/arquivo`, arquivo); mapa = { ...arq.mapa_sugerido }; telaMapa(); gerarPrevia(); } catch (e) { status.textContent = ''; toast(e.message, 'erro'); }
+      try { arq = await enviarArquivo(`${cfg.url}/arquivo`, arquivo); mapa = { ...arq.mapa_sugerido }; opcoes = {}; telaMapa(); gerarPrevia(); } catch (e) { status.textContent = ''; toast(e.message, 'erro'); }
     };
     entrada.addEventListener('change', () => enviar(entrada.files[0]));
     const zona = h('div', { class: 'imp-zona', tabindex: 0, role: 'button', 'aria-label': `Escolher arquivo de ${cfg.rotulo}`,
@@ -221,6 +224,9 @@ function cartaoImportacao(cfg) {
       h('div', { class: 'card-topo' }, h('h2', {}, cfg.titulo), botao('Trocar arquivo', () => { descartar(); telaEscolher(); }, { tom: 'sec', pequeno: true })),
       h('p', { class: 'muted pequeno' }, `${arq.arquivo} · cabeçalho na linha ${arq.linha_cabecalho} · ${fmt(arq.total_linhas)} linhas. As colunas foram reconhecidas pelo nome; confira abaixo. Só as colunas escolhidas são lidas.`),
       abas, h('div', { class: 'form-grid tres' }, arq.campos.map(sel)),
+      cfg.mesReferencia ? h('div', { class: 'form-grid tres' }, h('label', {}, 'Mês de referência do arquivo',
+        h('input', { type: 'month', value: opcoes.mes || '', onchange: (e) => { opcoes = e.target.value ? { mes: e.target.value } : {}; gerarPrevia(); } }),
+        h('small', { class: 'dica' }, 'Para a carga de cada mês: todas as linhas entram neste mês. Deixe vazio para usar a coluna "Mês" do arquivo.'))) : null,
     ].filter(Boolean));
   }
 
@@ -228,7 +234,7 @@ function cartaoImportacao(cfg) {
     const minha = ++seq;
     area.replaceChildren(h('p', { class: 'muted vazio' }, 'Calculando a prévia…'));
     try {
-      const r = await post(`${cfg.url}/previa`, { mapa });
+      const r = await post(`${cfg.url}/previa`, { mapa, opcoes });
       if (minha !== seq) return;
       previa = r;
       const s = r.resumo;
@@ -246,7 +252,7 @@ function cartaoImportacao(cfg) {
         s.atualizar && r.amostra.atualizar ? h('h3', { class: 'grupo' }, 'Atualizados (amostra)') : null, s.atualizar && r.amostra.atualizar ? tabela(cfg.colunas, r.amostra.atualizar) : null,
         h('div', { class: 'linha-botoes' }, botao('Cancelar', () => { descartar(); telaEscolher(); }, { tom: 'sec' }),
           Object.assign(botao(total ? `Importar ${fmt(total)} ${cfg.rotulo}` : 'Nada novo para importar', async () => {
-            try { await post(`${cfg.url}/aplicar`, { mapa, chave: previa.chave }); toast(`Importação de ${cfg.rotulo} concluída.`); cfg.aoConcluir(); } catch (e) { toast(e.message, 'erro'); }
+            try { await post(`${cfg.url}/aplicar`, { mapa, opcoes, chave: previa.chave }); toast(`Importação de ${cfg.rotulo} concluída.`); cfg.aoConcluir(); } catch (e) { toast(e.message, 'erro'); }
           }, { icone: 'ok' }), { disabled: !total })),
       ].filter(Boolean)));
     } catch (e) { if (minha === seq) area.replaceChildren(h('div', { class: 'card' }, h('p', { class: 'erro' }, e.message))); }
@@ -260,8 +266,8 @@ async function paginaValores({ query, ir, recarregarPagina }) {
   const { itens, meses } = await get(`/gratificacao/valores${qs ? `?${qs}` : ''}`);
   const c = await cadastros();
   const [importar, area] = cartaoImportacao({
-    url: '/gratificacao/importacao', titulo: 'Atualizar valores por arquivo', rotulo: 'valores',
-    textoZona: 'Excel (.xlsx) ou CSV com: Matrícula, BPP, Zelo_Equip, Produtividade e Mês (ex.: ABRIL - 26)',
+    url: '/gratificacao/importacao', titulo: 'Carga mensal dos valores (aba GRAT)', rotulo: 'valores', mesReferencia: true,
+    textoZona: 'Excel (.xlsx) ou CSV com: Matrícula, BPP, Zelo_Equip, Produtividade e Mês (ex.: ABRIL - 26). Sem a coluna Mês, escolha o mês de referência depois de enviar.',
     colunas: [
       { t: 'Linha', num: true, f: (x) => x.linha }, { t: 'Matrícula', f: (x) => [x.matricula, x.no_cadastro ? '' : h('small', { class: 'muted' }, ' (fora do cadastro)')] },
       { t: 'Mês', f: (x) => mesRotulo(x.mes) }, { t: 'BPP', num: true, f: (x) => valorOuTraco(x.bpp) }, { t: 'Zelo/Equip.', num: true, f: (x) => valorOuTraco(x.zelo) }, { t: 'Produtividade', num: true, f: (x) => valorOuTraco(x.prod) },
@@ -368,12 +374,24 @@ async function paginaParametros({ recarregarPagina }) {
       { nome: 'meses_media', rotulo: 'Meses da média', tipo: 'number', passo: '1', min: '1', max: '12', valor: cfg.meses_media, obrigatorio: true },
       { nome: 'dia_corte', rotulo: 'Dia de corte do ciclo', tipo: 'number', passo: '1', min: '1', max: '28', valor: cfg.dia_corte, obrigatorio: true, dica: 'As ocorrências contam do dia de corte anterior até a data da rescisão.' },
       { nome: 'palavras_operador', rotulo: 'Funções do grupo "Operadores e motoristas"', valor: cfg.palavras_operador, max: 200, cheio: true, dica: 'Palavras separadas por vírgula; quem tiver uma delas no nome da função entra nesse grupo. As demais ficam em "Auxiliares e demais funções".' },
-      { nome: 'descontar_bpp', rotulo: 'Aplicar o desconto sobre o BPP', tipo: 'checkbox', valor: cfg.descontar_bpp, cheio: true },
-      { nome: 'descontar_zelo', rotulo: 'Aplicar o desconto sobre o Zelo / Equipamento', tipo: 'checkbox', valor: cfg.descontar_zelo, cheio: true },
-      { nome: 'descontar_prod', rotulo: 'Aplicar o desconto sobre a Produtividade', tipo: 'checkbox', valor: cfg.descontar_prod, cheio: true },
+      { nome: 'desconto_auxiliar', rotulo: 'Ocorrências de auxiliares e demais funções descontam do', tipo: 'select', opcoes: ALVOS, valor: cfg.desconto_auxiliar, obrigatorio: true },
+      { nome: 'desconto_operador', rotulo: 'Ocorrências de operadores e motoristas descontam da', tipo: 'select', opcoes: ALVOS, valor: cfg.desconto_operador, obrigatorio: true },
     ], confirmar: 'Salvar',
-    aoSalvar: (v) => put('/gratificacao/config', { ...v, base_dias: Number(v.base_dias), meses_media: Number(v.meses_media), dia_corte: Number(v.dia_corte) }),
+    aoSalvar: (v) => put('/gratificacao/config', {
+      ...v, base_dias: Number(v.base_dias), meses_media: Number(v.meses_media), dia_corte: Number(v.dia_corte),
+      descontar_bpp: cfg.descontar_bpp, descontar_zelo: cfg.descontar_zelo, descontar_prod: cfg.descontar_prod,
+    }),
   }).then((s) => { if (s) { toast('Regras salvas.'); recarregarPagina(); } });
+
+  const editarSignatario = (x) => dialogo({
+    titulo: x ? 'Editar assinatura' : 'Nova assinatura',
+    campos: [
+      { nome: 'nome', rotulo: 'Nome (como deve sair impresso)', valor: x?.nome, max: 120, cheio: true, dica: 'Ex.: matrícula - nome completo.' },
+      { nome: 'cargo', rotulo: 'Cargo', valor: x?.cargo, obrigatorio: true, max: 80, cheio: true },
+      { nome: 'ordem', rotulo: 'Ordem (da esquerda para a direita)', tipo: 'number', passo: '1', min: '0', max: '99', valor: x?.ordem ?? (p.signatarios.length + 1) },
+      { nome: 'ativo', rotulo: 'Sai no demonstrativo', tipo: 'checkbox', valor: x?.ativo ?? true },
+    ], confirmar: 'Salvar', aoSalvar: (v) => (x ? put(`/gratificacao/signatarios/${x.id}`, v) : post('/gratificacao/signatarios', v)),
+  }).then((s) => { if (s) { toast('Assinatura salva.'); recarregarPagina(); } });
 
   const editarCriterio = (x) => dialogo({
     titulo: x ? 'Editar critério' : 'Novo tipo de rescisão',
@@ -409,7 +427,8 @@ async function paginaParametros({ recarregarPagina }) {
     secao('Regras gerais', botao('Editar', editarConfig, { tom: 'sec', pequeno: true, icone: 'editar' }), h('dl', { class: 'dados' },
       ...[['Base de dias', cfg.base_dias], ['Meses da média', cfg.meses_media], ['Dia de corte do ciclo', cfg.dia_corte],
         ['Grupo "Operadores e motoristas"', cfg.palavras_operador || '—'],
-        ['Desconto aplicado sobre', [cfg.descontar_bpp && 'BPP', cfg.descontar_zelo && 'Zelo/Equipamento', cfg.descontar_prod && 'Produtividade'].filter(Boolean).join(', ') || 'nenhum componente']]
+        ['Ocorrências de auxiliares e demais funções', `descontam do ${rotuloAlvo(cfg.desconto_auxiliar)}`],
+        ['Ocorrências de operadores e motoristas', `descontam da ${rotuloAlvo(cfg.desconto_operador)}`]]
         .map(([t, v]) => dado(t, v)))),
     secao('Critérios por tipo de rescisão', botao('Novo tipo', () => editarCriterio(null), { tom: 'sec', pequeno: true, icone: 'mais' }), tabela([
       { t: 'Tipo de rescisão', f: (x) => [x.tipo_rescisao, x.ativo ? '' : h('small', { class: 'muted' }, ' (inativo)')] },
@@ -418,6 +437,14 @@ async function paginaParametros({ recarregarPagina }) {
         botao('Excluir', async () => { if (await confirmar('Excluir critério', x.tipo_rescisao, { rotulo: 'Excluir', perigo: true })) { try { await del(`/gratificacao/criterios/${x.id}`); recarregarPagina(); } catch (e) { toast(e.message, 'erro'); } } }, { tom: 'perigo sec', pequeno: true })) },
     ], p.criterios)),
     h('div', { class: 'grade-2' }, tabelaGrupo('auxiliar'), tabelaGrupo('operador')),
+    secao('Assinaturas do demonstrativo', botao('Nova assinatura', () => editarSignatario(null), { tom: 'sec', pequeno: true, icone: 'mais' }),
+      h('p', { class: 'muted pequeno' }, 'Quem assina o demonstrativo de pagamento (modelo da aba Diversos). Os nomes aparecem acima do cargo, abaixo da linha de assinatura.'),
+      tabela([
+        { t: 'Ordem', num: true, f: (x) => x.ordem }, { t: 'Nome', f: (x) => x.nome || h('span', { class: 'muted' }, 'a preencher') }, { t: 'Cargo', f: (x) => x.cargo },
+        { t: 'No demonstrativo', f: (x) => sim(x.ativo) },
+        { t: '', f: (x) => h('span', { class: 'acoes' }, botao('Editar', () => editarSignatario(x), { tom: 'sec', pequeno: true }),
+          botao('Excluir', async () => { if (await confirmar('Excluir assinatura', `${x.nome || ''} — ${x.cargo}`, { rotulo: 'Excluir', perigo: true })) { await del(`/gratificacao/signatarios/${x.id}`); recarregarPagina(); } }, { tom: 'perigo sec', pequeno: true })) },
+      ], p.signatarios, { vazioMsg: 'Nenhuma assinatura cadastrada.' })),
   ];
 }
 const dado = (t, v) => h('div', {}, h('dt', {}, t), h('dd', {}, v));
@@ -432,7 +459,7 @@ async function paginaRelatorio({ query, ir }) {
     cabecalhoPagina({
       migalhas: [['Gratificação rescisória'], ['Relatório de pagamento']], titulo: 'Relatório de pagamento',
       sub: 'Gratificação rescisória por departamento: médias, valores a receber e total',
-      acoes: [h('a', { class: 'btn sec', href: `/api/gratificacao/relatorio.csv${qs ? `?${qs}` : ''}`, download: '' }, icone('baixar'), 'Exportar CSV'), botao('Imprimir', () => window.print(), { tom: 'sec', icone: 'impressora' })],
+      acoes: [h('a', { class: 'btn sec', href: `/api/gratificacao/relatorio.csv${qs ? `?${qs}` : ''}`, download: '' }, icone('baixar'), 'Exportar CSV'), h('a', { class: 'btn', href: `#/gratificacao/demonstrativo${qs ? `?${qs}` : ''}` }, icone('impressora'), 'Demonstrativo para assinatura')],
     }),
     barraFiltros([
       { nome: 'situacao', rotulo: 'Situação', tipo: 'select', opcoes: [{ valor: 'apurada', rotulo: 'Apurada' }, { valor: 'paga', rotulo: 'Paga' }] },
@@ -461,6 +488,108 @@ async function paginaRelatorio({ query, ir }) {
 }
 
 // ======================================================================
+// Médias dos últimos meses (aba MÉDIA_GRAT)
+// ======================================================================
+async function paginaMedias({ query, ir }) {
+  const qs = new URLSearchParams(query).toString();
+  const m = await get(`/gratificacao/medias${qs ? `?${qs}` : ''}`);
+  const janela = m.meses.length ? `${mesRotulo(`${m.meses[0]}-01`)} a ${mesRotulo(`${m.meses[m.meses.length - 1]}-01`)}` : '—';
+  return [
+    cabecalhoPagina({
+      migalhas: [['Gratificação rescisória'], ['Médias (3 meses)']], titulo: 'Médias de BPP e produtividade',
+      sub: `Média dos últimos ${m.meses.length || 3} meses por matrícula (${janela}) — célula vazia não entra na média, como na tabela dinâmica da planilha`,
+      acoes: [h('a', { class: 'btn sec', href: `/api/gratificacao/medias.csv${qs ? `?${qs}` : ''}`, download: '' }, icone('baixar'), 'Exportar CSV')],
+    }),
+    barraFiltros([
+      { nome: 'mes', rotulo: 'Mês de referência (último da janela)', tipo: 'month' },
+      { nome: 'q', rotulo: 'Busca', placeholder: 'Nome ou matrícula' },
+    ], { ...query, mes: query.mes || m.ref || '' }, (v) => ir('#/gratificacao/medias', v)),
+    h('div', { class: 'kpis compactos' },
+      kpi('Matrículas', fmt(m.itens.length), { icone: 'usuarios' }),
+      kpi('Janela', janela, { icone: 'calendario', sub: m.ultimo ? `último mês carregado: ${mesRotulo(`${m.ultimo}-01`)}` : 'nenhum valor carregado' })),
+    h('div', { class: 'card' }, tabela([
+      { t: 'Matrícula', cls: 'nowrap', f: (r) => r.matricula },
+      { t: 'Nome', f: (r) => r.nome || h('span', { class: 'muted' }, 'fora do cadastro') },
+      { t: 'Função', f: (r) => r.funcao || '—' },
+      { t: 'Média BPP', num: true, f: (r) => valorOuTraco(r.bpp) },
+      { t: 'Média Zelo/Equip.', num: true, f: (r) => valorOuTraco(r.zelo) },
+      { t: 'Média Produtividade', num: true, f: (r) => valorOuTraco(r.prod) },
+      { t: 'Meses com valores', num: true, f: (r) => r.meses },
+    ], m.itens, { vazioMsg: 'Nenhum valor no período. Faça a carga mensal em Valores mensais.' })),
+  ];
+}
+
+// ======================================================================
+// Demonstrativo para assinatura (modelo da aba Diversos)
+// ======================================================================
+const MESES_EXT = ['JANEIRO', 'FEVEREIRO', 'MARÇO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
+async function paginaDemonstrativo({ query, ir }) {
+  const qs = new URLSearchParams(query).toString();
+  const [{ itens }, p] = await Promise.all([get(`/gratificacao/relatorio${qs ? `?${qs}` : ''}`), get('/gratificacao/parametros')]);
+  const n2 = (v) => Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const ating = (comp) => (comp.media ? pct(comp.receber / comp.media) : '—');
+  const inicio = itens.map((r) => r.calculo.periodo.inicio).sort()[0];
+  const fim = itens.map((r) => r.calculo.periodo.fim).sort().reverse()[0];
+  const mesTitulo = fim ? `${MESES_EXT[Number(fim.slice(5, 7)) - 1]} ${fim.slice(0, 4)}` : '';
+
+  // Agrupa por departamento, com subtotal (como as linhas "… - Total - n" da planilha)
+  const grupos = new Map();
+  for (const r of itens) { const k = r.funcionario_setor || 'SEM DEPARTAMENTO'; if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(r); }
+  const soma = (lista, f) => lista.reduce((t, r) => t + f(r.calculo), 0);
+  const linhaDados = (r) => { const c = r.calculo; return h('tr', {},
+    h('td', {}, r.funcionario_setor || '—'), h('td', { class: 'c' }, r.funcionario_matricula), h('td', {}, r.funcionario_nome),
+    h('td', { class: 'n' }, n2(c.bpp.media)), h('td', { class: 'n' }, ating(c.bpp)), h('td', { class: 'n' }, n2(c.bpp.receber)),
+    h('td', { class: 'n' }, n2(c.zelo.media)), h('td', { class: 'n' }, ating(c.zelo)), h('td', { class: 'n' }, n2(c.zelo.receber)),
+    h('td', { class: 'n' }, n2(c.prod.media)), h('td', { class: 'n' }, ating(c.prod)), h('td', { class: 'n' }, n2(c.prod.receber)),
+    h('td', { class: 'n' }, n2(c.total)), h('td', { class: 'c' }, c.dias_pagar), h('td', { class: 'c' }, c.dias_descontados),
+    h('td', {}, r.tipo_rescisao), h('td', { class: 'c' }, dataBR(r.funcionario_admissao)), h('td', {}, c.criterio_texto), h('td', { class: 'c' }, dataBR(r.dt_rescisao)),
+    h('td', { class: 'n forte' }, n2(c.total))); };
+  const linhaTotal = (rotulo, lista, classe) => h('tr', { class: classe },
+    h('td', { colspan: 3 }, `${rotulo} - ${lista.length}`),
+    h('td', {}), h('td', {}), h('td', { class: 'n' }, n2(soma(lista, (c) => c.bpp.receber))),
+    h('td', {}), h('td', {}), h('td', { class: 'n' }, n2(soma(lista, (c) => c.zelo.receber))),
+    h('td', {}), h('td', {}), h('td', { class: 'n' }, n2(soma(lista, (c) => c.prod.receber))),
+    h('td', { class: 'n' }, n2(soma(lista, (c) => c.total))), h('td', { class: 'c' }, soma(lista, (c) => c.dias_pagar)), h('td', { class: 'c' }, soma(lista, (c) => c.dias_descontados)),
+    h('td', { colspan: 4 }), h('td', { class: 'n forte' }, n2(soma(lista, (c) => c.total))));
+
+  const corpo = [];
+  for (const [dep, lista] of grupos) { corpo.push(...lista.map(linhaDados), linhaTotal(`${dep} - Total`, lista, 'subtotal')); }
+  const assinaturas = p.signatarios.filter((x) => x.ativo);
+
+  const folha = h('section', { class: 'demo-folha' },
+    h('header', { class: 'demo-cab' },
+      h('div', { class: 'demo-tit' },
+        h('strong', {}, 'CRV INDUSTRIAL'),
+        h('h1', {}, `PAGAMENTO DE B.P.P - BOAS PRÁTICAS DE PRODUÇÃO E PRODUTIVIDADE${mesTitulo ? ` - ${mesTitulo}` : ''}`),
+        h('p', {}, 'GRATIFICAÇÃO RESCISÓRIA - A APURAÇÃO FOI FEITA PELA MÉDIA DAS TRÊS ÚLTIMAS GRATIFICAÇÕES, PROPORCIONAL AOS DIAS TRABALHADOS NO PERÍODO DESCRITO, ATÉ O DIA DA RESCISÃO.')),
+      h('div', { class: 'demo-periodo' }, h('span', {}, dataBR(inicio)), h('b', {}, 'A'), h('span', {}, dataBR(fim))),
+      h('img', { src: '/img/crv-industrial-azul.png?v=2', alt: 'CRV Industrial', class: 'demo-logo' })),
+    itens.length ? h('table', { class: 'demo-tab' },
+      h('thead', {}, h('tr', {}, ['Descrição do Departamento', 'Matrícula', 'Nome Colaborador', 'Média-BPP (R$)', 'Ating. BPP (%)', '(R$) Receber BPP', 'Média-Zelo_Equip (R$)', 'Ating. Zelo_Equip (%)', '(R$) Receber Zelo_Equip',
+        'Média-Prod (R$)', 'Ating. Prod (%)', '(R$) Receber Produtivid', '$ BPP + Zelo_Equip + Produtivid', 'Qtde Dias trab.', 'Qtde. faltas', 'Tipo de Rescisão', 'Dt - Admissão', 'Critérios da Rescisão', 'Dt. Rescisão', '(R$) Total Gratif Receber']
+        .map((t) => h('th', {}, t)))),
+      h('tbody', {}, corpo, linhaTotal('Total / VALORES', itens, 'total'))) : h('p', { class: 'demo-vazio' }, 'Nenhuma apuração para o filtro selecionado.'),
+    h('div', { class: 'demo-assin' }, assinaturas.map((x) => h('div', {}, h('span', { class: 'linha' }), h('span', { class: 'nome' }, x.nome || ' '), h('span', { class: 'cargo' }, x.cargo)))),
+    h('footer', { class: 'demo-rodape' }, `Emitido em ${new Date().toLocaleString('pt-BR')}`));
+
+  return [
+    h('div', { class: 'nao-imprime' },
+      cabecalhoPagina({
+        migalhas: [['Gratificação rescisória'], ['Demonstrativo']], titulo: 'Demonstrativo para assinatura',
+        sub: 'Modelo da aba Diversos: valores que cada colaborador vai receber, por departamento, com as assinaturas dos gestores',
+        acoes: [botao('Imprimir', () => window.print(), { icone: 'impressora' })],
+      }),
+      barraFiltros([
+        { nome: 'de', rotulo: 'Rescisão de', tipo: 'date' }, { nome: 'ate', rotulo: 'até', tipo: 'date' },
+        { nome: 'situacao', rotulo: 'Situação', tipo: 'select', opcoes: [{ valor: 'apurada', rotulo: 'Apurada' }, { valor: 'paga', rotulo: 'Paga' }] },
+        { nome: 'q', rotulo: 'Busca', placeholder: 'Nome ou matrícula' },
+      ], query, (v) => ir('#/gratificacao/demonstrativo', v)),
+      assinaturas.some((x) => !x.nome) ? h('p', { class: 'perfil-caixa' }, 'Há assinatura sem nome: preencha em Gratificação rescisória → Parâmetros → Assinaturas do demonstrativo.') : null),
+    h('div', { class: 'demo-mesa' }, folha),
+  ];
+}
+
+// ======================================================================
 // Roteamento interno do módulo: #/gratificacao/<apuracao|valores|ocorrencias|parametros|relatorio>
 // ======================================================================
 export default async function gratificacao(ctx) {
@@ -471,6 +600,8 @@ export default async function gratificacao(ctx) {
     case 'ocorrencias': return paginaOcorrencias(c);
     case 'parametros': return paginaParametros(c);
     case 'relatorio': return paginaRelatorio(c);
+    case 'medias': return paginaMedias(c);
+    case 'demonstrativo': return paginaDemonstrativo(c);
     default: return resto.length ? detalheApuracao({ ...c, params: resto }) : listaApuracao(c);
   }
 }

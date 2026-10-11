@@ -9,7 +9,7 @@ const {
 const { exigirPerfil, ADM, FIN } = require('../workflow');
 const { abrirPlanilha, MAX_BYTES } = require('../planilha');
 const {
-  calcular, sugerirColunas, lerValores, lerOcorrencias, normMatricula, semAcento, CAMPOS_VALORES, CAMPOS_OCORRENCIAS, ESCALAS,
+  calcular, sugerirColunas, lerValores, lerOcorrencias, normMatricula, semAcento, CAMPOS_VALORES, CAMPOS_OCORRENCIAS, ESCALAS, ALVOS_DESCONTO,
 } = require('../gratificacao');
 
 const bool = (v) => v === true || v === 'true' || v === 1 || v === '1';
@@ -37,12 +37,13 @@ function criarGratificacao({ pool }) {
   const lerConfig = async (db) => (await db.query('SELECT * FROM grat_config WHERE id = 1')).rows[0];
 
   router.get('/gratificacao/parametros', wrap(async (_req, res) => {
-    const [config, criterios, penalidades] = await Promise.all([
+    const [config, criterios, penalidades, signatarios] = await Promise.all([
       lerConfig(pool),
       pool.query('SELECT * FROM grat_criterios ORDER BY id'),
       pool.query(`SELECT * FROM grat_penalidades ORDER BY grupo, id`),
+      pool.query('SELECT * FROM grat_signatarios ORDER BY ordem, id'),
     ]);
-    res.json({ config, criterios: criterios.rows, penalidades: penalidades.rows.map((p) => ({ ...p, percentual: Number(p.percentual) })) });
+    res.json({ config, criterios: criterios.rows, penalidades: penalidades.rows.map((p) => ({ ...p, percentual: Number(p.percentual) })), signatarios: signatarios.rows });
   }));
 
   router.put('/gratificacao/config', wrap(async (req, res) => {
@@ -52,11 +53,14 @@ function criarGratificacao({ pool }) {
       base_dias: num(b.base_dias, 1, 31, 'Base de dias'), meses_media: num(b.meses_media, 1, 12, 'Meses da média'), dia_corte: num(b.dia_corte, 1, 28, 'Dia de corte'),
       descontar_bpp: bool(b.descontar_bpp), descontar_zelo: bool(b.descontar_zelo), descontar_prod: bool(b.descontar_prod),
       palavras_operador: texto(b.palavras_operador, 200),
+      desconto_auxiliar: opcaoDe(b.desconto_auxiliar ?? 'bpp', Object.keys(ALVOS_DESCONTO), 'Desconto dos auxiliares'),
+      desconto_operador: opcaoDe(b.desconto_operador ?? 'prod', Object.keys(ALVOS_DESCONTO), 'Desconto dos operadores'),
     };
     const antes = await lerConfig(pool);
     await pool.query(
-      `UPDATE grat_config SET base_dias=$1, meses_media=$2, dia_corte=$3, descontar_bpp=$4, descontar_zelo=$5, descontar_prod=$6, palavras_operador=$7 WHERE id = 1`,
-      [novo.base_dias, novo.meses_media, novo.dia_corte, novo.descontar_bpp, novo.descontar_zelo, novo.descontar_prod, novo.palavras_operador]);
+      `UPDATE grat_config SET base_dias=$1, meses_media=$2, dia_corte=$3, descontar_bpp=$4, descontar_zelo=$5, descontar_prod=$6, palavras_operador=$7,
+         desconto_auxiliar=$8, desconto_operador=$9 WHERE id = 1`,
+      [novo.base_dias, novo.meses_media, novo.dia_corte, novo.descontar_bpp, novo.descontar_zelo, novo.descontar_prod, novo.palavras_operador, novo.desconto_auxiliar, novo.desconto_operador]);
     await auditar(pool, req.usuario, 'editar', 'grat_config', 1, diff(antes, novo, Object.keys(novo)));
     res.json(await lerConfig(pool));
   }));
@@ -134,6 +138,66 @@ function criarGratificacao({ pool }) {
     res.status(204).end();
   }));
 
+  // Assinaturas do demonstrativo (nome e cargo)
+  const lerSignatario = (b) => ({
+    nome: texto(b.nome, 120).toUpperCase(), cargo: texto(b.cargo, 80, { obrigatorio: true, rotulo: 'Cargo' }).toUpperCase(),
+    ordem: Number.isInteger(Number(b.ordem)) ? Math.max(0, Math.min(99, Number(b.ordem))) : 1, ativo: b.ativo === undefined ? true : bool(b.ativo),
+  });
+  router.post('/gratificacao/signatarios', wrap(async (req, res) => {
+    const x = lerSignatario(req.body);
+    const { rows } = await pool.query('INSERT INTO grat_signatarios (nome, cargo, ordem, ativo) VALUES ($1,$2,$3,$4) RETURNING *', [x.nome, x.cargo, x.ordem, x.ativo]);
+    await auditar(pool, req.usuario, 'criar', 'grat_signatario', rows[0].id, x);
+    res.status(201).json(rows[0]);
+  }));
+  router.put('/gratificacao/signatarios/:id', wrap(async (req, res) => {
+    const id = idParam(req);
+    const x = lerSignatario(req.body);
+    const antes = (await pool.query('SELECT * FROM grat_signatarios WHERE id=$1', [id])).rows[0];
+    if (!antes) throw erro404('Assinatura não encontrada.');
+    const { rows } = await pool.query('UPDATE grat_signatarios SET nome=$1, cargo=$2, ordem=$3, ativo=$4 WHERE id=$5 RETURNING *', [x.nome, x.cargo, x.ordem, x.ativo, id]);
+    await auditar(pool, req.usuario, 'editar', 'grat_signatario', id, diff(antes, rows[0], Object.keys(x)));
+    res.json(rows[0]);
+  }));
+  router.delete('/gratificacao/signatarios/:id', wrap(async (req, res) => {
+    const id = idParam(req);
+    const { rowCount } = await pool.query('DELETE FROM grat_signatarios WHERE id=$1', [id]);
+    if (!rowCount) throw erro404('Assinatura não encontrada.');
+    await auditar(pool, req.usuario, 'excluir', 'grat_signatario', id);
+    res.status(204).end();
+  }));
+
+  // ================= Médias dos últimos meses (aba MÉDIA_GRAT) =================
+  // Média por matrícula nos N meses que terminam no mês de referência; célula vazia não entra (AVG ignora NULL)
+  async function medias(req) {
+    const cfg = await lerConfig(pool);
+    const ultimo = (await pool.query(`SELECT to_char(max(mes),'YYYY-MM') AS m FROM grat_valores`)).rows[0].m;
+    const ref = /^\d{4}-\d{2}$/.test(String(req.query.mes || '')) ? req.query.mes : ultimo;
+    if (!ref) return { ref: null, meses: [], itens: [] };
+    const params = [`${ref}-01`, cfg.meses_media - 1];
+    let filtro = '';
+    if (req.query.q) {
+      params.push(`%${String(req.query.q).slice(0, 80).replace(/[%_\\]/g, '\\$&')}%`);
+      filtro = `AND (v.matricula ILIKE $3 OR f.nome ILIKE $3)`;
+    }
+    const { rows } = await pool.query(
+      `SELECT v.matricula, max(f.nome) AS nome, max(f.funcao) AS funcao, max(f.setor) AS setor,
+              round(avg(v.bpp), 2) AS bpp, round(avg(v.zelo), 2) AS zelo, round(avg(v.prod), 2) AS prod, count(*)::int AS meses
+       FROM grat_valores v LEFT JOIN funcionarios f ON ${SQL_MAT_FUNC} = v.matricula
+       WHERE v.mes BETWEEN ($1::date - make_interval(months => $2)) AND $1::date ${filtro}
+       GROUP BY v.matricula ORDER BY max(f.nome) NULLS LAST, v.matricula LIMIT 5000`, params);
+    const meses = (await pool.query(`SELECT to_char(m, 'YYYY-MM') AS m FROM generate_series($1::date - make_interval(months => $2), $1::date, interval '1 month') m ORDER BY m`, params.slice(0, 2))).rows.map((r) => r.m);
+    return { ref, ultimo, meses, itens: rows.map((r) => ({ ...r, bpp: numOuNulo(r.bpp), zelo: numOuNulo(r.zelo), prod: numOuNulo(r.prod) })) };
+  }
+  router.get('/gratificacao/medias', wrap(async (req, res) => res.json(await medias(req))));
+  router.get('/gratificacao/medias.csv', wrap(async (req, res) => {
+    const m = await medias(req);
+    const v = (n) => (n === null || n === undefined ? '' : moedaCsv(n));
+    enviarCsv(res, `medias_${m.ref || 'sem-dados'}.csv`, [
+      ['Matrícula', 'Nome', 'Função', 'Setor', 'Média BPP (R$)', 'Média Zelo/Equip. (R$)', 'Média Produtividade (R$)', 'Meses com valores', 'Janela'],
+      ...m.itens.map((r) => [r.matricula, r.nome || '', r.funcao || '', r.setor || '', v(r.bpp), v(r.zelo), v(r.prod), r.meses, m.meses.join(' a ')]),
+    ]);
+  }));
+
   // ================= Valores mensais (BPP / Zelo / Produtividade) =================
   router.get('/gratificacao/valores', wrap(async (req, res) => {
     const params = [];
@@ -173,7 +237,7 @@ function criarGratificacao({ pool }) {
   }));
 
   // --- Importação de arquivos (xlsx/csv): arquivo → prévia → aplicar. Usada para valores mensais e ocorrências.
-  function registrarImportacao({ prefixo, tipo, campos, validarMapa, montarPlano, chave, amostra, aplicar }) {
+  function registrarImportacao({ prefixo, tipo, campos, abaPreferida, validarMapa, montarPlano, chave, amostra, aplicar }) {
     const id = (req) => `${tipo}:${req.usuario.id}`;
     const lerAba = (p, indice) => {
       const i = Number.isInteger(indice) && indice >= 0 && indice < p.planilha.abas.length ? indice : 0;
@@ -198,14 +262,24 @@ function criarGratificacao({ pool }) {
       const usadas = Object.values(m).filter((v) => v !== null);
       if (new Set(usadas).size !== usadas.length) throw erro400('A mesma coluna foi escolhida para mais de um campo.');
       for (const c of campos) if (c.obrigatorio && m[c.chave] === null) throw erro400(`Escolha a coluna de "${c.rotulo}".`);
-      validarMapa(m);
       return m;
+    };
+    const lerOpcoes = (corpo, m) => {
+      const o = {};
+      if (corpo?.mes) {
+        if (!/^\d{4}-\d{2}$/.test(String(corpo.mes))) throw erro400('Mês de referência inválido.');
+        o.mes = `${corpo.mes}-01`;
+      }
+      validarMapa(m, o);
+      return o;
     };
 
     router.post(`${prefixo}/arquivo`, express.raw({ type: 'application/octet-stream', limit: MAX_BYTES }), wrap(async (req, res) => {
       const planilha = abrirPlanilha(req.body);
       const p = { arquivo: texto(req.query.nome, 150) || 'arquivo', planilha, expira: Date.now() + TTL_MS };
-      lerAba(p, 0);
+      // Planilha com várias abas (ex.: a pasta de trabalho inteira): abre direto a aba certa (GRAT / Notificação)
+      const preferida = abaPreferida ? planilha.abas.findIndex((n) => abaPreferida.test(semAcento(n))) : -1;
+      lerAba(p, preferida >= 0 ? preferida : 0);
       if (!p.dados.length) throw erro400('Não encontrei linhas de dados abaixo do cabeçalho.');
       pendentes.set(id(req), p);
       res.status(201).json(descrever(p));
@@ -219,14 +293,16 @@ function criarGratificacao({ pool }) {
     router.delete(`${prefixo}/arquivo`, wrap(async (req, res) => { pendentes.delete(id(req)); res.status(204).end(); }));
     router.post(`${prefixo}/previa`, wrap(async (req, res) => {
       const p = obterPendente(id(req));
-      const plano = await montarPlano(pool, p, lerMapa(req.body.mapa, p));
+      const mapa = lerMapa(req.body.mapa, p);
+      const plano = await montarPlano(pool, p, mapa, { opcoes: lerOpcoes(req.body.opcoes, mapa) });
       res.json({ resumo: plano.resumo, chave: chave(plano), erros: plano.erros.slice(0, 30), amostra: amostra(plano) });
     }));
     router.post(`${prefixo}/aplicar`, wrap(async (req, res) => {
       const p = obterPendente(id(req));
       const mapa = lerMapa(req.body.mapa, p);
+      const opcoes = lerOpcoes(req.body.opcoes, mapa);
       const resumo = await tx(pool, async (db) => {
-        const plano = await montarPlano(db, p, mapa, { travar: true });
+        const plano = await montarPlano(db, p, mapa, { travar: true, opcoes });
         if (chave(plano) !== req.body.chave) throw erro409('Os dados mudaram desde a prévia. Confira a prévia novamente antes de importar.');
         await aplicar(db, plano, p, req.usuario);
         return plano.resumo;
@@ -241,11 +317,14 @@ function criarGratificacao({ pool }) {
 
   // Valores mensais (BPP / Zelo / Produtividade)
   registrarImportacao({
-    prefixo: '/gratificacao/importacao', tipo: 'valores', campos: CAMPOS_VALORES,
-    validarMapa: (m) => { if (m.bpp === null && m.zelo === null && m.prod === null) throw erro400('Escolha ao menos uma coluna de valores (BPP, Zelo/Equipamento ou Produtividade).'); },
-    montarPlano: async (db, p, mapa, { travar } = {}) => {
+    prefixo: '/gratificacao/importacao', tipo: 'valores', campos: CAMPOS_VALORES, abaPreferida: /^GRAT$/,
+    validarMapa: (m, o) => {
+      if (m.bpp === null && m.zelo === null && m.prod === null) throw erro400('Escolha ao menos uma coluna de valores (BPP, Zelo/Equipamento ou Produtividade).');
+      if (m.mes === null && !o.mes) throw erro400('Escolha a coluna do mês ou informe o mês de referência do arquivo.');
+    },
+    montarPlano: async (db, p, mapa, { travar, opcoes = {} } = {}) => {
       if (travar) await db.query('LOCK TABLE grat_valores IN SHARE ROW EXCLUSIVE MODE');
-      const { validos, erros } = lerValores(p.dados, mapa, p.linhaCabecalho + 1);
+      const { validos, erros } = lerValores(p.dados, mapa, p.linhaCabecalho + 1, opcoes.mes || null);
       const existentes = new Map((await db.query('SELECT matricula, mes, bpp, zelo, prod FROM grat_valores')).rows.map((r) => [`${r.matricula}|${dataLocal(r.mes)}`, r]));
       const cad = await matriculasDoCadastro(db);
       const itens = validos.map((v) => {
@@ -282,10 +361,11 @@ function criarGratificacao({ pool }) {
 
   // Ocorrências (exportação do controle de notificações)
   registrarImportacao({
-    prefixo: '/gratificacao/importacao-ocorrencias', tipo: 'ocorrencias', campos: CAMPOS_OCORRENCIAS,
+    prefixo: '/gratificacao/importacao-ocorrencias', tipo: 'ocorrencias', campos: CAMPOS_OCORRENCIAS, abaPreferida: /NOTIF/,
     validarMapa: (m) => { if (m.abrev === null && m.descricao === null) throw erro400('Escolha a coluna do tipo da ocorrência (abreviação ou descrição).'); },
     montarPlano: async (db, p, mapa, { travar } = {}) => {
       if (travar) await db.query('LOCK TABLE grat_ocorrencias IN SHARE ROW EXCLUSIVE MODE');
+      // (o mês de referência não se aplica às ocorrências: cada linha tem a sua data)
       const pen = (await db.query('SELECT abrev, descricao FROM grat_penalidades ORDER BY id')).rows;
       const tipos = { abrevs: new Map(), porDescricao: new Map() };
       for (const x of pen) {

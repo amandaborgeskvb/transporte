@@ -66,11 +66,11 @@ const TOPICOS = [
   },
   {
     titulo: 'Gratificação rescisória', perfis: ['administrador', 'financeiro'], corpo: () => [
-      lista('Em **Gratificação rescisória → Valores mensais**, envie o arquivo (Excel ou CSV) com **Matrícula, BPP, Zelo_Equip, Produtividade e Mês** (ex.: ABRIL - 26). O sistema reconhece as colunas e mostra a prévia antes de gravar.',
+      lista('Todo mês, em **Gratificação rescisória → Valores mensais**, faça a carga do arquivo (Excel ou CSV) com **Matrícula, BPP, Zelo_Equip, Produtividade e Mês** — pode ser a própria planilha (a aba GRAT abre sozinha). Sem a coluna Mês, escolha o mês de referência. Confira em **Médias (3 meses)**.',
         'Em **Ocorrências**, envie o arquivo exportado do controle de notificações (Data, Mat-Func, Penalid Notific…): a prévia mostra o que entra e reenviar não duplica. Também dá para lançar uma ocorrência à mão.',
         'Em **Apuração → Nova apuração**, escolha o funcionário, o tipo de rescisão, a data (o formulário mostra na hora o **período de gratificação**: do dia 16 do mês anterior até a rescisão) e a **escala de folga** (letra A–F, domingo ou 5×2): os dias trabalhados do ciclo são contados pelo calendário de folgas, como na aba BD. O sistema faz a média dos 3 meses, tira os dias das ocorrências, calcula o proporcional (÷ 25) e desconta da produtividade os percentuais das ocorrências do grupo da função.',
-        'Confira o detalhe, marque como **paga** e use o **Relatório de pagamento** (com CSV) para a folha.'),
-      dica('Os percentuais de desconto (auxiliares e demais funções × operadores e motoristas), os critérios por tipo de rescisão e as regras gerais ficam em **Parâmetros** e podem ser ajustados.'),
+        'Confira o detalhe, imprima o **Demonstrativo (assinaturas)** para os gestores assinarem e marque como **paga**. O **Relatório de pagamento** exporta em CSV para a folha.'),
+      dica('Em **Parâmetros**: as ocorrências de auxiliares e demais funções descontam do **BPP** e as de operadores e motoristas, da **produtividade**; ali também ficam os percentuais, os critérios por tipo de rescisão e os nomes de quem assina o demonstrativo.'),
     ],
   },
   {

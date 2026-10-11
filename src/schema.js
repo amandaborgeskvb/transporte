@@ -343,6 +343,21 @@ BEGIN
 END $$;
 ALTER TABLE grat_rescisoes ADD COLUMN IF NOT EXISTS escala TEXT;
 ALTER TABLE grat_ocorrencias ADD COLUMN IF NOT EXISTS origem TEXT NOT NULL DEFAULT '';
+-- Desconto das ocorrências por grupo de função: auxiliares e demais → BPP; operadores e motoristas → produtividade
+ALTER TABLE grat_config ADD COLUMN IF NOT EXISTS desconto_auxiliar TEXT NOT NULL DEFAULT 'bpp';
+ALTER TABLE grat_config ADD COLUMN IF NOT EXISTS desconto_operador TEXT NOT NULL DEFAULT 'prod';
+ALTER TABLE grat_config DROP CONSTRAINT IF EXISTS grat_config_desconto_check;
+ALTER TABLE grat_config ADD CONSTRAINT grat_config_desconto_check
+  CHECK (desconto_auxiliar IN ('bpp','zelo','prod','bpp_prod','todos','nenhum') AND desconto_operador IN ('bpp','zelo','prod','bpp_prod','todos','nenhum'));
+
+-- Assinaturas do demonstrativo de pagamento (modelo da aba Diversos)
+CREATE TABLE IF NOT EXISTS grat_signatarios (
+  id     SERIAL PRIMARY KEY,
+  nome   TEXT NOT NULL DEFAULT '',
+  cargo  TEXT NOT NULL,
+  ordem  INTEGER NOT NULL DEFAULT 1,
+  ativo  BOOLEAN NOT NULL DEFAULT true
+);
 ALTER TABLE grat_rescisoes ALTER COLUMN dias_trabalhados DROP NOT NULL;
 -- Padrões da planilha nas instalações que ainda não mexeram nos parâmetros: desconto só na produtividade;
 -- "sem justa causa" paga o Zelo (a fórmula só zera na justa causa; o texto do critério fala apenas do BPP)
@@ -402,6 +417,11 @@ VALUES ('RE. 0150.09', 'AUTORIZAÇÃO DE DESCONTO', '02', '2023-02-03', 'Sempre 
 ON CONFLICT (codigo) DO NOTHING;
 -- Gratificação rescisória: parâmetros iniciais (editáveis em Gratificação rescisória → Parâmetros)
 INSERT INTO grat_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- Cargos que assinam o demonstrativo (os nomes são preenchidos pelo administrador em Parâmetros)
+INSERT INTO grat_signatarios (cargo, ordem)
+SELECT c, o FROM (VALUES ('COORDENADOR AGRÍCOLA', 1), ('GERENTE TRANSPORTE E MECANIZAÇÃO', 2), ('SUPERINTENDENTE AGRÍCOLA', 3), ('GERENTE EXECUTIVO', 4)) AS v(c, o)
+WHERE NOT EXISTS (SELECT 1 FROM grat_signatarios);
 
 INSERT INTO grat_criterios (tipo_rescisao, pagar_bpp, pagar_zelo, pagar_prod) VALUES
   ('PEDIDO DE DEMISSÃO',             true,  true,  true),

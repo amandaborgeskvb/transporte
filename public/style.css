@@ -480,3 +480,37 @@ td .acoes { display: flex; gap: 6px; flex-wrap: nowrap; justify-content: flex-en
 tfoot th { background: var(--card-2); }
 .grat-previa { margin: 6px 0 10px; padding: 10px 12px; border: 1px solid var(--linha); border-radius: 10px; background: var(--card-2); }
 .grat-previa .dados { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* Demonstrativo da gratificação rescisória (modelo da aba Diversos): folha branca, A4 paisagem */
+.demo-mesa { background: #d6dbe3; border-radius: 10px; padding: 16px; overflow-x: auto; }
+html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
+.demo-folha { background: #fff; color: #111; width: 277mm; min-height: 180mm; margin: 0 auto; padding: 8mm; box-shadow: 0 2px 10px rgba(0,0,0,.25); font-family: Calibri, Arial, sans-serif; display: flex; flex-direction: column; }
+.demo-cab { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px; align-items: end; margin-bottom: 8px; }
+.demo-tit strong { font-size: 11pt; color: #1f3d7a; }
+.demo-tit h1 { font: 700 11pt Calibri, Arial, sans-serif; color: #1f3d7a; margin: 2px 0 6px; letter-spacing: 0; }
+.demo-tit p { font-size: 7.5pt; font-weight: 700; color: #1f3d7a; margin: 0; max-width: 150mm; }
+.demo-periodo { display: flex; gap: 14px; align-items: center; border: 1px solid #2aa3d6; padding: 4px 12px; font-weight: 700; color: #1f3d7a; text-decoration: underline; font-size: 9pt; }
+.demo-logo { height: 15mm; width: auto; }
+.demo-tab { width: 100%; border-collapse: collapse; font-size: 6.6pt; }
+.demo-tab th { background: #1f4e8c; color: #fff; font-weight: 700; padding: 3px 2px; border: 1px solid #fff; text-align: center; vertical-align: middle; font-size: 6pt; text-transform: none; letter-spacing: 0; white-space: normal; line-height: 1.15; }
+.demo-tab th:nth-child(6), .demo-tab th:nth-child(12) { background: #0f6b2f; }
+.demo-tab td { border: 1px solid #b7c3d4; padding: 2px 3px; vertical-align: middle; color: #111; font-size: 6.6pt; line-height: 1.2; }
+.demo-tab tbody tr:hover { background: none; }
+.demo-tab td.n { text-align: right; white-space: nowrap; }
+.demo-tab td.c { text-align: center; white-space: nowrap; }
+.demo-tab td.forte { font-weight: 700; }
+.demo-tab tr.subtotal td { background: #9fd6f0; font-weight: 700; }
+.demo-tab tr.total td { background: #1f4e8c; color: #fff; font-weight: 700; }
+.demo-vazio { text-align: center; color: #555; padding: 20mm 0; }
+.demo-assin { margin-top: auto; padding-top: 16mm; display: grid; grid-template-columns: repeat(auto-fit, minmax(55mm, 1fr)); gap: 10mm; text-align: center; font-size: 7.5pt; }
+.demo-assin .linha { display: block; border-top: 1px solid #111; margin: 0 4mm 2px; }
+.demo-assin .nome, .demo-assin .cargo { display: block; }
+.demo-assin .cargo { font-weight: 700; }
+.demo-rodape { margin-top: 6mm; font-size: 6.5pt; color: #666; text-align: right; }
+@page demonstrativo { size: A4 landscape; margin: 8mm; }
+@media print {
+  .demo-mesa { background: none !important; padding: 0; overflow: visible; border-radius: 0; }
+  .demo-folha { page: demonstrativo; box-shadow: none; margin: 0; width: auto; min-height: 190mm; padding: 0; }
+  .demo-tab tr { break-inside: avoid; }
+  .demo-tab th, .demo-tab tr.subtotal td, .demo-tab tr.total td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
