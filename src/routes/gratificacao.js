@@ -8,7 +8,9 @@ const {
 } = require('../util');
 const { exigirPerfil, ADM, FIN } = require('../workflow');
 const { abrirPlanilha, MAX_BYTES } = require('../planilha');
-const { calcular, sugerirColunas, lerValores, normMatricula, CAMPOS_VALORES, ESCALAS } = require('../gratificacao');
+const {
+  calcular, sugerirColunas, lerValores, lerOcorrencias, normMatricula, semAcento, CAMPOS_VALORES, CAMPOS_OCORRENCIAS, ESCALAS,
+} = require('../gratificacao');
 
 const bool = (v) => v === true || v === 'true' || v === 1 || v === '1';
 const TTL_MS = 30 * 60 * 1000;
@@ -16,9 +18,9 @@ const SQL_MAT_FUNC = `regexp_replace(f.matricula, '^0+(?=[0-9])', '')`;
 
 // Arquivo de valores aguardando confirmação (em memória, um por usuário, 30 minutos)
 const pendentes = new Map();
-function obterPendente(usuarioId) {
-  const p = pendentes.get(usuarioId);
-  if (!p || p.expira < Date.now()) { pendentes.delete(usuarioId); throw erro404('O arquivo enviado expirou. Envie-o novamente.'); }
+function obterPendente(chave) {
+  const p = pendentes.get(chave);
+  if (!p || p.expira < Date.now()) { pendentes.delete(chave); throw erro404('O arquivo enviado expirou. Envie-o novamente.'); }
   p.expira = Date.now() + TTL_MS;
   return p;
 }
@@ -170,89 +172,101 @@ function criarGratificacao({ pool }) {
     res.status(204).end();
   }));
 
-  // --- Importação do arquivo (xlsx/csv): arquivo → prévia → aplicar
-  function lerAba(p, indice) {
-    const i = Number.isInteger(indice) && indice >= 0 && indice < p.planilha.abas.length ? indice : 0;
-    const t = p.planilha.ler(i);
-    p.aba = i; p.cabecalho = t.cabecalho; p.dados = t.dados; p.linhaCabecalho = t.linhaCabecalho;
-  }
-  function descreverArquivo(p) {
-    return {
+  // --- Importação de arquivos (xlsx/csv): arquivo → prévia → aplicar. Usada para valores mensais e ocorrências.
+  function registrarImportacao({ prefixo, tipo, campos, validarMapa, montarPlano, chave, amostra, aplicar }) {
+    const id = (req) => `${tipo}:${req.usuario.id}`;
+    const lerAba = (p, indice) => {
+      const i = Number.isInteger(indice) && indice >= 0 && indice < p.planilha.abas.length ? indice : 0;
+      const t = p.planilha.ler(i);
+      p.aba = i; p.cabecalho = t.cabecalho; p.dados = t.dados; p.linhaCabecalho = t.linhaCabecalho;
+    };
+    const descrever = (p) => ({
       arquivo: p.arquivo, abas: p.planilha.abas, aba: p.aba, linha_cabecalho: p.linhaCabecalho, total_linhas: p.dados.length,
       colunas: p.cabecalho.map((nome, indice) => ({ indice, nome })),
-      mapa_sugerido: sugerirColunas(p.cabecalho),
-      campos: CAMPOS_VALORES.map((c) => ({ chave: c.chave, rotulo: c.rotulo, obrigatorio: !!c.obrigatorio })),
-    };
-  }
-  function lerMapa(corpo, p) {
-    const m = {};
-    for (const c of CAMPOS_VALORES) {
-      const v = corpo?.[c.chave];
-      if (v === null || v === undefined || v === '') { m[c.chave] = null; continue; }
-      const i = Number(v);
-      if (!Number.isInteger(i) || i < 0 || i >= p.cabecalho.length) throw erro400(`Coluna inválida para "${c.rotulo}".`);
-      m[c.chave] = i;
-    }
-    const usadas = Object.values(m).filter((v) => v !== null);
-    if (new Set(usadas).size !== usadas.length) throw erro400('A mesma coluna foi escolhida para mais de um campo.');
-    if (m.matricula === null) throw erro400('Escolha a coluna da matrícula.');
-    if (m.mes === null) throw erro400('Escolha a coluna do mês.');
-    if (m.bpp === null && m.zelo === null && m.prod === null) throw erro400('Escolha ao menos uma coluna de valores (BPP, Zelo/Equipamento ou Produtividade).');
-    return m;
-  }
-  async function planoValores(db, p, mapa) {
-    const { validos, erros } = lerValores(p.dados, mapa, p.linhaCabecalho + 1);
-    const existentes = new Map((await db.query('SELECT matricula, mes, bpp, zelo, prod FROM grat_valores')).rows.map((r) => [`${r.matricula}|${dataLocal(r.mes)}`, r]));
-    const cad = new Set((await db.query(`SELECT ${SQL_MAT_FUNC} AS m FROM funcionarios f`)).rows.map((r) => r.m));
-    const itens = validos.map((v) => {
-      const e = existentes.get(`${v.matricula}|${v.mes}`);
-      const igual = e && mesmoValor(e.bpp, v.bpp) && mesmoValor(e.zelo, v.zelo) && mesmoValor(e.prod, v.prod);
-      return { ...v, acao: !e ? 'criar' : igual ? 'igual' : 'atualizar', no_cadastro: cad.has(v.matricula) };
+      mapa_sugerido: sugerirColunas(p.cabecalho, campos),
+      campos: campos.map((c) => ({ chave: c.chave, rotulo: c.rotulo, obrigatorio: !!c.obrigatorio })),
     });
-    const resumo = {
-      linhas: p.dados.length, validos: itens.length, criar: itens.filter((i) => i.acao === 'criar').length, atualizar: itens.filter((i) => i.acao === 'atualizar').length,
-      iguais: itens.filter((i) => i.acao === 'igual').length, repetidas: itens.filter((i) => i.repetida).length, erros: erros.length,
-      fora_do_cadastro: itens.filter((i) => !i.no_cadastro).length,
-      meses: [...new Set(itens.map((i) => i.mes.slice(0, 7)))].sort().reverse(),
+    const lerMapa = (corpo, p) => {
+      const m = {};
+      for (const c of campos) {
+        const v = corpo?.[c.chave];
+        if (v === null || v === undefined || v === '') { m[c.chave] = null; continue; }
+        const i = Number(v);
+        if (!Number.isInteger(i) || i < 0 || i >= p.cabecalho.length) throw erro400(`Coluna inválida para "${c.rotulo}".`);
+        m[c.chave] = i;
+      }
+      const usadas = Object.values(m).filter((v) => v !== null);
+      if (new Set(usadas).size !== usadas.length) throw erro400('A mesma coluna foi escolhida para mais de um campo.');
+      for (const c of campos) if (c.obrigatorio && m[c.chave] === null) throw erro400(`Escolha a coluna de "${c.rotulo}".`);
+      validarMapa(m);
+      return m;
     };
-    return { itens, erros, resumo };
+
+    router.post(`${prefixo}/arquivo`, express.raw({ type: 'application/octet-stream', limit: MAX_BYTES }), wrap(async (req, res) => {
+      const planilha = abrirPlanilha(req.body);
+      const p = { arquivo: texto(req.query.nome, 150) || 'arquivo', planilha, expira: Date.now() + TTL_MS };
+      lerAba(p, 0);
+      if (!p.dados.length) throw erro400('Não encontrei linhas de dados abaixo do cabeçalho.');
+      pendentes.set(id(req), p);
+      res.status(201).json(descrever(p));
+    }));
+    router.post(`${prefixo}/aba`, wrap(async (req, res) => {
+      const p = obterPendente(id(req));
+      lerAba(p, Number(req.body.aba));
+      if (!p.dados.length) throw erro400('Esta aba não tem linhas de dados.');
+      res.json(descrever(p));
+    }));
+    router.delete(`${prefixo}/arquivo`, wrap(async (req, res) => { pendentes.delete(id(req)); res.status(204).end(); }));
+    router.post(`${prefixo}/previa`, wrap(async (req, res) => {
+      const p = obterPendente(id(req));
+      const plano = await montarPlano(pool, p, lerMapa(req.body.mapa, p));
+      res.json({ resumo: plano.resumo, chave: chave(plano), erros: plano.erros.slice(0, 30), amostra: amostra(plano) });
+    }));
+    router.post(`${prefixo}/aplicar`, wrap(async (req, res) => {
+      const p = obterPendente(id(req));
+      const mapa = lerMapa(req.body.mapa, p);
+      const resumo = await tx(pool, async (db) => {
+        const plano = await montarPlano(db, p, mapa, { travar: true });
+        if (chave(plano) !== req.body.chave) throw erro409('Os dados mudaram desde a prévia. Confira a prévia novamente antes de importar.');
+        await aplicar(db, plano, p, req.usuario);
+        return plano.resumo;
+      });
+      pendentes.delete(id(req));
+      res.status(201).json({ resumo });
+    }));
   }
-  const chaveDoPlano = (plano) => crypto.createHash('sha1').update(JSON.stringify(plano.itens.map((i) => [i.matricula, i.mes, i.bpp, i.zelo, i.prod, i.acao]))).digest('hex').slice(0, 16);
 
-  router.post('/gratificacao/importacao/arquivo', express.raw({ type: 'application/octet-stream', limit: MAX_BYTES }), wrap(async (req, res) => {
-    const planilha = abrirPlanilha(req.body);
-    const p = { arquivo: texto(req.query.nome, 150) || 'arquivo', planilha, expira: Date.now() + TTL_MS };
-    lerAba(p, 0);
-    if (!p.dados.length) throw erro400('Não encontrei linhas de dados abaixo do cabeçalho.');
-    pendentes.set(req.usuario.id, p);
-    res.status(201).json(descreverArquivo(p));
-  }));
-  router.post('/gratificacao/importacao/aba', wrap(async (req, res) => {
-    const p = obterPendente(req.usuario.id);
-    lerAba(p, Number(req.body.aba));
-    if (!p.dados.length) throw erro400('Esta aba não tem linhas de dados.');
-    res.json(descreverArquivo(p));
-  }));
-  router.delete('/gratificacao/importacao/arquivo', wrap(async (req, res) => { pendentes.delete(req.usuario.id); res.status(204).end(); }));
+  const hash = (lista) => crypto.createHash('sha1').update(JSON.stringify(lista)).digest('hex').slice(0, 16);
+  const matriculasDoCadastro = async (db) => new Set((await db.query(`SELECT ${SQL_MAT_FUNC} AS m FROM funcionarios f`)).rows.map((r) => r.m));
 
-  router.post('/gratificacao/importacao/previa', wrap(async (req, res) => {
-    const p = obterPendente(req.usuario.id);
-    const mapa = lerMapa(req.body.mapa, p);
-    const plano = await planoValores(pool, p, mapa);
-    const amostra = (lista) => lista.slice(0, 12).map((i) => ({ linha: i.linha, matricula: i.matricula, mes: i.mes, bpp: i.bpp, zelo: i.zelo, prod: i.prod, no_cadastro: i.no_cadastro }));
-    res.json({
-      resumo: plano.resumo, chave: chaveDoPlano(plano), erros: plano.erros.slice(0, 20),
-      amostra: { criar: amostra(plano.itens.filter((i) => i.acao === 'criar')), atualizar: amostra(plano.itens.filter((i) => i.acao === 'atualizar')) },
-    });
-  }));
-
-  router.post('/gratificacao/importacao/aplicar', wrap(async (req, res) => {
-    const p = obterPendente(req.usuario.id);
-    const mapa = lerMapa(req.body.mapa, p);
-    const resultado = await tx(pool, async (db) => {
-      await db.query('LOCK TABLE grat_valores IN SHARE ROW EXCLUSIVE MODE');
-      const plano = await planoValores(db, p, mapa);
-      if (chaveDoPlano(plano) !== req.body.chave) throw erro409('Os dados mudaram desde a prévia. Confira a prévia novamente antes de importar.');
+  // Valores mensais (BPP / Zelo / Produtividade)
+  registrarImportacao({
+    prefixo: '/gratificacao/importacao', tipo: 'valores', campos: CAMPOS_VALORES,
+    validarMapa: (m) => { if (m.bpp === null && m.zelo === null && m.prod === null) throw erro400('Escolha ao menos uma coluna de valores (BPP, Zelo/Equipamento ou Produtividade).'); },
+    montarPlano: async (db, p, mapa, { travar } = {}) => {
+      if (travar) await db.query('LOCK TABLE grat_valores IN SHARE ROW EXCLUSIVE MODE');
+      const { validos, erros } = lerValores(p.dados, mapa, p.linhaCabecalho + 1);
+      const existentes = new Map((await db.query('SELECT matricula, mes, bpp, zelo, prod FROM grat_valores')).rows.map((r) => [`${r.matricula}|${dataLocal(r.mes)}`, r]));
+      const cad = await matriculasDoCadastro(db);
+      const itens = validos.map((v) => {
+        const e = existentes.get(`${v.matricula}|${v.mes}`);
+        const igual = e && mesmoValor(e.bpp, v.bpp) && mesmoValor(e.zelo, v.zelo) && mesmoValor(e.prod, v.prod);
+        return { ...v, acao: !e ? 'criar' : igual ? 'igual' : 'atualizar', no_cadastro: cad.has(v.matricula) };
+      });
+      const resumo = {
+        linhas: p.dados.length, validos: itens.length, criar: itens.filter((i) => i.acao === 'criar').length, atualizar: itens.filter((i) => i.acao === 'atualizar').length,
+        iguais: itens.filter((i) => i.acao === 'igual').length, repetidas: itens.filter((i) => i.repetida).length, erros: erros.length,
+        fora_do_cadastro: itens.filter((i) => !i.no_cadastro).length,
+        meses: [...new Set(itens.map((i) => i.mes.slice(0, 7)))].sort().reverse(),
+      };
+      return { itens, erros, resumo };
+    },
+    chave: (plano) => hash(plano.itens.map((i) => [i.matricula, i.mes, i.bpp, i.zelo, i.prod, i.acao])),
+    amostra: (plano) => {
+      const a = (lista) => lista.slice(0, 12).map((i) => ({ linha: i.linha, matricula: i.matricula, mes: i.mes, bpp: i.bpp, zelo: i.zelo, prod: i.prod, no_cadastro: i.no_cadastro }));
+      return { criar: a(plano.itens.filter((i) => i.acao === 'criar')), atualizar: a(plano.itens.filter((i) => i.acao === 'atualizar')) };
+    },
+    aplicar: async (db, plano, p, usuario) => {
       const gravar = plano.itens.filter((i) => i.acao !== 'igual');
       for (let k = 0; k < gravar.length; k += 500) {
         const l = gravar.slice(k, k + 500);
@@ -262,12 +276,52 @@ function criarGratificacao({ pool }) {
            ON CONFLICT (matricula, mes) DO UPDATE SET bpp = EXCLUDED.bpp, zelo = EXCLUDED.zelo, prod = EXCLUDED.prod, origem = EXCLUDED.origem`,
           [l.map((i) => i.matricula), l.map((i) => i.mes), l.map((i) => i.bpp), l.map((i) => i.zelo), l.map((i) => i.prod), p.arquivo.slice(0, 150)]);
       }
-      await auditar(db, req.usuario, 'importar', 'grat_valores', null, { arquivo: p.arquivo, ...plano.resumo, meses: plano.resumo.meses.join(', ') });
-      return plano.resumo;
-    });
-    pendentes.delete(req.usuario.id);
-    res.status(201).json({ resumo: resultado });
-  }));
+      await auditar(db, usuario, 'importar', 'grat_valores', null, { arquivo: p.arquivo, ...plano.resumo, meses: plano.resumo.meses.join(', ') });
+    },
+  });
+
+  // Ocorrências (exportação do controle de notificações)
+  registrarImportacao({
+    prefixo: '/gratificacao/importacao-ocorrencias', tipo: 'ocorrencias', campos: CAMPOS_OCORRENCIAS,
+    validarMapa: (m) => { if (m.abrev === null && m.descricao === null) throw erro400('Escolha a coluna do tipo da ocorrência (abreviação ou descrição).'); },
+    montarPlano: async (db, p, mapa, { travar } = {}) => {
+      if (travar) await db.query('LOCK TABLE grat_ocorrencias IN SHARE ROW EXCLUSIVE MODE');
+      const pen = (await db.query('SELECT abrev, descricao FROM grat_penalidades ORDER BY id')).rows;
+      const tipos = { abrevs: new Map(), porDescricao: new Map() };
+      for (const x of pen) {
+        if (!tipos.abrevs.has(semAcento(x.abrev))) tipos.abrevs.set(semAcento(x.abrev), x.abrev);
+        if (!tipos.porDescricao.has(semAcento(x.descricao))) tipos.porDescricao.set(semAcento(x.descricao), x.abrev);
+      }
+      // grafias usadas na planilha
+      for (const [d, a] of [['ADVERTENCIA', 'ADV'], ['ATESTADOS E LINCENCAS', 'L']]) if (!tipos.porDescricao.has(d) && tipos.abrevs.has(a)) tipos.porDescricao.set(d, a);
+      const { validos, erros } = lerOcorrencias(p.dados, mapa, p.linhaCabecalho + 1, tipos);
+      const existentes = new Set((await db.query('SELECT matricula, data, abrev FROM grat_ocorrencias')).rows.map((r) => `${r.matricula}|${dataLocal(r.data)}|${r.abrev}`));
+      const cad = await matriculasDoCadastro(db);
+      const itens = validos.map((v) => ({ ...v, acao: existentes.has(`${v.matricula}|${v.data}|${v.abrev}`) ? 'igual' : 'criar', no_cadastro: cad.has(v.matricula) }));
+      const datas = itens.map((i) => i.data).sort();
+      const porTipo = {};
+      for (const i of itens) porTipo[i.abrev] = (porTipo[i.abrev] || 0) + 1;
+      const resumo = {
+        linhas: p.dados.length, validos: itens.length, criar: itens.filter((i) => i.acao === 'criar').length, atualizar: 0,
+        iguais: itens.filter((i) => i.acao === 'igual').length, repetidas: itens.filter((i) => i.repetida).length, erros: erros.length,
+        fora_do_cadastro: itens.filter((i) => !i.no_cadastro).length, de: datas[0] || null, ate: datas[datas.length - 1] || null, por_tipo: porTipo,
+      };
+      return { itens, erros, resumo };
+    },
+    chave: (plano) => hash(plano.itens.map((i) => [i.matricula, i.data, i.abrev, i.acao])),
+    amostra: (plano) => ({ criar: plano.itens.filter((i) => i.acao === 'criar').slice(0, 12).map((i) => ({ linha: i.linha, matricula: i.matricula, data: i.data, abrev: i.abrev, gestor: i.gestor, no_cadastro: i.no_cadastro })) }),
+    aplicar: async (db, plano, p, usuario) => {
+      const gravar = plano.itens.filter((i) => i.acao === 'criar');
+      for (let k = 0; k < gravar.length; k += 500) {
+        const l = gravar.slice(k, k + 500);
+        await db.query(
+          `INSERT INTO grat_ocorrencias (data, matricula, abrev, gestor, observacao, criado_por, origem)
+           SELECT u.data, u.m, u.abrev, u.gestor, u.obs, $6, $7 FROM unnest($1::date[], $2::text[], $3::text[], $4::text[], $5::text[]) AS u(data, m, abrev, gestor, obs)`,
+          [l.map((i) => i.data), l.map((i) => i.matricula), l.map((i) => i.abrev), l.map((i) => i.gestor), l.map((i) => i.observacao), usuario.id, p.arquivo.slice(0, 150)]);
+      }
+      await auditar(db, usuario, 'importar', 'grat_ocorrencias', null, { arquivo: p.arquivo, ...plano.resumo, por_tipo: undefined });
+    },
+  });
 
   // ================= Ocorrências =================
   async function lerOcorrencia(db, b) {
@@ -286,7 +340,7 @@ function criarGratificacao({ pool }) {
     if (ehData(req.query.de)) { params.push(req.query.de); cond.push(`o.data >= $${params.length}`); }
     if (ehData(req.query.ate)) { params.push(req.query.ate); cond.push(`o.data <= $${params.length}`); }
     const { rows } = await pool.query(
-      `SELECT o.id, o.data, o.matricula, o.abrev, o.gestor, o.observacao, f.nome AS funcionario_nome, f.id AS funcionario_id, f.funcao AS funcionario_funcao,
+      `SELECT o.id, o.data, o.matricula, o.abrev, o.gestor, o.observacao, o.origem, f.nome AS funcionario_nome, f.id AS funcionario_id, f.funcao AS funcionario_funcao,
               (SELECT p.descricao FROM grat_penalidades p WHERE p.abrev = o.abrev ORDER BY p.id LIMIT 1) AS descricao
        FROM grat_ocorrencias o LEFT JOIN funcionarios f ON ${SQL_MAT_FUNC} = o.matricula
        WHERE ${cond.join(' AND ')} ORDER BY o.data DESC, o.id DESC LIMIT 1500`, params);
@@ -336,7 +390,7 @@ function criarGratificacao({ pool }) {
     return rows.map((r) => {
       const mat = normMatricula(r.funcionario_matricula);
       const calculo = calcular({
-        config, criterio: criterios.get(r.criterio_id), rescisao: { dt_rescisao: r.dt_rescisao, dias_trabalhados: r.dias_trabalhados, escala: r.escala, grupo: r.grupo },
+        config, criterio: criterios.get(r.criterio_id) || { tipo_rescisao: '', pagar_bpp: true, pagar_zelo: true, pagar_prod: true }, rescisao: { dt_rescisao: r.dt_rescisao, dias_trabalhados: r.dias_trabalhados, escala: r.escala, grupo: r.grupo },
         funcao: r.funcionario_funcao, admissao: dataLocal(r.funcionario_admissao), valores: vm.get(mat) || [], ocorrencias: om.get(mat) || [], penalidades: penalidades.map((p) => ({ ...p, percentual: Number(p.percentual) })),
       });
       return { ...r, dt_rescisao: dataLocal(r.dt_rescisao), paga_em: dataLocal(r.paga_em), funcionario_admissao: dataLocal(r.funcionario_admissao), calculo };
@@ -384,6 +438,25 @@ function criarGratificacao({ pool }) {
     if (dup.rowCount) throw erro409('Já existe uma apuração deste funcionário para essa data de rescisão.');
     return { funcionario_id: f.id, funcionario_nome: f.nome, criterio_id: criterio.id, dt_rescisao: b.dt_rescisao, dias_trabalhados: dias, escala, grupo, observacao: texto(b.observacao, 300) };
   }
+
+  // Prévia (não grava): período de gratificação do ciclo (dia 16 → rescisão), dias trabalhados pela escala, ocorrências e valores
+  router.post('/gratificacao/rescisoes/previa', wrap(async (req, res) => {
+    const b = req.body;
+    const f = (await pool.query(
+      'SELECT id, nome, matricula, funcao, setor, centro_custo, data_admissao FROM funcionarios WHERE id = $1', [inteiro(b.funcionario_id, 'Funcionário')])).rows[0];
+    if (!f) throw erro400('Funcionário não encontrado.');
+    const dt = data(b.dt_rescisao, 'Data da rescisão');
+    const semDias = b.dias_trabalhados === '' || b.dias_trabalhados === null || b.dias_trabalhados === undefined;
+    const dias = semDias ? null : Number(b.dias_trabalhados);
+    if (!semDias && (!Number.isInteger(dias) || dias < 0 || dias > 62)) throw erro400('Dias trabalhados: informe um número inteiro entre 0 e 62.');
+    const escala = b.escala ? opcaoDe(String(b.escala).toUpperCase(), ESCALAS, 'Escala de folga') : null;
+    const criterioId = b.criterio_id && /^\d+$/.test(String(b.criterio_id)) ? Number(b.criterio_id) : 0;
+    const linha = {
+      id: null, funcionario_id: f.id, criterio_id: criterioId, dt_rescisao: dt, dias_trabalhados: dias, escala, grupo: b.grupo || null,
+      funcionario_nome: f.nome, funcionario_matricula: f.matricula, funcionario_funcao: f.funcao, funcionario_setor: f.setor, funcionario_admissao: f.data_admissao,
+    };
+    res.json((await comCalculo(pool, [linha]))[0].calculo);
+  }));
 
   router.post('/gratificacao/rescisoes', wrap(async (req, res) => {
     const r = await lerRescisao(pool, req.body);

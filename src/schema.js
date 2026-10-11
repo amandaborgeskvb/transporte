@@ -342,6 +342,7 @@ BEGIN
   END IF;
 END $$;
 ALTER TABLE grat_rescisoes ADD COLUMN IF NOT EXISTS escala TEXT;
+ALTER TABLE grat_ocorrencias ADD COLUMN IF NOT EXISTS origem TEXT NOT NULL DEFAULT '';
 ALTER TABLE grat_rescisoes ALTER COLUMN dias_trabalhados DROP NOT NULL;
 -- Padrões da planilha nas instalações que ainda não mexeram nos parâmetros: desconto só na produtividade;
 -- "sem justa causa" paga o Zelo (a fórmula só zera na justa causa; o texto do critério fala apenas do BPP)

@@ -198,10 +198,10 @@ const CAMPOS_VALORES = [
 ];
 const normCab = (s) => semAcento(s).toLowerCase().replace(/[^a-z0-9_ -]+/g, ' ').replace(/\s+/g, ' ').trim();
 
-function sugerirColunas(cabecalho) {
+function sugerirColunas(cabecalho, campos = CAMPOS_VALORES) {
   const mapa = {};
   const usadas = new Set();
-  for (const c of CAMPOS_VALORES) {
+  for (const c of campos) {
     const i = cabecalho.findIndex((h, k) => !usadas.has(k) && c.sinonimos.map(normCab).includes(normCab(h)));
     mapa[c.chave] = i >= 0 ? i : null;
     if (i >= 0) usadas.add(i);
@@ -237,6 +237,62 @@ function lerValores(dados, mapa, primeiraLinha = 2) {
   return { validos: [...validos.values()], erros };
 }
 
+// ---------- Leitura do arquivo de ocorrências (layout da tabela "Notificação" da aba Digitar_Notif) ----------
+const CAMPOS_OCORRENCIAS = [
+  { chave: 'data', rotulo: 'Data', obrigatorio: true, sinonimos: ['data', 'dt', 'data ocorrencia', 'data da ocorrencia', 'data notificacao', 'dia'] },
+  { chave: 'matricula', rotulo: 'Matrícula', obrigatorio: true, sinonimos: ['mat-func', 'matricula', 'mat', 'mat func', 'chapa', 'registro'] },
+  { chave: 'abrev', rotulo: 'Tipo (abreviação)', sinonimos: ['penalid notific', 'penalidade', 'abrev', 'abreviacao', 'tipo', 'ocorrencia', 'codigo', 'sigla', 'notificacao'] },
+  { chave: 'descricao', rotulo: 'Descrição do tipo', sinonimos: ['descricao da penalidade', 'descricao penalidade', 'descricao', 'descricao da ocorrencia', 'motivo'] },
+  { chave: 'gestor', rotulo: 'Gestor', sinonimos: ['gestor', 'lider', 'responsavel', 'encarregado'] },
+  { chave: 'observacao', rotulo: 'Observação', sinonimos: ['observacao', 'obs', 'observacoes', 'comentario'] },
+];
+
+// Datas como "10/04/2026", "10/04/26", "2026-04-10" ou número de série do Excel. Devolve 'AAAA-MM-DD' ou null.
+function lerData(valor) {
+  if (valor === null || valor === undefined) return null;
+  const t = String(valor).trim();
+  if (!t) return null;
+  const monta = (a, m, d) => {
+    const dt = new Date(Date.UTC(a, m - 1, d));
+    return dt.getUTCFullYear() === a && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d && a >= 1990 && a <= 2100 ? iso(dt) : null;
+  };
+  let m;
+  if ((m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) return monta(Number(m[1]), Number(m[2]), Number(m[3]));
+  if ((m = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4}|\d{2})(\s.*)?$/))) {
+    const a = m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+    return monta(a, Number(m[2]), Number(m[1]));
+  }
+  if (/^\d{5}(\.\d+)?$/.test(t)) return iso(new Date(Date.UTC(1899, 11, 30) + Math.floor(Number(t)) * 86400000));
+  return null;
+}
+
+// tipos: { abrevs: Map(abreviação sem acento → abreviação cadastrada), porDescricao: Map(descrição sem acento → abreviação) }
+function lerOcorrencias(dados, mapa, primeiraLinha, tipos) {
+  const validos = new Map();
+  const erros = [];
+  dados.forEach((l, i) => {
+    const linha = primeiraLinha + i;
+    const cel = (k) => (mapa[k] === null || mapa[k] === undefined ? undefined : l[mapa[k]]);
+    const txt = (k) => String(cel(k) ?? '').replace(/\s+/g, ' ').trim();
+    if (!txt('data') && !txt('matricula') && !txt('abrev') && !txt('descricao')) return; // linha vazia
+    const matricula = normMatricula(cel('matricula'));
+    if (!/^\d{1,12}$/.test(matricula)) { erros.push({ linha, motivo: 'Matrícula inválida ou vazia.' }); return; }
+    const data = lerData(cel('data'));
+    if (!data) { erros.push({ linha, matricula, motivo: `Data não reconhecida: "${txt('data')}".` }); return; }
+    const norm = semAcento(txt('abrev'));
+    const abrev = tipos.abrevs.get(norm) || tipos.porDescricao.get(semAcento(txt('descricao'))) || tipos.porDescricao.get(norm);
+    if (!abrev) {
+      erros.push({ linha, matricula, motivo: norm || txt('descricao') ? `Tipo "${txt('abrev') || txt('descricao')}" não cadastrado em Parâmetros.` : 'Tipo da ocorrência vazio.' });
+      return;
+    }
+    const chave = `${matricula}|${data}|${abrev}`;
+    const repetida = validos.has(chave);
+    validos.set(chave, { matricula, data, abrev, gestor: txt('gestor').slice(0, 80), observacao: txt('observacao').slice(0, 300), linha, repetida });
+  });
+  return { validos: [...validos.values()], erros };
+}
+
 module.exports = {
+  lerData, lerOcorrencias, CAMPOS_OCORRENCIAS,
   lerMes, lerNumero, grupoDaFuncao, periodoDe, calcular, diasTrabalhados, letraDoDia, ESCALAS, sugerirColunas, lerValores, normMatricula, semAcento, CAMPOS_VALORES, MESES,
 };

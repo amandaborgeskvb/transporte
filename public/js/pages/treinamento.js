@@ -67,8 +67,8 @@ const TOPICOS = [
   {
     titulo: 'Gratificação rescisória', perfis: ['administrador', 'financeiro'], corpo: () => [
       lista('Em **Gratificação rescisória → Valores mensais**, envie o arquivo (Excel ou CSV) com **Matrícula, BPP, Zelo_Equip, Produtividade e Mês** (ex.: ABRIL - 26). O sistema reconhece as colunas e mostra a prévia antes de gravar.',
-        'Lance as faltas, advertências, suspensões e demais notificações em **Ocorrências** (o tipo vem dos Parâmetros).',
-        'Em **Apuração → Nova apuração**, escolha o funcionário, o tipo de rescisão, a data e a **escala de folga** (letra A–F, domingo ou 5×2): os dias trabalhados do ciclo são contados pelo calendário de folgas, como na aba BD. O sistema faz a média dos 3 meses, tira os dias das ocorrências, calcula o proporcional (÷ 25) e desconta da produtividade os percentuais das ocorrências do grupo da função.',
+        'Em **Ocorrências**, envie o arquivo exportado do controle de notificações (Data, Mat-Func, Penalid Notific…): a prévia mostra o que entra e reenviar não duplica. Também dá para lançar uma ocorrência à mão.',
+        'Em **Apuração → Nova apuração**, escolha o funcionário, o tipo de rescisão, a data (o formulário mostra na hora o **período de gratificação**: do dia 16 do mês anterior até a rescisão) e a **escala de folga** (letra A–F, domingo ou 5×2): os dias trabalhados do ciclo são contados pelo calendário de folgas, como na aba BD. O sistema faz a média dos 3 meses, tira os dias das ocorrências, calcula o proporcional (÷ 25) e desconta da produtividade os percentuais das ocorrências do grupo da função.',
         'Confira o detalhe, marque como **paga** e use o **Relatório de pagamento** (com CSV) para a folha.'),
       dica('Os percentuais de desconto (auxiliares e demais funções × operadores e motoristas), os critérios por tipo de rescisão e as regras gerais ficam em **Parâmetros** e podem ser ajustados.'),
     ],

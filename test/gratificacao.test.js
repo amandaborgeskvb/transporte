@@ -273,3 +273,48 @@ test('pagar trava a apuração; relatório com totais e CSV', async () => {
   assert.equal((await davi.post(`/api/gratificacao/rescisoes/${ids.apuracaoAna}/acao`, { acao: 'reabrir' })).status, 200);
   assert.equal((await davi.del(`/api/gratificacao/rescisoes/${ids.apuracaoAna}`)).status, 204);
 });
+
+test('carga de ocorrências por arquivo (layout da tabela Notificação): reconhece colunas, descrição vira tipo e não duplica', async () => {
+  const serial = (iso) => (Date.UTC(...iso.split('-').map((n, i) => Number(n) - (i === 1 ? 1 : 0))) - Date.UTC(1899, 11, 30)) / 86400000;
+  const xlsx = criarXlsx([{ nome: 'Notificação', linhas: [
+    ['CONDOMINIO AGRÍCOLA (cabeçalho do relatório)'],
+    ['Data', 'Mat-Func', 'Nome do Funcionário', 'Função', 'Cód. Função', 'Descrição do departamento', 'Gestor', 'Penalid Notific', 'Descrição da Penalidade', 'Mês', '(%) Desconto', '%'],
+    [serial('2026-04-02'), '000003', 'CARLOS', 'AUX', 596, 'X', 'MANOEL', 'FF', 'FALTA INJUSTIFICADA', 'Abril-2026', 0.5, 0.01],
+    ['03/04/2026', 3, 'CARLOS', 'AUX', 596, 'X', 'MANOEL', '', 'ATESTADOS E LINCENÇAS', 'Abril-2026', 0.04, 0.01],
+    ['20/03/2026', 3, 'CARLOS', 'AUX', 596, 'X', 'MANOEL', 'ADV', 'ADVERTENCIA', 'Março-2026', 0.5, 0.01], // já lançada à mão
+    ['05/04/2026', 3, 'CARLOS', 'AUX', 596, 'X', 'MANOEL', 'ZZZ', '', 'Abril-2026', '', ''],
+    ['05/04/2026', 99999, 'FORA', 'AUX', 596, 'X', '', 'NC', 'NÃO CONFORMIDADE', 'Abril-2026', 0.04, 0.01],
+  ] }]);
+  const up = await davi.req('POST', '/api/gratificacao/importacao-ocorrencias/arquivo?nome=notif.xlsx', undefined, { bruto: xlsx, tipo: 'application/octet-stream' });
+  assert.equal(up.status, 201);
+  assert.deepEqual(up.corpo.mapa_sugerido, { data: 0, matricula: 1, abrev: 7, descricao: 8, gestor: 6, observacao: null });
+  const previa = (await davi.post('/api/gratificacao/importacao-ocorrencias/previa', { mapa: up.corpo.mapa_sugerido })).corpo;
+  assert.equal(previa.resumo.validos, 4);
+  assert.equal(previa.resumo.criar, 3);
+  assert.equal(previa.resumo.iguais, 1);
+  assert.equal(previa.resumo.erros, 1);
+  assert.equal(previa.resumo.fora_do_cadastro, 1);
+  assert.deepEqual(previa.resumo.por_tipo, { FF: 1, L: 1, ADV: 1, NC: 1 });
+  assert.equal((await davi.post('/api/gratificacao/importacao-ocorrencias/aplicar', { mapa: up.corpo.mapa_sugerido, chave: previa.chave })).status, 201);
+  const lista = (await davi.get('/api/gratificacao/ocorrencias?matricula=3')).corpo;
+  assert.equal(lista.length, 3);
+  assert.equal(lista.find((o) => o.abrev === 'L').origem, 'notif.xlsx');
+  // reenviar o mesmo arquivo não duplica
+  await davi.req('POST', '/api/gratificacao/importacao-ocorrencias/arquivo?nome=notif.xlsx', undefined, { bruto: xlsx, tipo: 'application/octet-stream' });
+  const de_novo = (await davi.post('/api/gratificacao/importacao-ocorrencias/previa', { mapa: up.corpo.mapa_sugerido })).corpo.resumo;
+  assert.deepEqual([de_novo.criar, de_novo.iguais], [0, 4]);
+  assert.equal((await ana.req('POST', '/api/gratificacao/importacao-ocorrencias/arquivo?nome=x.xlsx', undefined, { bruto: xlsx, tipo: 'application/octet-stream' })).status, 403);
+});
+
+test('prévia do período: rescisão no dia 10 conta do dia 16 do mês anterior até a rescisão', async () => {
+  const p = await davi.post('/api/gratificacao/rescisoes/previa', { funcionario_id: ids.carlos, dt_rescisao: '2026-04-10', escala: 'A' });
+  assert.equal(p.status, 200);
+  assert.deepEqual(p.corpo.periodo, { inicio: '2026-03-16', fim: '2026-04-10' });
+  assert.equal(p.corpo.dias_trabalhados, 26 - 4); // 26 dias corridos; letra A folga em 4 deles
+  // ocorrências do ciclo: ADV (20/03), FF (02/04) e L (03/04) → FF e L tiram 1 dia cada
+  assert.deepEqual(p.corpo.ocorrencias.map((o) => o.abrev), ['ADV', 'FF', 'L']);
+  assert.equal(p.corpo.dias_descontados, 2);
+  const depois = await davi.post('/api/gratificacao/rescisoes/previa', { funcionario_id: ids.carlos, dt_rescisao: '2026-04-20', dias_trabalhados: 3 });
+  assert.deepEqual(depois.corpo.periodo, { inicio: '2026-04-16', fim: '2026-04-20' });
+  assert.equal(depois.corpo.dias_trabalhados, 3);
+});

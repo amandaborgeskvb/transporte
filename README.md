@@ -128,9 +128,9 @@ Menu **Gratificação rescisória** (administrador e financeiro), com os subgrup
 
 | Subgrupo | O que faz |
 |---|---|
-| **Apuração** | Uma apuração por rescisão (funcionário, tipo de rescisão, data e dias trabalhados). Mostra a composição (média, proporcional, desconto, a receber), as regras aplicadas e as ocorrências do período. Pode ser marcada como **paga** (trava a apuração; dá para reabrir). |
+| **Apuração** | Uma apuração por rescisão (funcionário, tipo de rescisão, data e escala de folga). Ao digitar a data da rescisão, o formulário já mostra o **período de gratificação** (do dia 16 do mês anterior — ou do próprio mês, se a rescisão for a partir do dia 16 — até a data da rescisão), os dias trabalhados, as ocorrências do período e a previsão do valor. Mostra a composição (média, proporcional, desconto, a receber), as regras aplicadas e as ocorrências do período. Pode ser marcada como **paga** (trava a apuração; dá para reabrir). |
 | **Valores mensais** | BPP, Zelo/Equipamento e Produtividade pagos por matrícula e mês. Atualizado por **arquivo** (Excel ou CSV com *Matrícula, BPP, Zelo_Equip, Produtividade, Mês*), com prévia; reimportar não duplica. Também dá para digitar um valor. |
-| **Ocorrências** | Notificações (NC, ADV, SS, ST, FJ, FF, L, DISP_MEC…), faltas e atestados por funcionário e data. |
+| **Ocorrências** | Notificações (NC, ADV, SS, ST, FJ, FF, L, DISP_MEC…), faltas e atestados por funcionário e data. **Carga por arquivo** (exportação do controle de notificações, Excel ou CSV): as colunas são reconhecidas pelo nome — *Data, Mat-Func, Penalid Notific* (ou a *Descrição da Penalidade*), *Gestor* — com prévia; reenviar o arquivo não duplica (mesma matrícula, data e tipo). Também dá para lançar à mão. |
 | **Relatório de pagamento** | Por departamento: médias, valores a receber, descontos e total; exportação em CSV e impressão. |
 | **Parâmetros** | Regras gerais, critérios por tipo de rescisão e a tabela de descontos por grupo de função. |
 

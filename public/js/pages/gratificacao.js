@@ -55,7 +55,7 @@ async function formApuracao({ ir, apuracao }) {
   const c = await cadastros();
   const p = await get('/gratificacao/parametros');
   const ativos = p.criterios.filter((x) => x.ativo || x.id === apuracao?.criterio_id);
-  const salvou = await dialogo({
+  const promessa = dialogo({
     titulo: apuracao ? 'Editar apuração' : 'Nova apuração',
     descricao: 'Os valores do BPP, Zelo/Equipamento e Produtividade vêm do menu Valores mensais, e as ocorrências do período, do menu Ocorrências.',
     campos: [
@@ -73,7 +73,44 @@ async function formApuracao({ ir, apuracao }) {
       if (apuracao) { await put(`/gratificacao/rescisoes/${apuracao.id}`, corpo); ir(`#/gratificacao/apuracao/${apuracao.id}`); } else { const r = await post('/gratificacao/rescisoes', corpo); ir(`#/gratificacao/apuracao/${r.id}`); }
     },
   });
-  if (salvou) toast('Apuração salva.');
+  ligarPreviaPeriodo(document.getElementById('dlg'));
+  if (await promessa) toast('Apuração salva.');
+}
+
+// Prévia ao vivo no formulário: período de gratificação (16 → rescisão), dias pela escala, ocorrências e valores
+function ligarPreviaPeriodo(dlg) {
+  const form = dlg.querySelector('form');
+  const campoFunc = dlg.querySelector('.campo-func');
+  const caixa = h('div', { class: 'grat-previa cheio', 'aria-live': 'polite' });
+  form.elements.dias_trabalhados.closest('label').after(caixa); // logo abaixo de data, escala e dias
+  let timer;
+  let seq = 0;
+  const linha = (t, v) => h('div', {}, h('dt', {}, t), h('dd', {}, v));
+  async function atualizar() {
+    const minha = ++seq;
+    const el = form.elements;
+    const corpo = {
+      funcionario_id: campoFunc?.valorId?.() || '', dt_rescisao: el.dt_rescisao.value, criterio_id: el.criterio_id.value,
+      escala: el.escala.value, dias_trabalhados: el.dias_trabalhados.value, grupo: el.grupo.value,
+    };
+    if (!corpo.funcionario_id || !corpo.dt_rescisao) { caixa.replaceChildren(h('p', { class: 'muted pequeno' }, 'Escolha o funcionário e a data da rescisão para ver o período de gratificação e os dias.')); return; }
+    try {
+      const c = await post('/gratificacao/rescisoes/previa', corpo);
+      if (minha !== seq) return;
+      const oc = c.ocorrencias;
+      caixa.replaceChildren(h('dl', { class: 'dados' },
+        linha('Período de gratificação', `${dataBR(c.periodo.inicio)} a ${dataBR(c.periodo.fim)}`),
+        linha('Dias trabalhados', c.dias_informados ? `${c.dias_trabalhados} (informados)` : c.escala ? `${c.dias_trabalhados} (pela escala ${c.escala})` : 'escolha a escala ou informe os dias'),
+        linha('Ocorrências no período', oc.length ? `${oc.length}: ${oc.map((o) => o.abrev).join(', ')} (−${c.dias_descontados} dia${c.dias_descontados === 1 ? '' : 's'}, ${pct(c.desconto_pct)})` : 'nenhuma'),
+        linha('Dias a pagar', `${c.dias_pagar} de ${c.base_dias}`),
+        linha('Meses da média', c.meses.length ? c.meses.map(mesRotulo).join(', ') : 'sem valores mensais'),
+        linha(corpo.criterio_id ? 'Previsão a receber' : 'Previsão (escolha o tipo de rescisão)', `${brl(c.total)} · folha ${brl(c.folha)} · cartão prêmio ${brl(c.cartao_premio)}`)));
+    } catch (e) { if (minha === seq) caixa.replaceChildren(h('p', { class: 'erro pequeno' }, e.message)); }
+  }
+  const agendar = () => { clearTimeout(timer); timer = setTimeout(atualizar, 250); };
+  form.addEventListener('input', agendar);
+  form.addEventListener('change', agendar);
+  atualizar();
 }
 
 async function detalheApuracao({ params, ir, recarregarPagina }) {
@@ -142,32 +179,34 @@ async function detalheApuracao({ params, ir, recarregarPagina }) {
 // ======================================================================
 // Valores mensais (arquivo)
 // ======================================================================
-async function paginaValores({ query, ir, recarregarPagina }) {
-  const qs = new URLSearchParams(query).toString();
-  const { itens, meses } = await get(`/gratificacao/valores${qs ? `?${qs}` : ''}`);
-  const c = await cadastros();
-  const area = h('div', { class: 'imp-previa' });
+// ======================================================================
+// Importação de arquivo (xlsx/csv) com mapeamento de colunas e prévia — usada em Valores mensais e Ocorrências
+// cfg: { url, titulo, textoZona, rotulo (ex.: 'valores'), colunas (amostra), detalheResumo(resumo), aoConcluir }
+// ======================================================================
+function cartaoImportacao(cfg) {
   const importar = h('div', { class: 'card' });
+  const area = h('div', { class: 'imp-previa' });
   let arq = null;
   let mapa = {};
   let previa = null;
   let seq = 0;
+  const descartar = () => del(`${cfg.url}/arquivo`).catch(() => {});
 
   function telaEscolher() {
-    const entrada = h('input', { type: 'file', accept: '.xlsx,.csv,.txt', class: 'oculto', 'aria-label': 'Escolher arquivo de valores' });
+    const entrada = h('input', { type: 'file', accept: '.xlsx,.csv,.txt', class: 'oculto', 'aria-label': `Escolher arquivo de ${cfg.rotulo}` });
     const status = h('small', { class: 'muted' });
     const enviar = async (arquivo) => {
       if (!arquivo) return;
       status.textContent = `Lendo ${arquivo.name}…`;
-      try { arq = await enviarArquivo('/gratificacao/importacao/arquivo', arquivo); mapa = { ...arq.mapa_sugerido }; telaMapa(); gerarPrevia(); } catch (e) { status.textContent = ''; toast(e.message, 'erro'); }
+      try { arq = await enviarArquivo(`${cfg.url}/arquivo`, arquivo); mapa = { ...arq.mapa_sugerido }; telaMapa(); gerarPrevia(); } catch (e) { status.textContent = ''; toast(e.message, 'erro'); }
     };
     entrada.addEventListener('change', () => enviar(entrada.files[0]));
-    const zona = h('div', { class: 'imp-zona', tabindex: 0, role: 'button', 'aria-label': 'Escolher arquivo de valores',
+    const zona = h('div', { class: 'imp-zona', tabindex: 0, role: 'button', 'aria-label': `Escolher arquivo de ${cfg.rotulo}`,
       onclick: () => entrada.click(), onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') entrada.click(); },
       ondragover: (e) => { e.preventDefault(); zona.classList.add('sobre'); }, ondragleave: () => zona.classList.remove('sobre'),
       ondrop: (e) => { e.preventDefault(); zona.classList.remove('sobre'); enviar(e.dataTransfer.files[0]); } },
-    icone('upload'), h('strong', {}, 'Escolher o arquivo de valores'), h('span', { class: 'muted pequeno' }, 'Excel (.xlsx) ou CSV com: Matrícula, BPP, Zelo_Equip, Produtividade e Mês (ex.: ABRIL - 26)'), entrada);
-    importar.replaceChildren(h('div', { class: 'card-topo' }, h('h2', {}, 'Atualizar valores por arquivo')), zona, status);
+    icone('upload'), h('strong', {}, `Importar arquivo de ${cfg.rotulo}`), h('span', { class: 'muted pequeno' }, cfg.textoZona), entrada);
+    importar.replaceChildren(h('div', { class: 'card-topo' }, h('h2', {}, cfg.titulo)), zona, status);
     area.replaceChildren();
   }
 
@@ -176,11 +215,11 @@ async function paginaValores({ query, ir, recarregarPagina }) {
       h('select', { onchange: (e) => { mapa[campo.chave] = e.target.value === '' ? null : Number(e.target.value); gerarPrevia(); } },
         h('option', { value: '' }, campo.obrigatorio ? '— escolha a coluna —' : '— não importar —'),
         arq.colunas.map((col) => h('option', { value: col.indice, selected: mapa[campo.chave] === col.indice }, col.nome))));
-    const abas = arq.abas.length > 1 ? h('label', {}, 'Aba da planilha', h('select', { onchange: async (e) => { arq = await post('/gratificacao/importacao/aba', { aba: Number(e.target.value) }); mapa = { ...arq.mapa_sugerido }; telaMapa(); gerarPrevia(); } },
+    const abas = arq.abas.length > 1 ? h('label', {}, 'Aba da planilha', h('select', { onchange: async (e) => { arq = await post(`${cfg.url}/aba`, { aba: Number(e.target.value) }); mapa = { ...arq.mapa_sugerido }; telaMapa(); gerarPrevia(); } },
       arq.abas.map((n, i) => h('option', { value: i, selected: i === arq.aba }, n)))) : null;
     importar.replaceChildren(...[
-      h('div', { class: 'card-topo' }, h('h2', {}, 'Atualizar valores por arquivo'), botao('Trocar arquivo', () => { del('/gratificacao/importacao/arquivo').catch(() => {}); telaEscolher(); }, { tom: 'sec', pequeno: true })),
-      h('p', { class: 'muted pequeno' }, `${arq.arquivo} · cabeçalho na linha ${arq.linha_cabecalho} · ${fmt(arq.total_linhas)} linhas. Só as colunas escolhidas abaixo são lidas; o restante do arquivo é ignorado.`),
+      h('div', { class: 'card-topo' }, h('h2', {}, cfg.titulo), botao('Trocar arquivo', () => { descartar(); telaEscolher(); }, { tom: 'sec', pequeno: true })),
+      h('p', { class: 'muted pequeno' }, `${arq.arquivo} · cabeçalho na linha ${arq.linha_cabecalho} · ${fmt(arq.total_linhas)} linhas. As colunas foram reconhecidas pelo nome; confira abaixo. Só as colunas escolhidas são lidas.`),
       abas, h('div', { class: 'form-grid tres' }, arq.campos.map(sel)),
     ].filter(Boolean));
   }
@@ -189,31 +228,47 @@ async function paginaValores({ query, ir, recarregarPagina }) {
     const minha = ++seq;
     area.replaceChildren(h('p', { class: 'muted vazio' }, 'Calculando a prévia…'));
     try {
-      const r = await post('/gratificacao/importacao/previa', { mapa });
+      const r = await post(`${cfg.url}/previa`, { mapa });
       if (minha !== seq) return;
       previa = r;
       const s = r.resumo;
-      const amostra = (lista) => tabela([
-        { t: 'Linha', num: true, f: (x) => x.linha }, { t: 'Matrícula', f: (x) => [x.matricula, x.no_cadastro ? '' : h('small', { class: 'muted' }, ' (fora do cadastro)')] },
-        { t: 'Mês', f: (x) => mesRotulo(x.mes) }, { t: 'BPP', num: true, f: (x) => valorOuTraco(x.bpp) }, { t: 'Zelo/Equip.', num: true, f: (x) => valorOuTraco(x.zelo) }, { t: 'Produtividade', num: true, f: (x) => valorOuTraco(x.prod) },
-      ], lista);
-      area.replaceChildren(h('section', { class: 'card' },
-        h('div', { class: 'card-topo' }, h('h2', {}, 'Prévia'), h('span', { class: 'muted pequeno' }, `${fmt(s.linhas)} linhas · meses: ${s.meses.map((m) => mesRotulo(`${m}-01`)).join(', ') || '—'}`)),
-        h('div', { class: 'kpis compactos' }, kpi('Novos', fmt(s.criar), { tom: s.criar ? 'ok' : '', icone: 'mais' }), kpi('Atualizados', fmt(s.atualizar), { icone: 'editar' }),
-          kpi('Sem alteração', fmt(s.iguais), { tom: 'neutro', icone: 'ok' }), kpi('Com erro', fmt(s.erros), { tom: s.erros ? 'alerta' : 'neutro', icone: 'proibido' })),
-        s.fora_do_cadastro ? h('p', { class: 'perfil-caixa' }, `${fmt(s.fora_do_cadastro)} linha(s) com matrícula que não está no cadastro de funcionários; os valores são gravados mesmo assim.`) : null,
-        s.repetidas ? h('p', { class: 'perfil-caixa' }, `${fmt(s.repetidas)} linha(s) repetidas para a mesma matrícula e mês: vale a última.`) : null,
-        r.erros.length ? h('details', { class: 'imp-motivo' }, h('summary', {}, `Linhas com erro: `, h('strong', {}, fmt(s.erros))), tabela([
+      const total = s.criar + s.atualizar;
+      area.replaceChildren(h('section', { class: 'card' }, ...[
+        h('div', { class: 'card-topo' }, h('h2', {}, 'Prévia da importação'), h('span', { class: 'muted pequeno' }, cfg.detalheResumo(s))),
+        h('div', { class: 'kpis compactos' }, kpi('Novos', fmt(s.criar), { tom: s.criar ? 'ok' : '', icone: 'mais' }),
+          s.atualizar ? kpi('Atualizados', fmt(s.atualizar), { icone: 'editar' }) : null,
+          kpi('Já existentes', fmt(s.iguais), { tom: 'neutro', icone: 'ok' }), kpi('Com erro', fmt(s.erros), { tom: s.erros ? 'alerta' : 'neutro', icone: 'proibido' })),
+        s.fora_do_cadastro ? h('p', { class: 'perfil-caixa' }, `${fmt(s.fora_do_cadastro)} linha(s) com matrícula fora do cadastro de funcionários; são gravadas mesmo assim.`) : null,
+        s.repetidas ? h('p', { class: 'perfil-caixa' }, `${fmt(s.repetidas)} linha(s) repetidas no arquivo: consideradas uma vez só.`) : null,
+        r.erros.length ? h('details', { class: 'imp-motivo' }, h('summary', {}, 'Linhas com erro (não serão importadas): ', h('strong', {}, fmt(s.erros))), tabela([
           { t: 'Linha', num: true, f: (x) => x.linha }, { t: 'Matrícula', f: (x) => x.matricula || '—' }, { t: 'Motivo', f: (x) => x.motivo }], r.erros)) : null,
-        s.criar ? h('h3', { class: 'grupo' }, 'Novos (amostra)') : null, s.criar ? amostra(r.amostra.criar) : null,
-        s.atualizar ? h('h3', { class: 'grupo' }, 'Atualizados (amostra)') : null, s.atualizar ? amostra(r.amostra.atualizar) : null,
-        h('div', { class: 'linha-botoes' }, botao('Cancelar', () => { del('/gratificacao/importacao/arquivo').catch(() => {}); telaEscolher(); }, { tom: 'sec' }),
-          Object.assign(botao(`Importar ${fmt(s.criar + s.atualizar)} valores`, async () => {
-            try { await post('/gratificacao/importacao/aplicar', { mapa, chave: previa.chave }); toast('Valores importados.'); recarregarPagina(); } catch (e) { toast(e.message, 'erro'); }
-          }, { icone: 'ok' }), { disabled: !(s.criar + s.atualizar) }))));
+        s.criar ? h('h3', { class: 'grupo' }, 'Novos (amostra)') : null, s.criar ? tabela(cfg.colunas, r.amostra.criar) : null,
+        s.atualizar && r.amostra.atualizar ? h('h3', { class: 'grupo' }, 'Atualizados (amostra)') : null, s.atualizar && r.amostra.atualizar ? tabela(cfg.colunas, r.amostra.atualizar) : null,
+        h('div', { class: 'linha-botoes' }, botao('Cancelar', () => { descartar(); telaEscolher(); }, { tom: 'sec' }),
+          Object.assign(botao(total ? `Importar ${fmt(total)} ${cfg.rotulo}` : 'Nada novo para importar', async () => {
+            try { await post(`${cfg.url}/aplicar`, { mapa, chave: previa.chave }); toast(`Importação de ${cfg.rotulo} concluída.`); cfg.aoConcluir(); } catch (e) { toast(e.message, 'erro'); }
+          }, { icone: 'ok' }), { disabled: !total })),
+      ].filter(Boolean)));
     } catch (e) { if (minha === seq) area.replaceChildren(h('div', { class: 'card' }, h('p', { class: 'erro' }, e.message))); }
   }
   telaEscolher();
+  return [importar, area];
+}
+
+async function paginaValores({ query, ir, recarregarPagina }) {
+  const qs = new URLSearchParams(query).toString();
+  const { itens, meses } = await get(`/gratificacao/valores${qs ? `?${qs}` : ''}`);
+  const c = await cadastros();
+  const [importar, area] = cartaoImportacao({
+    url: '/gratificacao/importacao', titulo: 'Atualizar valores por arquivo', rotulo: 'valores',
+    textoZona: 'Excel (.xlsx) ou CSV com: Matrícula, BPP, Zelo_Equip, Produtividade e Mês (ex.: ABRIL - 26)',
+    colunas: [
+      { t: 'Linha', num: true, f: (x) => x.linha }, { t: 'Matrícula', f: (x) => [x.matricula, x.no_cadastro ? '' : h('small', { class: 'muted' }, ' (fora do cadastro)')] },
+      { t: 'Mês', f: (x) => mesRotulo(x.mes) }, { t: 'BPP', num: true, f: (x) => valorOuTraco(x.bpp) }, { t: 'Zelo/Equip.', num: true, f: (x) => valorOuTraco(x.zelo) }, { t: 'Produtividade', num: true, f: (x) => valorOuTraco(x.prod) },
+    ],
+    detalheResumo: (s) => `${fmt(s.linhas)} linhas · meses: ${s.meses.map((m) => mesRotulo(`${m}-01`)).join(', ') || '—'}`,
+    aoConcluir: recarregarPagina,
+  });
 
   const novo = () => dialogo({
     titulo: 'Valor mensal', descricao: 'Digite os valores de um funcionário em um mês (substitui o que já estiver gravado para o mesmo mês).',
@@ -264,12 +319,24 @@ async function paginaOcorrencias({ query, ir, recarregarPagina }) {
     ],
     confirmar: 'Salvar', aoSalvar: (v) => (o ? put(`/gratificacao/ocorrencias/${o.id}`, v) : post('/gratificacao/ocorrencias', v)),
   }).then((s) => { if (s) { toast('Ocorrência salva.'); recarregarPagina(); } });
+  const [importar, area] = cartaoImportacao({
+    url: '/gratificacao/importacao-ocorrencias', titulo: 'Carga de ocorrências por arquivo', rotulo: 'ocorrências',
+    textoZona: 'Exportação do controle de notificações (Excel ou CSV) com: Data, Mat-Func (matrícula) e Penalid Notific (NC, ADV, SS, FF…) ou a descrição; Gestor e Observação são opcionais',
+    colunas: [
+      { t: 'Linha', num: true, f: (x) => x.linha }, { t: 'Data', cls: 'nowrap', f: (x) => dataBR(x.data) },
+      { t: 'Matrícula', f: (x) => [x.matricula, x.no_cadastro ? '' : h('small', { class: 'muted' }, ' (fora do cadastro)')] },
+      { t: 'Tipo', f: (x) => h('strong', {}, x.abrev) }, { t: 'Gestor', f: (x) => x.gestor || '—' },
+    ],
+    detalheResumo: (r) => `${fmt(r.linhas)} linhas${r.de ? ` · de ${dataBR(r.de)} a ${dataBR(r.ate)}` : ''}${Object.keys(r.por_tipo || {}).length ? ` · ${Object.entries(r.por_tipo).map(([k, v]) => `${k}: ${fmt(v)}`).join(', ')}` : ''}`,
+    aoConcluir: recarregarPagina,
+  });
   return [
     cabecalhoPagina({
       migalhas: [['Gratificação rescisória'], ['Ocorrências']], titulo: 'Ocorrências',
       sub: `${lista.length} registro${lista.length === 1 ? '' : 's'} · notificações, faltas e atestados que descontam da gratificação (percentuais em Parâmetros)`,
       acoes: [botao('Nova ocorrência', () => form(), { icone: 'mais' })],
     }),
+    importar, area,
     barraFiltros([
       { nome: 'matricula', rotulo: 'Matrícula', placeholder: 'ex.: 25823' }, { nome: 'abrev', rotulo: 'Tipo', tipo: 'select', opcoes: tipos },
       { nome: 'de', rotulo: 'De', tipo: 'date' }, { nome: 'ate', rotulo: 'até', tipo: 'date' },
@@ -279,6 +346,7 @@ async function paginaOcorrencias({ query, ir, recarregarPagina }) {
       { t: 'Funcionário', f: (o) => [o.funcionario_nome || h('span', { class: 'muted' }, 'fora do cadastro'), h('div', { class: 'muted pequeno' }, `Mat. ${o.matricula}${o.funcionario_funcao ? ` · ${o.funcionario_funcao}` : ''}`)] },
       { t: 'Tipo', f: (o) => [h('strong', {}, o.abrev), h('div', { class: 'muted pequeno' }, o.descricao || '')] },
       { t: 'Gestor', f: (o) => o.gestor || '—' }, { t: 'Observação', f: (o) => o.observacao || '' },
+      { t: 'Origem', f: (o) => h('small', { class: 'muted' }, o.origem || 'digitada') },
       { t: '', f: (o) => h('span', { class: 'acoes' }, botao('Editar', () => form(o), { tom: 'sec', pequeno: true }),
         botao('Excluir', async () => { if (await confirmar('Excluir ocorrência', `${o.abrev} · ${dataBR(o.data)} · ${o.funcionario_nome || o.matricula}`, { rotulo: 'Excluir', perigo: true })) { await del(`/gratificacao/ocorrencias/${o.id}`); recarregarPagina(); } }, { tom: 'perigo sec', pequeno: true })) },
     ], lista, { vazioMsg: 'Nenhuma ocorrência lançada.' })),
