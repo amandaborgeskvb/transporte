@@ -11,7 +11,7 @@ const DIGITAR = ['Matrícula', 'Nome do Colaborador', 'Função', 'Setor-Funçã
   'Periodo de vigência até:', 'Status', 'Mês Vencimento', 'Função para Treinamento', 'Remetente / Departamento', 'Matrícula Gestor', 'Nome Gestor Responsável',
   'Função do Gestor', 'Contato', 'Situação2', 'Data de Confecção do Crachá', 'Nº DOC', 'Função Atual', 'Situação-Função', 'ESCALA', 'Seq.', 'ano', 'Mat - Nome', 'CIDADE'];
 const linhaDigitar = (o) => DIGITAR.map((c) => o[c] ?? '');
-const planilha = () => criarXlsx([
+const planilha = (extras = []) => criarXlsx([
   { nome: 'APFO_TESTE', linhas: [
     ['Matrícula', 'Nome do Funcionário', 'Função', 'Desc-Departamento', 'Situação do Funcionário', 'Data de Admissão', 'CNH', 'Categ-CNH', 'Venc-CNH', 'Celular-1', 'Cidade-Resid'],
     [1, 'ana souza', 'Motorista', 'TRANSPORTE', 'Ativo', 46000, '000111', 'ae', 47000, '(34) 90000-0001', 'Ituiutaba'],
@@ -28,6 +28,7 @@ const planilha = () => criarXlsx([
     linhaDigitar({ 'Matrícula': 1, 'Função de Treinamento': 'MOTORISTA CARRETA', 'Setor-Função-Nova': 'TRANSPORTE', 'Periodo de vigência de:': '01/09/2025', 'Seq.': 7, 'ano': 2025 }), // sem data do crachá: Seq./ano
     linhaDigitar({ 'Matrícula': 9001, 'Função de Treinamento': 'LIDER', 'Setor-Função-Nova': 'IRRIGAÇÃO', 'Periodo de vigência de:': '01/10/2025', 'Nº DOC': '5/2025' }), // número repetido
     linhaDigitar({ 'Matrícula': 7001, 'Função de Treinamento': 'OPERADOR', 'Setor-Função-Nova': 'IRRIGAÇÃO LOCALIZADA' }), // sem início da vigência
+    ...extras.map(linhaDigitar),
   ] },
 ]);
 
@@ -65,7 +66,7 @@ before(async () => {
 });
 after(() => t.encerrar());
 
-const importar = (c, q) => c.req('POST', `/api/treino/importar?nome=treino.xlsx&${q}`, undefined, { bruto: planilha(), tipo: 'application/octet-stream' });
+const importar = (c, q, extras) => c.req('POST', `/api/treino/importar?nome=treino.xlsx&${q}`, undefined, { bruto: planilha(extras), tipo: 'application/octet-stream' });
 
 test('acesso e parâmetros: cabeçalho RE. 0940.02D, assinaturas e vigência padrão', async () => {
   assert.equal((await ana.get('/api/treino/parametros')).status, 403);
@@ -117,6 +118,24 @@ test('importação da planilha: prévia, aplicação sem repetir e números de C
   assert.equal(ana1.vigencia_ate, '2025-12-01'); // sem fim na planilha: início + 3 meses
   const p = (await davi.get('/api/treino/parametros')).corpo;
   assert.deepEqual(p.gestores.map((g) => [g.matricula, g.nome, g.cargo]), [['9001', 'Gestor Teste', 'COORDENADOR AGRÍCOLA']]);
+
+  // a planilha manda no Nº DOC: linhas novas no meio da sequência ficam com o número da planilha,
+  // e quem ocupava esses números (lançado no sistema ou numerado antes) vai para o próximo livre do ano
+  const dig = await davi.post('/api/treino/registros', { matricula: '1', funcao_treinamento: 'AJUDANTE', setor_nova: 'OFICINA', vigencia_de: '2025-11-10' });
+  const num = async (id) => (await davi.get(`/api/treino/registros/${id}`)).corpo.numero_doc;
+  assert.equal(await num(dig.corpo.id), '9/2025');
+  const extras = [
+    { 'Matrícula': 7001, 'Função de Treinamento': 'MOTORISTA', 'Setor-Função-Nova': 'CANAVIEIRO', 'Periodo de vigência de:': '03/11/2025', 'Nº DOC': '8/2025' },
+    { 'Matrícula': 9001, 'Função de Treinamento': 'MOTORISTA', 'Setor-Função-Nova': 'CANAVIEIRO', 'Periodo de vigência de:': '04/11/2025', 'Seq.': 9, 'ano': 2025 },
+  ];
+  const de3 = await importar(davi, 'registros=1&aplicar=1', extras);
+  assert.deepEqual([de3.corpo.registros.criar, de3.corpo.registros.renumerar], [2, 2]);
+  const seq = (await davi.get('/api/treino/registros?ordem=doc&doc_ano=2025')).corpo.itens.map((r) => [r.matricula, r.funcao_treinamento, r.numero_doc]);
+  assert.deepEqual(seq, [['7001', 'OPERADOR MAQ. AGR. II', '5/2025'], ['1', 'MOTORISTA CARRETA', '7/2025'], ['7001', 'MOTORISTA', '8/2025'], ['9001', 'MOTORISTA', '9/2025'],
+    ['9001', 'LIDER', '10/2025'], ['1', 'AJUDANTE', '11/2025']]);
+  for (const r of (await davi.get('/api/treino/registros?doc_ano=2025')).corpo.itens.filter((x) => ['MOTORISTA', 'AJUDANTE'].includes(x.funcao_treinamento))) {
+    await davi.del(`/api/treino/registros/${r.id}`);
+  }
 });
 
 test('relatório: por mês e ano, classificados ou não', async () => {

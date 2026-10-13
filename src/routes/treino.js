@@ -423,19 +423,25 @@ function criarTreino({ pool }) {
       const regsBanco = (await db.query('SELECT id, matricula, vigencia_de, funcao_treinamento, doc_numero, doc_ano, origem FROM trein_registros')).rows;
       const porChave = new Map(regsBanco.map((r) => [chave({ ...r, vigencia_de: dataLocal(r.vigencia_de) }), r]));
       const existReg = new Set(porChave.keys());
-      // já importados com Nº DOC diferente do da planilha (ex.: carga anterior sem a Seq./ano): o número volta a ser o da planilha
-      const renumerar = [];
+      // Nº DOC: a planilha manda. Cada número (Nº DOC ou Seq./ano) fica com a primeira linha da planilha que o tem; quem já está
+      // no sistema com outro número passa a ter o da planilha, e quem ocupava um número da planilha recebe o próximo livre do ano.
+      const numeroDe = new Map(); // chave da linha da planilha -> { numero, ano }
       if (comRegistros) {
-        const doDigitado = new Set(regsBanco.filter((e) => e.origem === 'digitado' && e.doc_numero).map((e) => `${e.doc_ano}|${e.doc_numero}`));
-        const reivindicados = new Set(); // o primeiro da planilha com o número fica com ele (como na importação)
+        const reivindicados = new Set();
         for (const r of lidos.registros) {
-          const e = porChave.get(chave(r));
           const k = `${r.doc_ano}|${r.doc_numero}`;
-          if (!e || !r.doc_numero || reivindicados.has(k) || doDigitado.has(k)) continue;
+          if (!r.doc_numero || reivindicados.has(k) || numeroDe.has(chave(r))) continue;
           reivindicados.add(k);
-          if (e.origem !== 'digitado' && (e.doc_numero !== r.doc_numero || e.doc_ano !== r.doc_ano)) renumerar.push({ r, e });
+          numeroDe.set(chave(r), { numero: r.doc_numero, ano: r.doc_ano });
         }
       }
+      const donoDoNumero = new Map([...numeroDe].map(([c, n]) => [`${n.ano}|${n.numero}`, c]));
+      const liberar = regsBanco.filter((e) => {
+        const c = chave({ ...e, vigencia_de: dataLocal(e.vigencia_de) });
+        const meu = numeroDe.get(c);
+        if (meu) return e.doc_numero !== meu.numero || e.doc_ano !== meu.ano; // vai receber o número da planilha
+        return e.doc_numero && donoDoNumero.has(`${e.doc_ano}|${e.doc_numero}`); // ocupa o número de outra linha da planilha
+      });
       const vistos = new Set();
       const novos = comRegistros ? lidos.registros.filter((r) => { const k = chave(r); if (existReg.has(k) || vistos.has(k)) return false; vistos.add(k); return true; }) : [];
       const r = {
@@ -443,7 +449,7 @@ function criarTreino({ pool }) {
         base: { lidos: base.length, criar: base.filter((b) => !existBase.has(b.matricula)).length, atualizar: base.filter((b) => existBase.has(b.matricula)).length, com_escala: base.filter((b) => b.escala).length },
         gestores: { lidos: gestores.size, criar: [...gestores.keys()].filter((m) => !existGest.has(m)).length },
         registros: comRegistros ? {
-          lidos: lidos.registros.length, criar: novos.length, ja_existentes: lidos.registros.length - novos.length, renumerar: renumerar.length, erros: lidos.erros.length, exemplos_erros: lidos.erros.slice(0, 10),
+          lidos: lidos.registros.length, criar: novos.length, ja_existentes: lidos.registros.length - novos.length, renumerar: liberar.length, erros: lidos.erros.length, exemplos_erros: lidos.erros.slice(0, 10),
         } : null,
       };
       if (!aplicar) return r;
@@ -459,16 +465,14 @@ function criarTreino({ pool }) {
       for (const [mat, g] of gestores) {
         await db.query('INSERT INTO trein_gestores (matricula, nome, cargo) VALUES ($1,$2,$3) ON CONFLICT (matricula) DO NOTHING', [mat, g.nome, g.cargo]);
       }
+      if (liberar.length) await db.query('UPDATE trein_registros SET doc_numero = NULL, doc_ano = NULL WHERE id = ANY($1)', [liberar.map((e) => e.id)]);
       if (novos.length) {
         const cols = [...CAMPOS, 'doc_numero', 'doc_ano'];
         const tipos = cols.map((c) => TIPOS[c] || 'text');
-        const usados = new Set((await db.query('SELECT doc_ano, doc_numero FROM trein_registros WHERE doc_numero IS NOT NULL')).rows.map((x) => `${x.doc_ano}|${x.doc_numero}`));
         for (let k = 0; k < novos.length; k += 300) {
           const l = novos.slice(k, k + 300).map((x) => {
-            const y = { ...x, vigencia_ate: x.vigencia_ate || somarMeses(x.vigencia_de, 3), situacao: x.situacao || 'TREINANDO' };
-            if (y.doc_numero && usados.has(`${y.doc_ano}|${y.doc_numero}`)) { y.doc_numero = null; y.doc_ano = null; } // número já usado: fica sem número
-            if (y.doc_numero) usados.add(`${y.doc_ano}|${y.doc_numero}`);
-            return y;
+            const n = numeroDe.get(chave(x)); // número repetido na planilha: fica sem e recebe o próximo livre
+            return { ...x, vigencia_ate: x.vigencia_ate || somarMeses(x.vigencia_de, 3), situacao: x.situacao || 'TREINANDO', doc_numero: n?.numero ?? null, doc_ano: n?.ano ?? null };
           });
           await db.query(
             `INSERT INTO trein_registros (${cols.join(', ')}, origem, criado_por)
@@ -476,14 +480,9 @@ function criarTreino({ pool }) {
             [...cols.map((c, i) => l.map((x) => x[c] ?? (tipos[i] === 'text' && !['situacao', 'situacao_funcao'].includes(c) ? '' : null))), arquivo.slice(0, 150), req.usuario.id]);
         }
       }
-      if (renumerar.length) {
-        await db.query('UPDATE trein_registros SET doc_numero = NULL, doc_ano = NULL WHERE id = ANY($1)', [renumerar.map(({ e }) => e.id)]);
-        const usadosAgora = new Set((await db.query('SELECT doc_ano, doc_numero FROM trein_registros WHERE doc_numero IS NOT NULL')).rows.map((x) => `${x.doc_ano}|${x.doc_numero}`));
-        for (const { r, e } of renumerar) {
-          if (usadosAgora.has(`${r.doc_ano}|${r.doc_numero}`)) continue;
-          usadosAgora.add(`${r.doc_ano}|${r.doc_numero}`);
-          await db.query('UPDATE trein_registros SET doc_numero = $1, doc_ano = $2 WHERE id = $3', [r.doc_numero, r.doc_ano, e.id]);
-        }
+      for (const e of liberar) {
+        const n = numeroDe.get(chave({ ...e, vigencia_de: dataLocal(e.vigencia_de) }));
+        if (n) await db.query('UPDATE trein_registros SET doc_numero = $1, doc_ano = $2 WHERE id = $3', [n.numero, n.ano, e.id]);
       }
       await db.query(SQL_NUMERAR_PENDENTES); // linhas sem Seq./ano (ou com número repetido) recebem os próximos números
       await auditar(db, req.usuario, 'importar', 'trein_importacao', null, { arquivo, base: base.length, gestores: gestores.size, registros: novos.length });
