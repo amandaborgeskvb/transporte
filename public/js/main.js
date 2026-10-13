@@ -10,6 +10,7 @@ import { usuarios, auditoria } from './pages/admin.js';
 import importacao from './pages/importacao.js';
 import contratacao from './pages/contratacao.js';
 import treinamento from './pages/treinamento.js';
+import treino from './pages/treino.js';
 import gratificacao from './pages/gratificacao.js';
 
 const raiz = document.getElementById('raiz');
@@ -40,7 +41,8 @@ const ROTAS = {
   },
   contratacao: { titulo: 'Contratação', pagina: contratacao, perfis: ['administrador', 'financeiro'], voltar: (c) => (c.params[0] === 'fichas' && c.params.length > 1 ? '#/contratacao/fichas' : null) },
   gratificacao: { titulo: 'Gratificação rescisória', pagina: gratificacao, perfis: ['administrador', 'financeiro'], voltar: (c) => (c.params.length > 1 ? `#/gratificacao/${c.params[0]}` : null) },
-  treinamento: { titulo: 'Treinamento', pagina: treinamento },
+  treino: { titulo: 'Treinamento prático', pagina: treino, perfis: ['administrador', 'financeiro'], voltar: (c) => (c.params[0] === 'registros' && c.params.length > 1 ? '#/treino/registros' : null) },
+  treinamento: { titulo: 'Guia do sistema', pagina: treinamento },
   relatorios: { titulo: 'Relatório de viagem', pagina: relatorios },
   cadastros: { titulo: 'Cadastros', pagina: cadastrosPagina, perfis: ADMIN, voltar: () => '#/dashboard' },
   importacao: { titulo: 'Importação de funcionários', pagina: importacao, perfis: ADMIN, voltar: () => '#/dashboard' },
@@ -87,7 +89,15 @@ const MENU = [
       { href: '#/contratacao/parametros', titulo: 'Parâmetros', prefixo: true },
     ],
   },
-  { rota: 'treinamento', titulo: 'Treinamento', icone: 'ajuda' },
+  {
+    rota: 'treino', titulo: 'Treinamento', icone: 'ajuda',
+    filhos: [
+      { href: '#/treino/registros', titulo: 'Treinamentos práticos', prefixo: true, perfis: ['administrador', 'financeiro'] },
+      { href: '#/treino/novo', titulo: 'Novo treinamento (C.I.)', prefixo: true, perfis: ['administrador', 'financeiro'] },
+      { href: '#/treino/parametros', titulo: 'Parâmetros', prefixo: true, perfis: ['administrador', 'financeiro'] },
+      { rota: 'treinamento', href: '#/treinamento', titulo: 'Guia do sistema' },
+    ],
+  },
   { grupo: 'Configurações', perfis: ADMIN },
   { rota: 'cadastros', titulo: 'Cadastros', icone: 'cadastros', perfis: ADMIN, filhos: Object.entries(TIPOS_CADASTRO).map(([k, t]) => ({ href: `#/cadastros/${k}`, titulo: t.titulo })) },
   { rota: 'importacao', titulo: 'Importação', icone: 'upload', perfis: ADMIN },
@@ -115,6 +125,7 @@ function marcarMenu(rota) {
   if (atual === '#/cadastros') atual = '#/cadastros/funcionarios'; // tela padrão dos cadastros
   if (atual === '#/gratificacao') atual = '#/gratificacao/apuracao';
   if (atual === '#/contratacao' || atual === '#/contratacao/imprimir') atual = '#/contratacao/fichas';
+  if (atual === '#/treino' || atual === '#/treino/imprimir') atual = '#/treino/registros';
   app.querySelectorAll('.nav a').forEach((a) => {
     // sub-itens com rota própria acendem em qualquer tela da rota (lista e detalhe); os demais, só no endereço exato
     const pref = a.dataset.prefixo;

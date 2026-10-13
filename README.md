@@ -34,8 +34,8 @@ conceitos de ERPs e plataformas de operação agrícola:
   claro/escuro, menu do usuário (alterar senha, sair) e a logo.
 - **Menu lateral por grupos** (Operação, Configurações), recolhível, com o item ativo destacado. O menu **Viagem** reúne
   Programação de viagens, Adiantamentos, Despesas, Reembolsos, Autorização de desconto e Relatório de viagem; **Contratação** (administrador e
-  financeiro) tem a Ficha de Informe de Contratação (RE.0150.03), o resumo do dia e os parâmetros (veja abaixo). **Treinamento** (todos os perfis, no grupo Operação) é um menu com um
-  passo a passo do sistema, com os tópicos do perfil de quem está logado em destaque.
+  financeiro) tem a Ficha de Informe de Contratação (RE.0150.03), o resumo do dia e os parâmetros (veja abaixo). **Treinamento** tem o **Treinamento prático** (administrador e financeiro: treinamentos,
+  C.I. do crachá e parâmetros) e o **Guia do sistema** (todos os perfis), um passo a passo com os tópicos do perfil de quem está logado em destaque.
 - **Telas lista + detalhe** em Usuários e Cadastros (busca à esquerda, formulário do item à direita).
 - **Registro da viagem** no estilo Dynamics 365: faixa de etapas (Programada → Realizada →
   Prestação de contas), barra de comandos com as ações liberadas para o perfil e abas (Resumo, Adiantamentos, Despesas,
@@ -138,6 +138,23 @@ O formulário impresso mantém os textos do modelo da empresa: cabeçalho do SGI
 *FICHA DE INFORME DE CONTRATAÇÃO*, *Código: RE.0150.03*, *Versão: 03*, *Data: 03/02/2023*, *Periodicidade: Sempre que houver
 contratação*, *Página: 1 de 1*), as linhas da ficha e as assinaturas (Coordenador, Gerente de Transportes e Superintendente Agrícola, nesta ordem). O cabeçalho é
 editável em Cadastros → Formulários (RE). A planilha e o Word originais não ficam no repositório (contêm dados pessoais).
+
+## Treinamento prático (crachá de treinamento)
+
+Menu **Treinamento** (administrador e financeiro), no lugar da planilha *RE.1005.04 - Treinamento Prático Operacional* (aba Digitar) e
+da mala direta do Word *RE.1000.02A Comunicação Interna - Crachá de Treinamento*:
+
+| Subgrupo | O que faz |
+|---|---|
+| **Treinamentos práticos** | Lista com indicadores (em treinamento, vencem no mês, vencidos ainda "treinando") e filtros: **Situação** (Treinando, Treinado, Não classificado), **Situação da função** (Classificado, Não classificado, Renovado), **Situação 2** (Treinando ou Treinado), mês de vencimento, ano, gestor e situação do colaborador (ativo, afastado, demitido). *Imprimir C.I.* imprime as C.I. do filtro (uma por página) e *Exportar (mala direta)* gera um CSV com as colunas da aba Digitar. |
+| **Novo treinamento (C.I.)** | Digita-se a **matrícula** (ou parte do nome): **nome, função, setor, data de admissão, situação** (ativo, afastado ou demitido), **CNH** (sim/não, categoria e validade), **contato** e **cidade** são puxados do cadastro de funcionários e da base da planilha. Preenche-se a **função de treinamento** (nova função) e o **setor da nova função** (ex.: trator transbordo, irrigação localizada), o **início da vigência** (o fim é calculado: **+3 meses**, configurável), o **gestor responsável** (a matrícula puxa o nome e a função) e as situações. Calculados: **Status** (dia seguinte ao fim da vigência), **mês de vencimento**, **Função para Treinamento** = "nova função(setor)" e **Situação 2** (Treinado quando a vigência terminou). Sem CNH, a observação padrão é preenchida. A **prévia da C.I.** é montada ao lado; ao informar a data de confecção do crachá, a C.I. recebe o próximo **Nº DOC** do ano (n/aaaa). |
+| **Parâmetros** | Vigência (meses), local da data, remetente, destinatários, assunto e texto para quem não tem CNH; **assinaturas da C.I.** (nome, cargo, ordem, ativa); **gestores responsáveis** (matrícula, nome e cargo impresso); e a **carga da planilha** (aba APFO → base de funcionários só com função, setor, admissão, situação, CNH, celular e cidade; aba ESCALA; gestores e, se marcado, os treinamentos já lançados da aba Digitar, sem repetir matrícula, início e função). |
+
+A C.I. impressa segue o modelo da empresa: cabeçalho do SGI (*COMUNICAÇÃO INTERNA (C.I)*, *Código: RE. 0940.02D*, *Versão: 02*,
+*Data: 17/04/2023*, *Periodicidade: A cada comunicação*), local e data por extenso, C.I. DEST, remetente, destinatários e assunto, o quadro
+*DADOS DO COLABORADOR* / *DADOS PARA O TREINAMENTO DA PRATICA* e as assinaturas: **a primeira é a do gestor responsável escolhido no
+treinamento** (muda conforme o gestor) e depois as fixas cadastradas em Parâmetros. O cabeçalho é editável em Cadastros → Formulários (RE).
+A planilha e o Word originais não ficam no repositório (contêm dados pessoais).
 
 ## Gratificação rescisória
 

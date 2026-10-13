@@ -258,7 +258,7 @@ test('lista, filtros, pendências e CSV para a folha', async () => {
 
 test('formulário é um cadastro fixo (não cria nem exclui) e só o administrador edita', async () => {
   const cfg = (await admin.get('/api/cadastros/documentos')).corpo;
-  assert.deepEqual(cfg.map((d) => d.codigo), ['RE. 0150.09', 'RE.0150.03']); // autorização de desconto e ficha de contratação
+  assert.deepEqual(cfg.map((d) => d.codigo).sort(), ['RE. 0150.09', 'RE. 0940.02D', 'RE.0150.03']); // autorização de desconto, C.I. do crachá de treinamento e ficha de contratação
   assert.equal((await admin.post('/api/cadastros/documentos', { ...cfg[0] })).status, 404);
   assert.equal((await admin.del(`/api/cadastros/documentos/${cfg[0].id}`)).status, 404);
   assert.equal((await davi.put(`/api/cadastros/documentos/${cfg[0].id}`, cfg[0])).status, 403);

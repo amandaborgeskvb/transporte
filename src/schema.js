@@ -464,6 +464,90 @@ CREATE TABLE IF NOT EXISTS contr_fichas (
 CREATE INDEX IF NOT EXISTS contr_fichas_data_idx ON contr_fichas (data DESC, id DESC);
 CREATE INDEX IF NOT EXISTS contr_fichas_depto_funcao_idx ON contr_fichas (depto_codigo, funcao_id, data DESC);
 
+-- ===== Treinamento prático operacional (planilha RE.1005.04) e C.I. do crachá de treinamento (RE. 0940.02D) =====
+-- Dados do funcionário que o cadastro do ERP não traz (CNH, categoria, validade, celular, cidade e escala) e base de reserva
+-- para quem não está no cadastro; carregados pela aba APFO/ESCALA da planilha
+CREATE TABLE IF NOT EXISTS trein_base (
+  matricula      TEXT PRIMARY KEY,
+  nome           TEXT NOT NULL DEFAULT '',
+  funcao         TEXT NOT NULL DEFAULT '',
+  setor          TEXT NOT NULL DEFAULT '',
+  data_admissao  DATE,
+  situacao       TEXT NOT NULL DEFAULT '',
+  possui_cnh     BOOLEAN,
+  cnh_categoria  TEXT NOT NULL DEFAULT '',
+  cnh_validade   TEXT NOT NULL DEFAULT '',
+  celular        TEXT NOT NULL DEFAULT '',
+  cidade         TEXT NOT NULL DEFAULT '',
+  escala         TEXT NOT NULL DEFAULT '',
+  atualizado_em  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Parâmetros da C.I. (linha única)
+CREATE TABLE IF NOT EXISTS trein_config (
+  id                INTEGER PRIMARY KEY CHECK (id = 1),
+  meses_vigencia    INTEGER NOT NULL DEFAULT 3 CHECK (meses_vigencia BETWEEN 1 AND 24),
+  remetente         TEXT NOT NULL DEFAULT 'AGRÍCOLA/DEPTO. CTT',
+  destinatarios     TEXT NOT NULL DEFAULT 'RECURSOS HUMANOS',
+  assunto           TEXT NOT NULL DEFAULT 'CONFECCÃO DE CRACHÁ DE TREINAMENTO',
+  local             TEXT NOT NULL DEFAULT 'Ipiaçu-MG',
+  texto_sem_cnh     TEXT NOT NULL DEFAULT 'CASO NÃO TIRE A CNH NO PERÍODO PROBATÓRIO, NÃO SERÁ CLASSIFICADO',
+  assinatura_gestor BOOLEAN NOT NULL DEFAULT true
+);
+-- Gestores responsáveis (matrícula → nome e cargo impressos na assinatura da C.I.)
+CREATE TABLE IF NOT EXISTS trein_gestores (
+  matricula  TEXT PRIMARY KEY,
+  nome       TEXT NOT NULL,
+  cargo      TEXT NOT NULL DEFAULT '',
+  ativo      BOOLEAN NOT NULL DEFAULT true
+);
+-- Demais assinaturas da C.I. (fixas, editáveis em Parâmetros)
+CREATE TABLE IF NOT EXISTS trein_signatarios (
+  id     SERIAL PRIMARY KEY,
+  nome   TEXT NOT NULL DEFAULT '',
+  cargo  TEXT NOT NULL,
+  ordem  INTEGER NOT NULL DEFAULT 1,
+  ativo  BOOLEAN NOT NULL DEFAULT true
+);
+-- Treinamentos (aba Digitar): dados do colaborador gravados na hora do lançamento; a situação do colaborador é lida do cadastro
+CREATE TABLE IF NOT EXISTS trein_registros (
+  id                  SERIAL PRIMARY KEY,
+  matricula           TEXT NOT NULL,
+  nome                TEXT NOT NULL DEFAULT '',
+  funcao              TEXT NOT NULL DEFAULT '',
+  setor               TEXT NOT NULL DEFAULT '',
+  data_admissao       DATE,
+  situacao_colab      TEXT NOT NULL DEFAULT '',
+  possui_cnh          BOOLEAN,
+  cnh_categoria       TEXT NOT NULL DEFAULT '',
+  cnh_validade        TEXT NOT NULL DEFAULT '',
+  observacao          TEXT NOT NULL DEFAULT '',
+  possui_curso        BOOLEAN,
+  cursos              TEXT NOT NULL DEFAULT '',
+  funcao_treinamento  TEXT NOT NULL DEFAULT '',
+  setor_nova          TEXT NOT NULL DEFAULT '',
+  vigencia_de         DATE NOT NULL,
+  vigencia_ate        DATE NOT NULL,
+  remetente           TEXT NOT NULL DEFAULT '',
+  gestor_matricula    TEXT NOT NULL DEFAULT '',
+  gestor_nome         TEXT NOT NULL DEFAULT '',
+  gestor_funcao       TEXT NOT NULL DEFAULT '',
+  contato             TEXT NOT NULL DEFAULT '',
+  cidade              TEXT NOT NULL DEFAULT '',
+  escala              TEXT NOT NULL DEFAULT '',
+  situacao            TEXT CHECK (situacao IS NULL OR situacao IN ('TREINANDO','TREINADO','NÃO CLASSIFICADO','CANCELADO')),
+  situacao_funcao     TEXT CHECK (situacao_funcao IS NULL OR situacao_funcao IN ('CLASSIFICADO','NÃO CLASSIFICADO','RENOVADO')),
+  data_cracha         DATE,
+  doc_numero          INTEGER,
+  doc_ano             INTEGER,
+  origem              TEXT NOT NULL DEFAULT 'digitado',
+  criado_por          INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS trein_registros_mat_idx ON trein_registros (matricula, vigencia_de);
+CREATE INDEX IF NOT EXISTS trein_registros_ate_idx ON trein_registros (vigencia_ate);
+CREATE UNIQUE INDEX IF NOT EXISTS trein_registros_doc_idx ON trein_registros (doc_ano, doc_numero) WHERE doc_numero IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,
   tipo         TEXT NOT NULL,
@@ -518,6 +602,21 @@ INSERT INTO documentos_re (codigo, titulo, sistema, versao, data_versao, periodi
 VALUES ('RE.0150.03', 'FICHA DE INFORME DE CONTRATAÇÃO', 'Sistema de Gestão Integrada - SGI', '03', '2023-02-03', 'Sempre que houver contratação',
         'CRV INDUSTRIAL LTDA', 'Capinópolis-MG')
 ON CONFLICT (codigo) DO NOTHING;
+-- C.I. do crachá de treinamento: cabeçalho como no modelo da empresa (RE. 0940.02D, versão 02 de 17/04/2023)
+INSERT INTO documentos_re (codigo, titulo, sistema, versao, data_versao, periodicidade, empresa, cidade)
+VALUES ('RE. 0940.02D', 'COMUNICAÇÃO INTERNA (C.I)', 'Sistema de Gestão Integrada - SGI', '02', '2023-04-17', 'A cada comunicação',
+        'CRV INDUSTRIAL LTDA', 'Ipiaçu-MG')
+ON CONFLICT (codigo) DO NOTHING;
+INSERT INTO trein_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+-- Assinaturas fixas da C.I. (a do gestor responsável vem do treinamento); editáveis em Treinamento prático → Parâmetros
+INSERT INTO trein_signatarios (nome, cargo, ordem)
+SELECT n, c, o FROM (VALUES
+  ('23504 - Fabio Leandro da Silva Junior', 'Coordenador de Treinamento e Desenvolvimento', 2),
+  ('34939 – João Eduardo dos Santos', 'Gerente Transporte e Mecanização', 3),
+  ('Cloves Oliveira', 'Gerente Agrícola', 4),
+  ('Michelle Patrícia Alves Pereira', 'Coordenadora de RH', 5)) AS v(n, c, o)
+WHERE NOT EXISTS (SELECT 1 FROM trein_signatarios);
+
 -- Gratificação rescisória: parâmetros iniciais (editáveis em Gratificação rescisória → Parâmetros)
 INSERT INTO grat_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 

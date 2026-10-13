@@ -408,6 +408,22 @@ html[data-tema="escuro"] .re-mesa { background: #0a1120; }
 .re-rh-mat { font-size: 9pt; }
 .re-rh-cargo { font-size: 7.5pt; text-transform: uppercase; }
 
+/* C.I. — crachá de treinamento (RE. 0940.02D) */
+.ci-folha { font-size: 11pt; }
+.ci-data { text-align: right; margin: 7mm 0 6mm; }
+.ci-ident p { margin: 0 0 1.6mm; }
+.ci-texto { margin: 6mm 0 3mm; }
+.ci-tab { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 10pt; }
+.ci-tab th, .ci-tab td { border: 1px solid #000; padding: 1.4mm 2mm; text-align: left; vertical-align: middle; overflow-wrap: anywhere; }
+.ci-tab th { background: #d9d9d9; text-align: center; font-weight: 700; }
+.ci-tab td.rot { width: 30mm; font-weight: 700; }
+.ci-atte { margin: 7mm 0 2mm; }
+.ci-assinaturas { display: grid; grid-template-columns: 1fr 1fr; gap: 12mm 10mm; margin-top: 12mm; text-align: center; font-size: 9.5pt; }
+.ci-ass.largo { grid-column: 1 / -1; width: 50%; margin: 0 auto; }
+.ci-ass div:last-child { font-size: 8.5pt; }
+.ci-traco { border-top: 1px solid #000; margin: 0 4mm 1.2mm; }
+.tr-auto { border: 1px dashed var(--linha); border-radius: 8px; padding: 10px 12px; margin: 4px 0 12px; }
+
 @media print {
   @page { size: A4 portrait; margin: 10mm; }
   .nao-imprime, .toasts { display: none !important; }
