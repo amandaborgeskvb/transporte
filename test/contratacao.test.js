@@ -72,6 +72,10 @@ test('importação da planilha: prévia, aplicar e reenviar sem duplicar (parâm
   const um = fichas.find((f) => f.nome === 'PESSOA TESTE UM');
   assert.deepEqual([um.data, um.depto_formatado, um.turno, um.contrato_experiencia, um.salario, um.origem], ['2026-10-13', '104.001.004', 'matutino', true, 2066.15, 'controle.xlsx']);
   assert.ok(um.funcao_id && um.gerencia_id); // ligadas aos parâmetros pela descrição e pelo código do gestor
+  // funções já contratadas por departamento (lista de funções da ficha), com o último salário usado
+  const uso = (await davi.get('/api/contratacao/parametros')).corpo.uso.filter((u) => u.depto_codigo === '104001004');
+  assert.deepEqual(uso.map((u) => [p.funcoes.find((f) => f.id === u.funcao_id).descricao, u.qtd]).sort(), [['OPERADOR MAQ. AGR.  II', 1], ['TRABALHADOR RURAL', 2]]);
+  assert.equal(uso.find((u) => u.qtd === 2).ultima_data, '2026-10-13');
   const dois = fichas.find((f) => f.nome === 'PESSOA TESTE DOIS');
   assert.equal(dois.depto_descricao, 'OPERADOR - TRATOR TRANSBORDO'); // veio vazia da planilha (fórmula): preenchida pelo código
   assert.equal((await ana.req('POST', '/api/contratacao/importar', undefined, { bruto: planilha(), tipo: 'application/octet-stream' })).status, 403);

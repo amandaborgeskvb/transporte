@@ -434,6 +434,7 @@ html[data-tema="escuro"] .re-mesa { background: #0a1120; }
 .rf-assinaturas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8mm; margin-top: 16mm; text-align: center; font-size: 9.5pt; }
 .rf-traco { border-top: 1px solid #000; margin: 0 2mm 1.2mm; }
 .rf-data { margin-top: 3mm; }
+.rf-manual { padding: 0; margin: 0; }
 .rf-grupo { border: 1px solid var(--linha); border-radius: 8px; padding: 6px 10px 8px; display: flex; flex-wrap: wrap; gap: 4px 18px; }
 .rf-grupo legend { font-size: .85em; color: var(--muted); padding: 0 4px; }
 input.maiusc { text-transform: uppercase; }

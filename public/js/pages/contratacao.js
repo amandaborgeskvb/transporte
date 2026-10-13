@@ -117,8 +117,12 @@ async function formFicha({ params, query, ir }) {
   const inicial = atual || (base ? { ...base, id: null, nome: '', telefone: '', celular1: '', celular2: '', email: '', cidade: '', data: hojeISO() }
     : { data: hojeISO(), setor: 'AGRÍCOLA', jornada: p.jornada_padrao, turno: 'matutino', horario: p.horarios.matutino, contrato_experiencia: true });
   const funcoes = p.funcoes;
-  const rotFuncao = (x) => `${x.descricao} (cód. ${x.codigo})`;
+  const funcaoPorId = new Map(funcoes.map((x) => [x.id, x]));
   const deptos = new Map(p.departamentos.map((d) => [d.codigo, d]));
+  const usoPorDepto = new Map();
+  for (const u of p.uso || []) { if (!usoPorDepto.has(u.depto_codigo)) usoPorDepto.set(u.depto_codigo, []); usoPorDepto.get(u.depto_codigo).push(u); }
+  const semAc = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  const OUTRO = '__outro';
 
   const erro = h('div', { class: 'erro', role: 'alert' });
   const campo = (rotulo, el, { cheio, dica, obrigatorio } = {}) => h('label', { class: cheio ? 'cheio' : '' }, rotulo, obrigatorio ? ' *' : '', el, dica ? (typeof dica === 'string' ? h('small', { class: 'dica' }, dica) : dica) : null);
@@ -126,9 +130,14 @@ async function formFicha({ params, query, ir }) {
   const el = {
     data: inp('data', inicial.data, { type: 'date', required: true }),
     nome: inp('nome', inicial.nome, { required: true, maxlength: 120, class: 'maiusc' }),
-    funcao: inp('funcao', inicial.funcao_id ? rotFuncao(funcoes.find((x) => x.id === inicial.funcao_id) || { descricao: inicial.funcao, codigo: '?' }) : inicial.funcao, { list: 'rf-funcoes', required: true, placeholder: 'Digite para buscar a função' }),
-    depto: inp('depto_codigo', inicial.depto_codigo ? deptoFmt(inicial.depto_codigo) : '', { list: 'rf-deptos', required: true, placeholder: 'ex.: 104.001.004' }),
-    deptoDesc: inp('depto_descricao', inicial.depto_descricao, { maxlength: 120, class: 'maiusc' }),
+    // Departamento: filtro (parte do nome ou do código) + lista com os departamentos encontrados
+    deptoFiltro: inp('depto_filtro', '', { type: 'search', placeholder: 'Filtrar: parte do nome ou do código (ex.: TRANSBORDO, 104.001)' }),
+    deptoSel: h('select', { name: 'depto_sel', required: true }),
+    depto: inp('depto_codigo', inicial.depto_codigo && !deptos.has(inicial.depto_codigo) ? deptoFmt(inicial.depto_codigo) : '', { placeholder: 'ex.: 104.001.004' }),
+    deptoDesc: inp('depto_descricao', inicial.depto_codigo && !deptos.has(inicial.depto_codigo) ? inicial.depto_descricao : '', { maxlength: 120, class: 'maiusc' }),
+    // Função: primeiro as já contratadas no departamento escolhido; o salário vem da função
+    funcaoSel: h('select', { name: 'funcao_sel', required: true }),
+    funcao: inp('funcao', inicial.funcao_id ? '' : inicial.funcao, { maxlength: 120, class: 'maiusc', placeholder: 'Nome da função' }),
     destino: inp('destino', inicial.destino, { maxlength: 120, class: 'maiusc' }),
     setor: inp('setor', inicial.setor, { maxlength: 80, class: 'maiusc' }),
     jornada: inp('jornada', inicial.jornada, { maxlength: 20 }),
@@ -147,10 +156,40 @@ async function formFicha({ params, query, ir }) {
   const contratos = CONTRATOS.map(([k, r]) => h('label', { class: 'check' }, h('input', { type: 'checkbox', name: `contrato_${k}`, checked: !!inicial[`contrato_${k}`] }), ` ${r}`));
   const infoFuncao = h('small', { class: 'dica' });
   const infoDepto = h('small', { class: 'dica' });
-  const rotDescManual = campo('Descrição do departamento', el.deptoDesc, { cheio: true, dica: 'Código não cadastrado em Parâmetros: digite a descrição.' });
+  const blocoDeptoManual = h('div', { class: 'cheio form-grid rf-manual' },
+    campo('Código do departamento', el.depto, { obrigatorio: true }), campo('Descrição do departamento', el.deptoDesc, { obrigatorio: true, dica: 'Código não cadastrado em Parâmetros.' }));
+  const blocoFuncaoManual = campo('Função (digitada)', el.funcao, { cheio: true, dica: 'Função não cadastrada em Parâmetros: digite o nome e o salário.' });
 
-  const funcaoEscolhida = () => funcoes.find((x) => rotFuncao(x) === el.funcao.value.trim()) || funcoes.find((x) => x.descricao === el.funcao.value.trim().toUpperCase());
-  const deptoEscolhido = () => deptos.get(el.depto.value.split(' - ')[0].replace(/\D/g, ''));
+  const deptoCodigo = () => (el.deptoSel.value === OUTRO ? el.depto.value.replace(/\D/g, '') : el.deptoSel.value);
+  const deptoEscolhido = () => (el.deptoSel.value && el.deptoSel.value !== OUTRO ? deptos.get(el.deptoSel.value) : null);
+  const funcaoEscolhida = () => (el.funcaoSel.value && el.funcaoSel.value !== OUTRO ? funcaoPorId.get(Number(el.funcaoSel.value)) : null);
+
+  // Lista de departamentos pelo filtro (até 300); mantém o escolhido; se só um bate, já escolhe
+  function montarDeptos(manterValor = el.deptoSel.value) {
+    const f = semAc(el.deptoFiltro.value).trim();
+    const fDig = f.replace(/\D/g, '');
+    const lista = p.departamentos.filter((d) => (d.ativo || d.codigo === manterValor) && (!f || semAc(d.descricao).includes(f) || (fDig && d.codigo.includes(fDig)) || deptoFmt(d.codigo).includes(f)));
+    const mostrar = lista.slice(0, 300);
+    if (manterValor && manterValor !== OUTRO && !mostrar.some((d) => d.codigo === manterValor) && deptos.has(manterValor)) mostrar.unshift(deptos.get(manterValor));
+    const valor = f && lista.length === 1 ? lista[0].codigo : manterValor;
+    el.deptoSel.replaceChildren(
+      h('option', { value: '' }, f ? `${fmt(lista.length)} departamento${lista.length === 1 ? '' : 's'} encontrado${lista.length === 1 ? '' : 's'} — selecione` : 'Selecione o departamento…'),
+      ...mostrar.map((d) => h('option', { value: d.codigo, selected: d.codigo === valor }, `${deptoFmt(d.codigo)} - ${d.descricao}`)),
+      h('option', { value: OUTRO, selected: valor === OUTRO }, 'Outro código (não cadastrado)…'));
+    if (el.deptoSel.value !== manterValor) el.deptoSel.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  // Funções: as já contratadas no departamento primeiro (com a quantidade de fichas), depois todas
+  function montarFuncoes(manterValor = el.funcaoSel.value) {
+    const usadas = (usoPorDepto.get(deptoCodigo()) || []).filter((u) => funcaoPorId.has(u.funcao_id));
+    const idsUsadas = new Set(usadas.map((u) => u.funcao_id));
+    const opcao = (x, extra = '') => h('option', { value: x.id, selected: String(x.id) === String(manterValor) }, `${x.descricao}${extra}${x.salario !== null ? ` — ${brl(x.salario)}` : ''}`);
+    el.funcaoSel.replaceChildren(
+      h('option', { value: '' }, 'Selecione a função…'),
+      usadas.length ? h('optgroup', { label: 'Já contratadas neste departamento' }, usadas.map((u) => opcao(funcaoPorId.get(u.funcao_id), ` (${u.qtd} ficha${u.qtd === 1 ? '' : 's'})`))) : null,
+      h('optgroup', { label: usadas.length ? 'Outras funções' : 'Todas as funções' },
+        funcoes.filter((x) => !idsUsadas.has(x.id) && (!x.bloqueada || String(x.id) === String(manterValor))).map((x) => opcao(x))),
+      h('option', { value: OUTRO, selected: manterValor === OUTRO }, 'Outra função (não cadastrada)…'));
+  }
   const turnoAtual = () => turnos.map((l) => l.querySelector('input')).find((i) => i.checked)?.value || '';
 
   function valores() {
@@ -158,7 +197,7 @@ async function formFicha({ params, query, ir }) {
     const d = deptoEscolhido();
     const v = {
       data: el.data.value, nome: el.nome.value.trim().toUpperCase(), funcao_id: fn?.id || '', funcao: fn ? fn.descricao : el.funcao.value.trim().toUpperCase(),
-      depto_codigo: el.depto.value.split(' - ')[0].replace(/\D/g, ''), depto_descricao: d ? d.descricao : el.deptoDesc.value.trim().toUpperCase(),
+      depto_codigo: deptoCodigo(), depto_descricao: d ? d.descricao : el.deptoDesc.value.trim().toUpperCase(),
       destino: el.destino.value.trim().toUpperCase(), setor: el.setor.value.trim().toUpperCase(), jornada: el.jornada.value.trim(), horario: el.horario.value.trim().toUpperCase(),
       turno: turnoAtual(), salario: el.salario.value, gerencia_id: el.gerencia.value,
       gestor: el.gerencia.value ? el.gerencia.selectedOptions[0].textContent : (inicial.gerencia_id ? '' : inicial.gestor || ''),
@@ -175,17 +214,27 @@ async function formFicha({ params, query, ir }) {
     areaPrevia.replaceChildren(mesa([{ ...v, salario: v.salario === '' ? null : Number(v.salario) }], p.documento));
   };
   // Puxa o salário da função, a descrição do departamento e o horário do turno (como as fórmulas da planilha)
-  el.funcao.addEventListener('input', () => {
+  function aoMudarFuncao({ puxarSalario = true } = {}) {
     const fn = funcaoEscolhida();
-    infoFuncao.textContent = fn ? `Salário da função: ${fn.salario === null ? 'não informado' : brl(fn.salario)}${fn.tipo_salario ? ` (${fn.tipo_salario.toLowerCase()})` : ''}${fn.bloqueada ? ' · função bloqueada' : ''}` : (el.funcao.value ? 'Função não cadastrada em Parâmetros: o salário será digitado.' : '');
-    if (fn && fn.salario !== null) el.salario.value = fn.salario;
-  });
-  el.depto.addEventListener('input', () => {
+    blocoFuncaoManual.style.display = el.funcaoSel.value === OUTRO ? '' : 'none';
+    if (fn && puxarSalario && fn.salario !== null) el.salario.value = fn.salario;
+    const uso = fn ? (usoPorDepto.get(deptoCodigo()) || []).find((u) => u.funcao_id === fn.id) : null;
+    infoFuncao.textContent = fn
+      ? `Salário da função (Func_salário da planilha): ${fn.salario === null ? 'não informado' : brl(fn.salario)}${fn.tipo_salario ? ` (${fn.tipo_salario.toLowerCase()})` : ''}${fn.cbo ? ` · CBO ${fn.cbo}` : ''}${fn.bloqueada ? ' · função bloqueada' : ''}${uso && uso.ultimo_salario !== null && uso.ultimo_salario !== fn.salario ? ` · última ficha neste departamento: ${brl(uso.ultimo_salario)} em ${dataBR(uso.ultima_data)}` : ''}`
+      : '';
+  }
+  function aoMudarDepto() {
     const d = deptoEscolhido();
-    if (d && el.depto.value.includes(' - ')) el.depto.value = deptoFmt(d.codigo);
-    infoDepto.textContent = d ? `${d.descricao}${d.ativo ? '' : ' (inativo)'}` : (el.depto.value ? 'Código não encontrado nos departamentos.' : '');
-    rotDescManual.style.display = d || !el.depto.value ? 'none' : '';
-  });
+    blocoDeptoManual.style.display = el.deptoSel.value === OUTRO ? '' : 'none';
+    const usadas = (usoPorDepto.get(deptoCodigo()) || []).length;
+    infoDepto.textContent = d ? `${d.ativo ? '' : 'Departamento inativo · '}${usadas ? `${usadas} ${usadas === 1 ? 'função já contratada' : 'funções já contratadas'} aqui (aparecem primeiro na lista de funções)` : 'Nenhuma ficha anterior neste departamento'}` : '';
+    montarFuncoes();
+    aoMudarFuncao({ puxarSalario: false });
+  }
+  el.deptoFiltro.addEventListener('input', () => montarDeptos());
+  el.deptoSel.addEventListener('change', aoMudarDepto);
+  el.depto.addEventListener('input', () => { montarFuncoes(); aoMudarFuncao({ puxarSalario: false }); });
+  el.funcaoSel.addEventListener('change', () => aoMudarFuncao());
   turnos.forEach((l) => l.querySelector('input').addEventListener('change', () => { el.horario.value = p.horarios[turnoAtual()] || el.horario.value; }));
 
   const salvar = async (continuar) => {
@@ -204,21 +253,20 @@ async function formFicha({ params, query, ir }) {
   };
 
   const form = h('form', { class: 'card', onsubmit: (e) => { e.preventDefault(); salvar(false); } },
-    h('datalist', { id: 'rf-funcoes' }, funcoes.filter((x) => !x.bloqueada || x.id === inicial.funcao_id).map((x) => h('option', { value: rotFuncao(x) }))),
-    h('datalist', { id: 'rf-deptos' }, p.departamentos.filter((d) => d.ativo).map((d) => h('option', { value: `${deptoFmt(d.codigo)} - ${d.descricao}` }))),
     h('datalist', { id: 'rf-cidades' }, ['ITUIUTABA', 'CAPINÓPOLIS', 'IPIAÇU', 'CANÁPOLIS', 'CACHOEIRA DOURADA', 'GURINHATÃ'].map((c) => h('option', { value: c }))),
     h('div', { class: 'form-grid' },
       campo('Data', el.data, { obrigatorio: true }),
       campo('Nome do candidato', el.nome, { obrigatorio: true, cheio: true }),
-      campo('Função', el.funcao, { obrigatorio: true, cheio: true, dica: infoFuncao }),
-      campo('Departamento (Depto/Seção)', el.depto, { obrigatorio: true, cheio: true, dica: infoDepto }), rotDescManual,
+      campo('Departamento (Depto/Seção) — filtro', el.deptoFiltro, { cheio: true }),
+      campo('Departamento', el.deptoSel, { obrigatorio: true, cheio: true, dica: infoDepto }), blocoDeptoManual,
+      campo('Função', el.funcaoSel, { obrigatorio: true, cheio: true, dica: infoFuncao }), blocoFuncaoManual,
       campo('Destino/local trab.', el.destino, { dica: 'ex.: SAFRA 2026' }),
       campo('Setor de locação', el.setor),
       h('fieldset', { class: 'cheio rf-grupo' }, h('legend', {}, 'Turno'), turnos),
       campo('Jornada de trabalho', el.jornada),
       campo('Horário de trabalho', el.horario, { dica: 'Preenchido pelo turno; dá para ajustar.' }),
       h('fieldset', { class: 'cheio rf-grupo' }, h('legend', {}, 'Contrato'), contratos),
-      campo('Salário (R$)', el.salario, { dica: 'Puxado da função; dá para ajustar.' }),
+      campo('Salário (R$)', el.salario, { dica: 'Puxado da função (aba Func_salário importada em Parâmetros); dá para ajustar.' }),
       campo('Gerência/gestor', el.gerencia),
       campo('Telefone', el.telefone), campo('Celular', el.celular1), campo('Celular 2', el.celular2), campo('E-mail', el.email),
       campo('Cidade', el.cidade), campo('Observação', el.observacao, { cheio: true })),
@@ -229,15 +277,17 @@ async function formFicha({ params, query, ir }) {
       h('button', { type: 'submit' }, 'Salvar')));
   form.addEventListener('input', () => { clearTimeout(form.t); form.t = setTimeout(desenharPrevia, 150); });
   form.addEventListener('change', () => { clearTimeout(form.t); form.t = setTimeout(desenharPrevia, 150); });
-  el.funcao.dispatchEvent(new Event('input'));
-  el.depto.dispatchEvent(new Event('input'));
-  if (atual) el.salario.value = atual.salario ?? '';
+  // Estado inicial: departamento e função da ficha (ou "outro" quando não estão nos parâmetros)
+  montarDeptos(inicial.depto_codigo ? (deptos.has(inicial.depto_codigo) ? inicial.depto_codigo : OUTRO) : '');
+  montarFuncoes(inicial.funcao_id && funcaoPorId.has(inicial.funcao_id) ? String(inicial.funcao_id) : inicial.funcao ? OUTRO : '');
+  aoMudarDepto();
+  if (inicial.salario !== undefined && inicial.salario !== null) el.salario.value = inicial.salario;
   desenharPrevia();
   setTimeout(() => el.nome.focus(), 50);
   return [
     cabecalhoPagina({
       migalhas: [...BASE, ['Fichas', '#/contratacao/fichas'], [editando ? 'Editar' : 'Nova ficha']], titulo: editando ? 'Editar ficha de contratação' : 'Nova ficha de contratação',
-      sub: 'Digite o nome, a função e o departamento: o salário, a descrição do departamento e o horário são puxados dos parâmetros',
+      sub: 'Filtre e escolha o departamento, depois a função (as já contratadas no departamento aparecem primeiro): o salário vem da função e o horário do turno',
     }),
     !funcoes.length ? h('div', { class: 'perfil-caixa' }, 'Os parâmetros ainda estão vazios: importe a planilha em ', h('a', { href: '#/contratacao/parametros' }, 'Contratação → Parâmetros'), ' para puxar salários e departamentos.') : null,
     h('div', { class: 're-edicao' }, form, h('section', { class: 'card re-previa' }, h('div', { class: 'card-topo' }, h('h2', {}, 'Prévia do formulário (RE.0150.03)')), areaPrevia)),

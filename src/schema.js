@@ -462,6 +462,7 @@ CREATE TABLE IF NOT EXISTS contr_fichas (
   atualizado_em           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS contr_fichas_data_idx ON contr_fichas (data DESC, id DESC);
+CREATE INDEX IF NOT EXISTS contr_fichas_depto_funcao_idx ON contr_fichas (depto_codigo, funcao_id, data DESC);
 
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,

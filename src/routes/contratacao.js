@@ -29,14 +29,20 @@ function criarContratacao({ pool }) {
 
   // ================= Parâmetros =================
   router.get('/contratacao/parametros', wrap(async (_req, res) => {
-    const [funcoes, departamentos, gerencias, documento] = await Promise.all([
+    const [funcoes, departamentos, gerencias, documento, uso] = await Promise.all([
       pool.query('SELECT * FROM contr_funcoes ORDER BY descricao, codigo'),
       pool.query('SELECT * FROM contr_departamentos ORDER BY codigo'),
       pool.query('SELECT * FROM contr_gerencias ORDER BY codigo'),
       lerDocumento(pool),
+      // Funções já contratadas em cada departamento (para a lista de funções da ficha), com o último salário usado
+      pool.query(`SELECT u.depto_codigo, u.funcao_id, u.qtd, ult.salario AS ultimo_salario, to_char(ult.data, 'YYYY-MM-DD') AS ultima_data
+        FROM (SELECT depto_codigo, funcao_id, count(*)::int AS qtd FROM contr_fichas WHERE funcao_id IS NOT NULL GROUP BY depto_codigo, funcao_id) u
+        JOIN LATERAL (SELECT salario, data FROM contr_fichas f WHERE f.depto_codigo = u.depto_codigo AND f.funcao_id = u.funcao_id ORDER BY data DESC, id DESC LIMIT 1) ult ON true
+        ORDER BY u.depto_codigo, u.qtd DESC`),
     ]);
     res.json({
       funcoes: funcoes.rows.map((f) => ({ ...f, salario: numOuNulo(f.salario) })), departamentos: departamentos.rows, gerencias: gerencias.rows,
+      uso: uso.rows.map((u) => ({ ...u, ultimo_salario: numOuNulo(u.ultimo_salario) })),
       documento, horarios: HORARIOS, jornada_padrao: JORNADA_PADRAO,
     });
   }));
