@@ -625,12 +625,12 @@ function criarGratificacao({ pool }) {
     enviarCsv(res, 'gratificacao_rescisoria.csv', [
       ['Departamento', 'Matrícula', 'Nome', 'Função', 'Grupo', 'Média BPP (R$)', 'Receber BPP (R$)', 'Média Prod. (R$)', 'Receber Prod. (R$)',
         'Escala', 'Turno', 'Dias trabalhados', 'Dias descontados', 'Dias a pagar', 'Desconto (%)', 'Desconto (R$)', 'Desconto sobre', 'Tipo de rescisão', 'Admissão', 'Rescisão',
-        'Total a receber (R$)', 'Situação'],
+        'Total a receber (R$)', 'Situação', 'Por que zerou'],
       ...itens.map((r) => { const c = r.calculo; return [
         r.funcionario_setor, r.funcionario_matricula, r.funcionario_nome, r.funcionario_funcao, c.grupo === 'operador' ? 'Motoristas e operadores' : 'Demais funções',
         oculto(c, c.bpp.media), oculto(c, c.bpp.receber), moedaCsv(c.prod.media), moedaCsv(c.prod.receber),
         c.escala || 'informado', r.turno || '', c.dias_trabalhados, c.dias_descontados, c.dias_pagar, pct(c.desconto_pct), moedaCsv(c.desconto), c.desconto_em.map((k) => (k === 'bpp' ? 'BPP' : 'Produtividade')).join(' e '),
-        r.tipo_rescisao, r.funcionario_admissao || '', r.dt_rescisao, moedaCsv(c.folha), r.situacao]; }),
+        r.tipo_rescisao, r.funcionario_admissao || '', r.dt_rescisao, moedaCsv(c.folha), r.situacao, c.motivos_zero.join('; ')]; }),
     ]);
   }));
 

@@ -299,6 +299,7 @@ test('pagar trava a apuração; relatório com totais e CSV', async () => {
   assert.equal(csv.status, 200);
   assert.match(csv.corpo, /Departamento;Matrícula;Nome/);
   assert.match(csv.corpo, /;Escala;Turno;/);
+  assert.match(csv.corpo, /;Situação;Por que zerou/);
   assert.doesNotMatch(csv.corpo, /Zelo/);
   assert.match(csv.corpo, /410,40/);
   assert.doesNotMatch(csv.corpo, /700,00|532,00/); // BPP da motorista não aparece no relatório
@@ -448,6 +449,16 @@ test('suspensão: desconta no componente do grupo; sem valor nele, vai para o ou
   // auxiliar, sem justa causa (BPP não pago): os 100% vão para a produtividade
   const b = calcular({ ...base, criterio: semJusta, funcao: 'AUXILIAR AGRICOLA' });
   assert.deepEqual([b.prod.proporcional, b.prod.desconto, b.total], [600, 600, 0]);
+  // relatório zerado: o motivo vem junto
+  assert.deepEqual(b.motivos_zero, ['BPP: não é pago em DEMISSÃO S/ J. CAUSA', 'Produtividade: descontado 100% pelas ocorrências (SS 100%; desconto transferido do BPP, porque BPP não é pago em DEMISSÃO S/ J. CAUSA)']);
+  assert.deepEqual(a.motivos_zero, []); // pedido de demissão: a produtividade sai no relatório
+  const soCartao = calcular({ ...base, criterio: semJusta, funcao: 'MOTORISTA', valores: [{ mes: '2026-09-01', bpp: 500, prod: null }] });
+  assert.equal(soCartao.folha, 0);
+  assert.deepEqual(soCartao.motivos_zero, ['BPP: não é pago em DEMISSÃO S/ J. CAUSA', 'Produtividade: sem valor na média dos meses']);
+  const semValores = calcular({ ...base, criterio: pedido, funcao: 'MOTORISTA', valores: [] });
+  assert.match(semValores.motivos_zero[0], /sem valores mensais/);
+  const goldOnly = calcular({ ...base, criterio: pedido, funcao: 'MOTORISTA', ocorrencias: [], valores: [{ mes: '2026-09-01', bpp: 500, prod: null }] });
+  assert.deepEqual(goldOnly.motivos_zero, ['BPP: R$ 440,00 vai para o Cartão Gold (não aparece no relatório)', 'Produtividade: sem valor na média dos meses']);
   // com o redirecionamento desligado, o desconto fica sem efeito e o aviso explica o motivo
   const c = calcular({ ...base, criterio: semJusta, funcao: 'AUXILIAR AGRICOLA', config: { ...CONFIG, desconto_redireciona: false } });
   assert.equal(c.total, 600);

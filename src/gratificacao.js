@@ -252,8 +252,32 @@ function calcular({ config, criterio, rescisao, funcao, admissao, valores, ocorr
   }
   if (diasPagar > config.base_dias) avisos.push(`Dias a pagar (${diasPagar}) acima da base de ${config.base_dias}: o valor passa da média, como na planilha.`);
 
+  // Por que o valor do relatório (gratificação em folha) ficou zerado: motivo de cada componente
+  const motivosZero = [];
+  const folha = round2(bpp.receber + prod.receber - cartaoGold);
+  if (folha === 0) {
+    const brl = (n) => `R$ ${n.toFixed(2).replace('.', ',')}`;
+    if (!meses.length) motivosZero.push('sem valores mensais (BPP/produtividade) até o mês da rescisão: confira a carga da GRAT e a matrícula');
+    else if (!pagos.bpp && !pagos.prod) motivosZero.push(`${criterio.tipo_rescisao || 'o tipo de rescisão'} não paga gratificação`);
+    else if (diasPagar === 0) motivosZero.push(`0 dias a pagar (${diasTrab} trabalhados − ${diasDescontados} das ocorrências)${!informado && escala && diasTrab === 0 ? ': confira a data de admissão e a escala' : ''}`);
+    else {
+      const explica = (k, nome) => {
+        const c = k === 'bpp' ? bpp : prod;
+        if (k === 'bpp' && bppNoCartao && c.receber > 0) return `${nome}: ${brl(c.receber)} vai para o Cartão Gold (não aparece no relatório)`;
+        if (!c.paga) return `${nome}: não é pago em ${criterio.tipo_rescisao}`;
+        if (!c.media) return `${nome}: sem valor na média dos meses`;
+        if (c.desconto >= c.proporcional) {
+          const transferido = redirecionado?.para.includes(k) ? `; desconto transferido ${k === 'prod' ? 'do BPP' : 'da produtividade'}, porque ${redirecionado.motivo}` : '';
+          return `${nome}: descontado 100% pelas ocorrências (${doPeriodo.map((o) => `${o.abrev} ${Math.round(o.percentual * 100)}%`).join(' + ')}${transferido})`;
+        }
+        return null;
+      };
+      for (const m of [explica('bpp', 'BPP'), explica('prod', 'Produtividade')]) if (m) motivosZero.push(m);
+    }
+  }
+
   return {
-    grupo, grupo_origem: grupoOrigem, periodo, criterio: criterio.tipo_rescisao, criterio_texto: textoCriterio(criterio),
+    grupo, grupo_origem: grupoOrigem, periodo, motivos_zero: motivosZero, criterio: criterio.tipo_rescisao, criterio_texto: textoCriterio(criterio),
     desconto_em: descontoPct > 0 ? alvo.filter((k) => proporcional[k] > 0) : [...alvoConfig], desconto_configurado: [...alvoConfig], desconto_redirecionado: redirecionado,
     desconto_origem: regra.desconto_origem, bpp_origem: regra.bpp_origem,
     meses: meses.map((v) => v.mes), medias,
@@ -265,7 +289,7 @@ function calcular({ config, criterio, rescisao, funcao, admissao, valores, ocorr
     desconto: round2(bpp.desconto + prod.desconto),
     total: round2(bpp.receber + prod.receber),
     bpp_no_cartao: bppNoCartao,
-    folha: round2(bpp.receber + prod.receber - cartaoGold), // gratificação paga pelo relatório (Diversos)
+    folha, // gratificação paga pelo relatório (Diversos)
     cartao_gold: cartaoGold, // depósito do Cartão Gold (LISTA BPP)
     avisos,
   };
