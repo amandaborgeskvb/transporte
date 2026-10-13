@@ -278,6 +278,40 @@ tr.clicavel { cursor: pointer; }
 .rosca-legenda i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 .rosca-legenda b { margin-left: auto; padding-left: 14px; font-variant-numeric: tabular-nums; }
 
+/* Séries empilhadas (relatório de treinamentos). Classificado, Renovado e Não classificado: paleta categórica
+   validada para daltonismo (claro e escuro); Sem classificação: cinza neutro (legenda, tooltip e tabela dão o valor) */
+:root { --cls-1: #2a78d6; --cls-2: #1baf7a; --cls-3: #eb6834; --cls-sem: #bdbcb6; }
+:root[data-tema="escuro"] { --cls-1: #3987e5; --cls-2: #199e70; --cls-3: #d95926; --cls-sem: #5b5d63; }
+.ch-col .ch-alvo { fill: transparent; }
+.ch-col .ch-grupo { outline: none; cursor: default; }
+.ch-col .ch-grupo:hover .ch-alvo, .ch-col .ch-grupo:focus-visible .ch-alvo { fill: var(--hover); }
+.ch-col .ch-total { fill: var(--txt); font-size: 11.5px; font-weight: 650; font-family: var(--fonte); font-variant-numeric: tabular-nums; }
+.ch-barras { display: flex; flex-direction: column; gap: 10px; }
+.ch-linha { display: grid; grid-template-columns: minmax(110px, 36%) 1fr auto; gap: 10px; align-items: center; font-size: .84rem; border-radius: 6px; padding: 2px 4px; outline: none; }
+.ch-linha:hover, .ch-linha:focus-visible { background: var(--hover); }
+.ch-linha .nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ch-trilho { height: 14px; }
+.ch-cheio { display: flex; gap: 2px; height: 100%; min-width: 4px; }
+.ch-cheio i { display: block; height: 100%; min-width: 2px; }
+.ch-cheio i:first-child { border-radius: 0; }
+.ch-cheio i:last-child { border-radius: 0 4px 4px 0; }
+.ch-linha .valor { font-variant-numeric: tabular-nums; font-weight: 650; text-align: right; min-width: 64px; }
+.ch-linha .valor small { display: block; font-weight: 500; color: var(--muted); font-size: .72rem; }
+.ch-tip { position: fixed; z-index: 1000; pointer-events: none; background: var(--card); color: var(--txt); border: 1px solid var(--linha); border-radius: 8px; box-shadow: var(--sombra-2); padding: 8px 10px; font-size: .8rem; min-width: 150px; }
+.ch-tip-tit { font-weight: 650; margin-bottom: 4px; }
+.ch-tip-lin { display: flex; align-items: center; gap: 8px; line-height: 1.6; }
+.ch-tip-lin i { width: 12px; height: 3px; border-radius: 2px; flex: none; }
+.ch-tip-lin strong { font-variant-numeric: tabular-nums; min-width: 28px; text-align: right; }
+.ch-tip-lin span { color: var(--muted); }
+.ch-tip-lin:last-child { border-top: 1px solid var(--linha); margin-top: 3px; padding-top: 2px; padding-left: 20px; }
+.rel-grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 14px; align-items: start; margin-bottom: 14px; }
+.rel-grade .card { margin: 0; }
+.rel-tabela td.num, .rel-tabela th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.rel-tabela tfoot td { font-weight: 700; border-top: 2px solid var(--linha); }
+.rel-tabela .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+@media (max-width: 560px) { .rel-grade { grid-template-columns: 1fr; } .ch-linha { grid-template-columns: minmax(80px, 34%) 1fr auto; } }
+@media print { .ch-tip { display: none !important; } .rel-grade { display: block; } .rel-grade .card, .rel-card { break-inside: avoid; margin-bottom: 10px; } .grafico { min-width: 0; } }
+
 /* ---------- Estrutura de registro: fluxo, histórico, perfis ---------- */
 .prestacao { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--linha); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .prestacao .acoes { margin-left: auto; }

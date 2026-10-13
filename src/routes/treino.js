@@ -222,6 +222,59 @@ function criarTreino({ pool }) {
     res.json({ itens, resumo });
   }));
 
+  // ================= Relatório (por mês e ano, classificados ou não) =================
+  // GET /treino/relatorio?ano=&base=inicio|fim&gestor=&funcao=&setor= — cancelados ficam de fora (contados à parte)
+  const CLASSES = { CLASSIFICADO: 'classificado', RENOVADO: 'renovado', 'NÃO CLASSIFICADO': 'nao_classificado' };
+  const vazioCls = () => ({ classificado: 0, renovado: 0, nao_classificado: 0, sem: 0, total: 0 });
+  const somar = (alvo, r) => { alvo[CLASSES[r.situacao_funcao] || 'sem'] += 1; alvo.total += 1; return alvo; };
+  // taxa de classificação: classificados ÷ avaliados (classificados + renovados + não classificados), em %
+  const taxa = (x) => (x.classificado + x.renovado + x.nao_classificado ? Math.round((x.classificado * 1000) / (x.classificado + x.renovado + x.nao_classificado)) / 10 : null);
+  router.get('/treino/relatorio', wrap(async (req, res) => {
+    const base = req.query.base === 'fim' ? 'fim' : 'inicio';
+    const params = [];
+    const cond = ['TRUE'];
+    if (req.query.gestor) { params.push(normMatricula(req.query.gestor)); cond.push(`gestor_matricula = $${params.length}`); }
+    if (req.query.funcao) { params.push(String(req.query.funcao).slice(0, 120)); cond.push(`funcao_treinamento = $${params.length}`); }
+    if (req.query.setor) { params.push(String(req.query.setor).slice(0, 120)); cond.push(`setor_nova = $${params.length}`); }
+    const { rows } = await pool.query(
+      `SELECT vigencia_de, vigencia_ate, situacao, situacao_funcao, funcao_treinamento, setor_nova, gestor_matricula, gestor_nome
+       FROM trein_registros WHERE ${cond.join(' AND ')}`, params);
+    const [gestores, funcoes, setores] = await Promise.all([
+      pool.query(`SELECT gestor_matricula AS matricula, max(gestor_nome) AS nome FROM trein_registros WHERE gestor_matricula <> '' GROUP BY 1 ORDER BY 2`),
+      pool.query(`SELECT DISTINCT funcao_treinamento AS v FROM trein_registros WHERE funcao_treinamento <> '' ORDER BY 1`),
+      pool.query(`SELECT DISTINCT setor_nova AS v FROM trein_registros WHERE setor_nova <> '' ORDER BY 1`),
+    ]);
+    const data = (r) => dataLocal(base === 'fim' ? r.vigencia_ate : r.vigencia_de);
+    const validos = rows.filter((r) => r.situacao !== 'CANCELADO');
+    const anos = [...new Set(validos.map((r) => Number(data(r).slice(0, 4))))].sort((a, b) => b - a);
+    const ano = /^\d{4}$/.test(req.query.ano || '') ? Number(req.query.ano) : (anos.includes(Number(hoje().slice(0, 4))) ? Number(hoje().slice(0, 4)) : anos[0] || Number(hoje().slice(0, 4)));
+    const doAno = validos.filter((r) => Number(data(r).slice(0, 4)) === ano);
+    const meses = Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, ...vazioCls() }));
+    for (const r of doAno) somar(meses[Number(data(r).slice(5, 7)) - 1], r);
+    const porAno = new Map();
+    for (const r of validos) { const a = Number(data(r).slice(0, 4)); if (!porAno.has(a)) porAno.set(a, { ano: a, ...vazioCls() }); somar(porAno.get(a), r); }
+    const ranking = (chave, rotulo) => {
+      const m = new Map();
+      for (const r of doAno) { const k = r[chave] || '—'; if (!m.has(k)) m.set(k, { chave: k, nome: rotulo(r), ...vazioCls() }); somar(m.get(k), r); }
+      return [...m.values()].sort((a, b) => b.total - a.total || a.nome.localeCompare(b.nome)).slice(0, 10).map((x) => ({ ...x, taxa: taxa(x) }));
+    };
+    const resumo = doAno.reduce((t, r) => somar(t, r), vazioCls());
+    const h = hoje();
+    res.json({
+      ano, base, anos,
+      opcoes: { gestores: gestores.rows, funcoes: funcoes.rows.map((r) => r.v), setores: setores.rows.map((r) => r.v) },
+      resumo: {
+        ...resumo, taxa: taxa(resumo), em_treinamento: doAno.filter((r) => dataLocal(r.vigencia_ate) > h).length,
+        cancelados: rows.filter((r) => r.situacao === 'CANCELADO' && Number(data(r).slice(0, 4)) === ano).length,
+      },
+      meses: meses.map((m) => ({ ...m, taxa: taxa(m) })),
+      anos_serie: [...porAno.values()].sort((a, b) => a.ano - b.ano).map((x) => ({ ...x, taxa: taxa(x) })),
+      funcoes: ranking('funcao_treinamento', (r) => r.funcao_treinamento || '—'),
+      setores: ranking('setor_nova', (r) => r.setor_nova || '—'),
+      gestores: ranking('gestor_matricula', (r) => (r.gestor_matricula ? `${r.gestor_nome || r.gestor_matricula}` : 'Sem gestor')),
+    });
+  }));
+
   // Base da mala direta (mesmas colunas da aba Digitar)
   router.get('/treino/registros.csv', wrap(async (req, res) => {
     const { where, params } = filtros(req.query);

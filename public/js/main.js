@@ -95,6 +95,7 @@ const MENU = [
       { href: '#/treino/planilha', titulo: 'Planilha (Digitar)', prefixo: true, perfis: ['administrador', 'financeiro'] },
       { href: '#/treino/registros', titulo: 'Treinamentos práticos', prefixo: true, perfis: ['administrador', 'financeiro'] },
       { href: '#/treino/novo', titulo: 'Novo treinamento (C.I.)', prefixo: true, perfis: ['administrador', 'financeiro'] },
+      { href: '#/treino/relatorio', titulo: 'Relatório', prefixo: true, perfis: ['administrador', 'financeiro'] },
       { href: '#/treino/parametros', titulo: 'Parâmetros', prefixo: true, perfis: ['administrador', 'financeiro'] },
       { rota: 'treinamento', href: '#/treinamento', titulo: 'Guia do sistema' },
     ],

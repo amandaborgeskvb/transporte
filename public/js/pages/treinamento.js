@@ -80,6 +80,7 @@ const TOPICOS = [
         'Se preferir um formulário com a prévia ao lado, use **Novo treinamento (C.I.)**: digite a matrícula: nome, função, setor, admissão, situação, CNH, contato e cidade são puxados. Preencha a **nova função** e o **setor da nova função**, o início da vigência (o fim vem com +3 meses) e escolha o **gestor responsável** (nome e função vêm da matrícula).',
         'Acompanhe em **Treinamentos práticos**: filtre por Situação (treinando, treinado, não classificado), Situação da função (classificado, não classificado, renovado) e Situação 2 (treinando ou treinado). Os que vencem no mês e os vencidos ainda "treinando" aparecem nos indicadores.',
         'Para imprimir, marque as linhas na Planilha, abra o treinamento ou use **Imprimir C.I.** (todas do filtro). O Nº DOC (n/ano) é dado ao lançar e é o mesmo impresso em C.I. DEST.'),
+      dica('Em **Treinamento → Relatório**, veja os treinamentos por mês e por ano, classificados ou não, com gráficos, a taxa de classificação e a tabela mês a mês; filtre por gestor, função ou setor e imprima ou exporte em CSV.'),
       dica('As **assinaturas** da C.I. ficam em Parâmetros: a primeira é sempre a do gestor escolhido no treinamento; as demais (coordenador de treinamento, gerentes, RH) são cadastradas lá, com ordem e opção de tirar da C.I. *Exportar (mala direta)* gera o CSV com as colunas da aba Digitar.'),
     ],
   },

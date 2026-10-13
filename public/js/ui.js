@@ -345,7 +345,7 @@ export function barraFiltros(campos, valores, aoFiltrar) {
       continue;
     }
     const el = c.tipo === 'select'
-      ? h('select', { name: c.nome }, h('option', { value: '' }, c.vazio || 'Todos'), c.opcoes.map((o) => h('option', { value: o.valor, selected: String(o.valor) === String(valores[c.nome] ?? '') }, o.rotulo)))
+      ? h('select', { name: c.nome }, c.semVazio ? null : h('option', { value: '' }, c.vazio || 'Todos'), c.opcoes.map((o) => h('option', { value: o.valor, selected: String(o.valor) === String(valores[c.nome] ?? '') }, o.rotulo)))
       : h('input', { type: c.tipo || 'text', name: c.nome, value: valores[c.nome] ?? '', placeholder: c.placeholder, list: c.lista ? `filtro-${c.nome}` : null, autocomplete: c.lista ? 'off' : null });
     leitores[c.nome] = () => el.value;
     // c.lista: sugestões enquanto digita (o texto livre também filtra)

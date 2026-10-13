@@ -5,6 +5,7 @@ import {
   h, dataBR, hojeISO, tabela, botao, cabecalhoPagina, barraComandos, barraFiltros, secao, kpi, vazio, toast, confirmar, dialogo, icone, badgeTom,
 } from '../ui.js';
 import { ajustarEscala } from '../re.js';
+import { colunasEmpilhadas, barrasEmpilhadas, legendaSeries } from '../charts.js';
 
 const LOGO = '/img/re-logo-unidade-capinopolis.jpeg';
 const fmt = (n) => Number(n || 0).toLocaleString('pt-BR');
@@ -356,6 +357,86 @@ async function planilha({ query, ir, recarregarPagina }) {
     h('datalist', { id: 'tr-funcoes' }, p.sugestoes.funcoes.map((f) => h('option', { value: f }))),
     h('datalist', { id: 'tr-setores' }, p.sugestoes.setores.map((f) => h('option', { value: f }))),
     h('datalist', { id: 'tr-gestores' }, p.gestores.filter((g) => g.ativo).map((g) => h('option', { value: g.matricula }, `${g.matricula} - ${g.nome}`))),
+  ];
+}
+
+// ======================================================================
+// Relatório: por mês e por ano, classificados ou não (gráficos + tabela)
+// ======================================================================
+const SERIES_CLS = [
+  { k: 'classificado', nome: 'Classificado', cor: 'var(--cls-1)' },
+  { k: 'renovado', nome: 'Renovado', cor: 'var(--cls-2)' },
+  { k: 'nao_classificado', nome: 'Não classificado', cor: 'var(--cls-3)' },
+  { k: 'sem', nome: 'Sem classificação', cor: 'var(--cls-sem)' },
+];
+const MESES_LONGOS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+const pct = (x) => (x == null ? '—' : `${x.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`);
+
+async function relatorio({ query, ir }) {
+  const d = await get(`/treino/relatorio?${new URLSearchParams(query)}`);
+  const q = { ...query, ano: String(d.ano), base: d.base };
+  const r = d.resumo;
+  const baseTxt = d.base === 'fim' ? 'mês do fim da vigência (vencimento)' : 'mês do início da vigência';
+  const valores = (x) => Object.fromEntries(SERIES_CLS.map((s) => [s.k, x[s.k]]));
+  const extra = (x) => (x.taxa == null ? '' : `${pct(x.taxa)} classif.`);
+
+  // Tabela mês a mês (a mesma informação dos gráficos, sem depender de cor)
+  const sw = (s) => { const i = h('i', { class: 'sw' }); i.style.background = s.cor; return i; };
+  const tabelaMeses = h('div', { class: 'scroll' }, h('table', { class: 'rel-tabela' },
+    h('thead', {}, h('tr', {}, h('th', {}, 'Mês'), SERIES_CLS.map((s) => h('th', { class: 'num' }, sw(s), s.nome)), h('th', { class: 'num' }, 'Total'), h('th', { class: 'num' }, 'Taxa de classificação'))),
+    h('tbody', {}, d.meses.map((m) => h('tr', {}, h('td', {}, MESES_LONGOS[m.mes - 1]), SERIES_CLS.map((s) => h('td', { class: 'num' }, m[s.k] ? fmt(m[s.k]) : '—')),
+      h('td', { class: 'num' }, h('strong', {}, fmt(m.total))), h('td', { class: 'num' }, pct(m.taxa))))),
+    h('tfoot', {}, h('tr', {}, h('td', {}, `Total ${d.ano}`), SERIES_CLS.map((s) => h('td', { class: 'num' }, fmt(r[s.k]))), h('td', { class: 'num' }, fmt(r.total)), h('td', { class: 'num' }, pct(r.taxa))))));
+
+  const exportar = () => {
+    const linhas = [['Mês', ...SERIES_CLS.map((s) => s.nome), 'Total', 'Taxa de classificação (%)'],
+      ...d.meses.map((m) => [MESES_LONGOS[m.mes - 1], ...SERIES_CLS.map((s) => m[s.k]), m.total, m.taxa ?? '']),
+      [`Total ${d.ano}`, ...SERIES_CLS.map((s) => r[s.k]), r.total, r.taxa ?? ''], [],
+      ['Ano', ...SERIES_CLS.map((s) => s.nome), 'Total', 'Taxa de classificação (%)'],
+      ...d.anos_serie.map((a) => [a.ano, ...SERIES_CLS.map((s) => a[s.k]), a.total, a.taxa ?? ''])];
+    const csv = `﻿${linhas.map((l) => l.map((c) => `"${String(c).replace('.', ',').replace(/"/g, '""')}"`).join(';')).join('\r\n')}`;
+    const a = h('a', { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })), download: `relatorio-treinamentos-${d.ano}.csv` });
+    document.body.append(a); a.click(); a.remove();
+  };
+
+  const card = (titulo, sub, ...conteudo) => h('section', { class: 'card rel-card' }, h('div', { class: 'card-topo' }, h('div', {}, h('h2', {}, titulo), sub ? h('p', { class: 'muted pequeno' }, sub) : null)), ...conteudo);
+  const anos = d.anos.length ? d.anos : [d.ano];
+  return [
+    cabecalhoPagina({
+      migalhas: [...BASE, ['Relatório']], titulo: `Relatório de treinamentos — ${d.ano}`,
+      sub: `Classificados ou não, por mês (${baseTxt}) e por ano. Cancelados não entram${r.cancelados ? ` (${fmt(r.cancelados)} no ano)` : ''}.`,
+      acoes: [
+        botao('Exportar (CSV)', exportar, { tom: 'sec', icone: 'baixar' }),
+        botao('Imprimir', () => window.print(), { icone: 'impressora' }),
+      ],
+    }),
+    h('div', { class: 'nao-imprime' }, barraFiltros([
+      { nome: 'ano', rotulo: 'Ano', tipo: 'select', opcoes: anos.map((a) => ({ valor: a, rotulo: a })), semVazio: true },
+      { nome: 'base', rotulo: 'Mês considerado', tipo: 'select', opcoes: [{ valor: 'inicio', rotulo: 'Início da vigência' }, { valor: 'fim', rotulo: 'Fim da vigência (vencimento)' }], semVazio: true },
+      { nome: 'gestor', rotulo: 'Gestor', tipo: 'select', opcoes: d.opcoes.gestores.map((g) => ({ valor: g.matricula, rotulo: `${g.matricula} - ${g.nome}` })) },
+      { nome: 'funcao', rotulo: 'Função de treinamento', tipo: 'select', opcoes: d.opcoes.funcoes.map((f) => ({ valor: f, rotulo: f })) },
+      { nome: 'setor', rotulo: 'Setor da nova função', tipo: 'select', opcoes: d.opcoes.setores.map((f) => ({ valor: f, rotulo: f })) },
+    ], q, (v) => ir('#/treino/relatorio', v))),
+    h('div', { class: 'kpis compactos' },
+      kpi(`Treinamentos em ${d.ano}`, fmt(r.total), { icone: 'documento', sub: `${fmt(r.em_treinamento)} ainda em treinamento` }),
+      kpi('Classificados', fmt(r.classificado), { icone: 'ok', tom: 'ok', sub: r.taxa == null ? 'nenhum avaliado' : `${pct(r.taxa)} dos avaliados` }),
+      kpi('Não classificados', fmt(r.nao_classificado), { icone: 'proibido', tom: r.nao_classificado ? 'alerta' : 'neutro' }),
+      kpi('Renovados', fmt(r.renovado), { icone: 'calendario', tom: 'neutro' }),
+      kpi('Sem classificação', fmt(r.sem), { icone: 'alerta', tom: 'neutro', sub: 'aguardando a situação da função' })),
+    card(`Por mês — ${d.ano}`, `Quantidade de treinamentos pelo ${baseTxt}, por situação da função. Passe o mouse em um mês para ver os números.`,
+      legendaSeries(SERIES_CLS),
+      colunasEmpilhadas(d.meses.map((m) => ({ rotulo: MESES[m.mes - 1], titulo: `${MESES_LONGOS[m.mes - 1]} de ${d.ano}`, valores: valores(m), total: m.total })), SERIES_CLS, { aria: `Treinamentos por mês em ${d.ano}, por situação da função` })),
+    h('div', { class: 'rel-grade' },
+      card('Por ano', 'Todos os anos, com a taxa de classificação (classificados ÷ avaliados).',
+        legendaSeries(SERIES_CLS),
+        barrasEmpilhadas(d.anos_serie.map((a) => ({ nome: String(a.ano), valores: valores(a), total: a.total, extra: extra(a) })).reverse(), SERIES_CLS, { vazioMsg: 'Sem treinamentos.' })),
+      card(`Por função de treinamento — ${d.ano}`, 'As 10 funções com mais treinamentos no ano.',
+        barrasEmpilhadas(d.funcoes.map((x) => ({ nome: x.nome, valores: valores(x), total: x.total, extra: extra(x) })), SERIES_CLS, { vazioMsg: 'Sem treinamentos no ano.' })),
+      card(`Por setor da nova função — ${d.ano}`, 'Os 10 setores com mais treinamentos no ano.',
+        barrasEmpilhadas(d.setores.map((x) => ({ nome: x.nome, valores: valores(x), total: x.total, extra: extra(x) })), SERIES_CLS, { vazioMsg: 'Sem treinamentos no ano.' })),
+      card(`Por gestor — ${d.ano}`, 'Os 10 gestores com mais treinamentos no ano.',
+        barrasEmpilhadas(d.gestores.map((x) => ({ nome: x.nome, valores: valores(x), total: x.total, extra: extra(x) })), SERIES_CLS, { vazioMsg: 'Sem treinamentos no ano.' }))),
+    card(`Tabela por mês — ${d.ano}`, 'Os mesmos números do gráfico, com a taxa de classificação de cada mês.', tabelaMeses),
   ];
 }
 
@@ -738,6 +819,7 @@ async function parametros({ recarregarPagina }) {
 export default async function treino(ctx) {
   const [sub = 'planilha', ...resto] = ctx.params;
   if (sub === 'planilha') return planilha(ctx);
+  if (sub === 'relatorio') return relatorio(ctx);
   if (sub === 'novo') return formulario({ ...ctx, params: [] });
   if (sub === 'registros' && resto[1] === 'editar') return formulario({ ...ctx, params: ['registros', resto[0]] });
   if (sub === 'registros' && resto.length) return detalhe({ ...ctx, params: resto });

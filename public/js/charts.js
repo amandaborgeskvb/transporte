@@ -84,3 +84,131 @@ export function rosca(itens, { centro = 'Total' } = {}) {
     return h('li', {}, q, i.nome, h('b', {}, i.valor));
   })));
 }
+
+// ======================================================================
+// Séries empilhadas (relatórios): colunas por categoria e barras horizontais
+// series: [{ k, nome, cor }] (cor = variável CSS); a ordem das séries é a ordem de empilhamento (de baixo para cima)
+// ======================================================================
+const fmtN = (n) => Number(n || 0).toLocaleString('pt-BR');
+
+// Tooltip único da página: valor em destaque, nome da série ao lado, com um traço da cor da série
+let tip = null;
+function mostrarDica(alvo, titulo, linhas, evento) {
+  if (!tip) {
+    tip = h('div', { class: 'ch-tip', role: 'tooltip' });
+    document.body.append(tip);
+    window.addEventListener('hashchange', () => { tip.hidden = true; }); // ao trocar de tela
+  }
+  tip.replaceChildren(h('div', { class: 'ch-tip-tit' }, titulo), ...linhas.map(([valor, nome, cor]) => {
+    const traco = h('i');
+    if (cor) traco.style.background = cor;
+    return h('div', { class: 'ch-tip-lin' }, cor ? traco : null, h('strong', {}, valor), h('span', {}, nome));
+  }));
+  tip.hidden = false;
+  const r = alvo.getBoundingClientRect();
+  const x = evento?.clientX ?? r.left + r.width / 2;
+  const y = evento?.clientY ?? r.top;
+  const L = tip.offsetWidth;
+  const A = tip.offsetHeight;
+  tip.style.left = `${Math.min(Math.max(8, x + 14), window.innerWidth - L - 8)}px`;
+  tip.style.top = `${y - A - 12 < 8 ? y + 18 : y - A - 12}px`;
+}
+const esconderDica = () => { if (tip) tip.hidden = true; };
+function ligarDica(el, conteudo) {
+  const ver = (e) => { const [t, l] = conteudo(); mostrarDica(el, t, l, e); };
+  el.addEventListener('pointermove', ver);
+  el.addEventListener('pointerleave', esconderDica);
+  el.addEventListener('focus', () => ver());
+  el.addEventListener('blur', esconderDica);
+}
+
+// Escala "limpa" para o eixo: máximo arredondado e passo de 1, 2, 2,5 ou 5 × 10^n
+function escala(max, divisoes = 4) {
+  if (max <= 0) return { topo: divisoes, passo: 1 };
+  const bruto = max / divisoes;
+  const pot = 10 ** Math.floor(Math.log10(bruto));
+  const passo = [1, 2, 2.5, 5, 10].map((m) => m * pot).find((p) => p >= bruto && (p >= 1 || Number.isInteger(p))) || pot * 10;
+  const p = Math.max(1, passo);
+  return { topo: Math.ceil(max / p) * p, passo: p };
+}
+
+export function legendaSeries(series) {
+  return h('div', { class: 'legenda' }, series.map((s) => {
+    const q = h('i');
+    q.style.background = s.cor;
+    return h('span', {}, q, ' ', s.nome);
+  }));
+}
+
+const linhasDica = (series, valores, total) => [
+  ...series.map((s) => [fmtN(valores[s.k]), s.nome, s.cor]),
+  [fmtN(total), 'Total', null],
+];
+
+// Colunas empilhadas. categorias: [{ rotulo, titulo, valores: { k: n }, total }]
+export function colunasEmpilhadas(categorias, series, { aria = 'Gráfico de colunas empilhadas' } = {}) {
+  // largura de desenho próxima à da tela, para as colunas ficarem finas (≤ 24 px) e o texto no tamanho real
+  const L = Math.max(720, categorias.length * 90);
+  const A = 290;
+  const m = { t: 22, r: 8, b: 28, l: 36 };
+  const util = A - m.t - m.b;
+  const { topo, passo } = escala(Math.max(...categorias.map((c) => c.total), 0));
+  const banda = (L - m.l - m.r) / categorias.length;
+  const larg = Math.min(24, banda * 0.55);
+  const y = (v) => m.t + util - (v / topo) * util;
+  const raiz = svg('svg', { viewBox: `0 0 ${L} ${A}`, class: 'grafico ch-col', role: 'img', 'aria-label': aria });
+  for (let v = 0; v <= topo + 1e-9; v += passo) {
+    raiz.append(svg('line', { x1: m.l, x2: L - m.r, y1: y(v), y2: y(v), class: 'grade' }),
+      Object.assign(svg('text', { x: m.l - 6, y: y(v) + 4, class: 'eixo', 'text-anchor': 'end' }), { textContent: compacto(v) }));
+  }
+  categorias.forEach((c, i) => {
+    const cx = m.l + i * banda + banda / 2;
+    const g = svg('g', { class: 'ch-grupo', tabindex: 0, 'aria-label': `${c.titulo || c.rotulo}: ${fmtN(c.total)}` });
+    g.append(svg('rect', { x: cx - banda / 2, y: m.t - 18, width: banda, height: util + 18, class: 'ch-alvo' }));
+    let base = 0;
+    const visiveis = series.filter((s) => c.valores[s.k] > 0);
+    visiveis.forEach((s, j) => {
+      const v = c.valores[s.k];
+      const y0 = y(base);
+      const y1 = y(base + v);
+      const topoSeg = j === visiveis.length - 1;
+      const alt = Math.max(0.5, y0 - y1 - (j ? 2 : 0)); // 2px de respiro entre segmentos
+      const yTopo = y0 - (j ? 2 : 0) - alt;
+      const r = topoSeg ? Math.min(4, alt / 2, larg / 2) : 0;
+      const x0 = cx - larg / 2;
+      const d = `M${x0},${yTopo + alt} L${x0},${yTopo + r} Q${x0},${yTopo} ${x0 + r},${yTopo} L${x0 + larg - r},${yTopo} Q${x0 + larg},${yTopo} ${x0 + larg},${yTopo + r} L${x0 + larg},${yTopo + alt} Z`;
+      const seg = svg('path', { d, class: 'ch-seg' });
+      seg.style.fill = s.cor;
+      g.append(seg);
+      base += v;
+    });
+    if (c.total) g.append(Object.assign(svg('text', { x: cx, y: y(c.total) - 6, class: 'ch-total', 'text-anchor': 'middle' }), { textContent: fmtN(c.total) }));
+    g.append(Object.assign(svg('text', { x: cx, y: A - 9, class: 'eixo', 'text-anchor': 'middle' }), { textContent: c.rotulo }));
+    ligarDica(g, () => [c.titulo || c.rotulo, linhasDica(series, c.valores, c.total)]);
+    raiz.append(g);
+  });
+  return h('div', { class: 'scroll' }, raiz);
+}
+
+// Barras horizontais empilhadas. itens: [{ nome, valores: { k: n }, total, extra? }]
+export function barrasEmpilhadas(itens, series, { vazioMsg = 'Sem dados.' } = {}) {
+  if (!itens.length) return h('p', { class: 'muted vazio' }, vazioMsg);
+  const max = Math.max(...itens.map((i) => i.total), 1);
+  return h('div', { class: 'ch-barras' }, itens.map((i) => {
+    const trilho = h('div', { class: 'ch-trilho' });
+    const cheio = h('div', { class: 'ch-cheio' });
+    cheio.style.width = `${(i.total / max) * 100}%`;
+    for (const s of series) {
+      if (!i.valores[s.k]) continue;
+      const seg = h('i');
+      seg.style.flexGrow = String(i.valores[s.k]);
+      seg.style.background = s.cor;
+      cheio.append(seg);
+    }
+    trilho.append(cheio);
+    const linha = h('div', { class: 'ch-linha', tabindex: 0, 'aria-label': `${i.nome}: ${fmtN(i.total)}` },
+      h('span', { class: 'nome', title: i.nome }, i.nome), trilho, h('span', { class: 'valor' }, fmtN(i.total), i.extra ? h('small', {}, i.extra) : null));
+    ligarDica(linha, () => [i.nome, linhasDica(series, i.valores, i.total)]);
+    return linha;
+  }));
+}

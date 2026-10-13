@@ -119,6 +119,22 @@ test('importação da planilha: prévia, aplicação sem repetir e números de C
   assert.deepEqual(p.gestores.map((g) => [g.matricula, g.nome, g.cargo]), [['9001', 'Gestor Teste', 'COORDENADOR AGRÍCOLA']]);
 });
 
+test('relatório: por mês e ano, classificados ou não', async () => {
+  assert.equal((await ana.get('/api/treino/relatorio')).status, 403);
+  const r = (await davi.get('/api/treino/relatorio?ano=2025')).corpo;
+  assert.deepEqual(r.anos, [2025]);
+  assert.deepEqual([r.resumo.total, r.resumo.classificado, r.resumo.nao_classificado, r.resumo.renovado, r.resumo.sem, r.resumo.taxa], [3, 1, 0, 0, 2, 100]);
+  assert.equal(r.meses.length, 12);
+  assert.deepEqual([r.meses[5].classificado, r.meses[8].sem, r.meses[9].sem, r.meses[0].total], [1, 1, 1, 0]); // jun, set, out
+  assert.deepEqual(r.anos_serie.map((a) => [a.ano, a.total]), [[2025, 3]]);
+  assert.equal(r.funcoes.length, 3);
+  // mês do fim da vigência: o de 7001 vence em setembro
+  const fim = (await davi.get('/api/treino/relatorio?ano=2025&base=fim')).corpo;
+  assert.deepEqual([fim.meses[5].total, fim.meses[8].classificado], [0, 1]);
+  const g = (await davi.get('/api/treino/relatorio?ano=2025&gestor=9001')).corpo;
+  assert.deepEqual([g.resumo.total, g.gestores[0].nome], [1, 'Gestor Teste']);
+});
+
 test('lançamento: a matrícula puxa os dados, vigência automática, gestor, Nº DOC e filtros', async () => {
   // funcionário do cadastro (matrícula 001) completado pela base da planilha (CNH, contato, cidade)
   const f = (await davi.get('/api/treino/funcionario/1')).corpo;
