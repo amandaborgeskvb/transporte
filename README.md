@@ -136,7 +136,7 @@ direta do Word:
 
 O formulário impresso mantém os textos do modelo da empresa: cabeçalho do SGI (*Sistema de Gestão Integrada - SGI*, *Registro*,
 *FICHA DE INFORME DE CONTRATAÇÃO*, *Código: RE.0150.03*, *Versão: 03*, *Data: 03/02/2023*, *Periodicidade: Sempre que houver
-contratação*, *Página: 1 de 1*), as linhas da ficha e as assinaturas (Gerente, Coordenador e Gerente de Transportes). O cabeçalho é
+contratação*, *Página: 1 de 1*), as linhas da ficha e as assinaturas (Coordenador, Gerente de Transportes e Superintendente Agrícola, nesta ordem). O cabeçalho é
 editável em Cadastros → Formulários (RE). A planilha e o Word originais não ficam no repositório (contêm dados pessoais).
 
 ## Gratificação rescisória

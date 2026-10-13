@@ -45,7 +45,7 @@ export function folhaFicha(f, doc) {
       h('p', { class: 'rf-dupla' }, h('span', {}, 'E-mail: ', v(f.email)), h('span', {}, 'Cidade: ', v(f.cidade))),
       h('p', {}, 'Obervação:', v(f.observacao)),
       h('p', {}, 'Gerência/gestor: ', v(f.gestor)),
-      h('div', { class: 'rf-assinaturas' }, assinatura('Assinatura do Gerente'), assinatura('Assinatura Coordenador'), assinatura('Assinatura Gerente de Transportes'))));
+      h('div', { class: 'rf-assinaturas' }, assinatura('Assinatura Coordenador'), assinatura('Assinatura Gerente de Transportes'), assinatura('Assinatura Superintendente Agrícola'))));
 }
 const mesa = (fichas, doc) => ajustarEscala(h('div', { class: 're-mesa' }, fichas.map((f) => folhaFicha(f, doc))));
 
