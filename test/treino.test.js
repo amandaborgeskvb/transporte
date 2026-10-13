@@ -152,6 +152,19 @@ test('lançamento: a matrícula puxa os dados, vigência automática, gestor, N�
   const outro = await davi.post('/api/treino/registros', { matricula: '1', funcao_treinamento: 'MOTORISTA', setor_nova: 'TRANSPORTE', vigencia_de: '2026-10-01', data_cracha: '2026-10-02' });
   assert.equal((await davi.get(`/api/treino/registros/${outro.corpo.id}`)).corpo.numero_doc, '2/2026');
 
+  // virada do ano: 2027 recomeça do 1 (se o crachá sai no ano seguinte, a C.I. passa a ser numerada no ano do crachá)
+  const doc = async (id) => (await davi.get(`/api/treino/registros/${id}`)).corpo.numero_doc;
+  const dez = await davi.post('/api/treino/registros', { matricula: '1', funcao_treinamento: 'MOTORISTA', setor_nova: 'TRANSPORTE', vigencia_de: '2026-12-28' });
+  assert.equal(await doc(dez.corpo.id), '3/2026');
+  const dezCorpo = await davi.get(`/api/treino/registros/${dez.corpo.id}`);
+  await davi.put(`/api/treino/registros/${dez.corpo.id}`, { ...dezCorpo.corpo, data_cracha: '2027-01-04' });
+  assert.equal(await doc(dez.corpo.id), '1/2027');
+  const jan = await davi.post('/api/treino/registros', { matricula: '1', funcao_treinamento: 'MOTORISTA', setor_nova: 'TRANSPORTE', vigencia_de: '2027-01-10' });
+  assert.equal(await doc(jan.corpo.id), '2/2027');
+  const outro2026 = await davi.post('/api/treino/registros', { matricula: '1', funcao_treinamento: 'MOTORISTA', setor_nova: 'TRANSPORTE', vigencia_de: '2026-11-03' });
+  assert.equal(await doc(outro2026.corpo.id), '3/2026'); // o 3/2026 ficou livre quando aquela C.I. passou para 2027 (como a contagem da planilha)
+  for (const x of [dez, jan, outro2026]) await davi.del(`/api/treino/registros/${x.corpo.id}`);
+
   // filtros
   const lista = async (q) => (await davi.get(`/api/treino/registros?${q}`)).corpo.itens.map((x) => x.id).sort((a, b) => a - b);
   assert.deepEqual(await lista('situacao=TREINADO&ano=2026'), [d.id]);

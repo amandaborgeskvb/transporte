@@ -290,11 +290,13 @@ function criarTreino({ pool }) {
   }
 
   // Nº DOC da C.I. = Seq./ano, como na planilha: cada treinamento lançado recebe o próximo número do ano (o da data do
-  // crachá, se houver, senão o do início da vigência). O número não muda depois: é o mesmo impresso em "C.I. DEST".
+  // crachá, se houver, senão o do início da vigência); cada ano começa do 1. É o mesmo impresso em "C.I. DEST".
   async function numerar(db, id) {
-    const r = (await db.query('SELECT data_cracha, vigencia_de, doc_numero FROM trein_registros WHERE id = $1', [id])).rows[0];
-    if (!r || r.doc_numero) return;
+    const r = (await db.query('SELECT data_cracha, vigencia_de, doc_numero, doc_ano FROM trein_registros WHERE id = $1', [id])).rows[0];
+    if (!r) return;
     const ano = Number((dataLocal(r.data_cracha) || dataLocal(r.vigencia_de)).slice(0, 4));
+    // cada ano recomeça do 1 (como a Seq. da planilha); só troca de número se o crachá cair em outro ano
+    if (r.doc_numero && (r.doc_ano === ano || !r.data_cracha)) return;
     await db.query('LOCK TABLE trein_registros IN SHARE ROW EXCLUSIVE MODE');
     const prox = (await db.query('SELECT COALESCE(max(doc_numero), 0) + 1 AS n FROM trein_registros WHERE doc_ano = $1', [ano])).rows[0].n;
     await db.query('UPDATE trein_registros SET doc_numero = $1, doc_ano = $2 WHERE id = $3', [prox, ano, id]);
