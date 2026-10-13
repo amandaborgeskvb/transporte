@@ -382,7 +382,7 @@ const EVENTOS = {
 };
 const ENTIDADES_ROTULO = {
   viagem: 'viagem', adiantamento: 'adiantamento', despesa: 'despesa', reembolso: 'reembolso', usuarios: 'usuário', funcionarios: 'funcionário',
-  motivos_viagem: 'motivo de viagem', autorizacao_desconto: 'autorização de desconto', importacao_funcionarios: 'importação de funcionários', documentos_re: 'formulário (RE)', grat_rescisao: 'apuração da gratificação rescisória', grat_valor: 'valor mensal da gratificação', grat_valores: 'valores mensais da gratificação', grat_ocorrencia: 'ocorrência da gratificação', grat_criterio: 'critério de rescisão', grat_penalidade: 'desconto por função', grat_config: 'regras da gratificação rescisória', grat_signatario: 'assinatura do demonstrativo', categorias_despesa: 'categoria de despesa', formas_pagamento: 'forma de pagamento', status_viagem: 'status de viagem',
+  motivos_viagem: 'motivo de viagem', autorizacao_desconto: 'autorização de desconto', importacao_funcionarios: 'importação de funcionários', documentos_re: 'formulário (RE)', grat_rescisao: 'apuração da gratificação rescisória', grat_valor: 'valor mensal da gratificação', grat_valores: 'valores mensais da gratificação', grat_ocorrencia: 'ocorrência da gratificação', grat_criterio: 'critério de rescisão', grat_penalidade: 'ponto de desconto por função', grat_config: 'regras da gratificação rescisória', grat_signatario: 'assinatura do demonstrativo', grat_funcao: 'função de motorista ou operador', categorias_despesa: 'categoria de despesa', formas_pagamento: 'forma de pagamento', status_viagem: 'status de viagem',
 };
 export const entidadeRotulo = (e) => ENTIDADES_ROTULO[e] || e.replaceAll('_', ' ');
 export function descreverEvento(e) {

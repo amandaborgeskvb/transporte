@@ -480,6 +480,7 @@ td .acoes { display: flex; gap: 6px; flex-wrap: nowrap; justify-content: flex-en
 tfoot th { background: var(--card-2); }
 .grat-previa { margin: 6px 0 10px; padding: 10px 12px; border: 1px solid var(--linha); border-radius: 10px; background: var(--card-2); }
 .grat-previa .dados { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.avisos-previa { margin: 8px 0 0; padding-left: 18px; font-size: .85em; color: var(--warn); display: grid; gap: 3px; }
 
 /* Demonstrativo da gratificação rescisória (modelo da aba Diversos): folha branca, A4 paisagem */
 .demo-mesa { background: #d6dbe3; border-radius: 10px; padding: 16px; overflow-x: auto; }
@@ -493,7 +494,7 @@ html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
 .demo-logo { height: 15mm; width: auto; }
 .demo-tab { width: 100%; border-collapse: collapse; font-size: 6.6pt; }
 .demo-tab th { background: #1f4e8c; color: #fff; font-weight: 700; padding: 3px 2px; border: 1px solid #fff; text-align: center; vertical-align: middle; font-size: 6pt; text-transform: none; letter-spacing: 0; white-space: normal; line-height: 1.15; }
-.demo-tab th:nth-child(6), .demo-tab th:nth-child(12) { background: #0f6b2f; }
+.demo-tab th:nth-child(6), .demo-tab th:nth-child(9) { background: #0f6b2f; }
 .demo-tab td { border: 1px solid #b7c3d4; padding: 2px 3px; vertical-align: middle; color: #111; font-size: 6.6pt; line-height: 1.2; }
 .demo-tab tbody tr:hover { background: none; }
 .demo-tab td.n { text-align: right; white-space: nowrap; }
@@ -502,6 +503,12 @@ html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
 .demo-tab tr.subtotal td { background: #9fd6f0; font-weight: 700; }
 .demo-tab tr.total td { background: #1f4e8c; color: #fff; font-weight: 700; }
 .demo-vazio { text-align: center; color: #555; padding: 20mm 0; }
+.demo-nota { margin: 3mm 0 0; font-size: 7pt; font-weight: 700; color: #1f3d7a; }
+/* Cartão Gold (layout da aba LISTA BPP) */
+.lista-bpp { min-height: 0; }
+.lista-bpp .demo-tab th { background: #1f4e8c; font-size: 8pt; }
+.lista-bpp .demo-tab th:nth-child(4) { background: #0f6b2f; }
+.lista-bpp .demo-tab td { font-size: 8pt; padding: 3px 4px; }
 .demo-assin { margin-top: auto; padding-top: 16mm; display: grid; grid-template-columns: repeat(auto-fit, minmax(55mm, 1fr)); gap: 10mm; text-align: center; font-size: 7.5pt; }
 .demo-assin .linha { display: block; border-top: 1px solid #111; margin: 0 4mm 2px; }
 .demo-assin .nome, .demo-assin .cargo { display: block; }

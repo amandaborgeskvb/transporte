@@ -129,28 +129,36 @@ Menu **Gratificação rescisória** (administrador e financeiro), com os subgrup
 | Subgrupo | O que faz |
 |---|---|
 | **Apuração** | Uma apuração por rescisão (funcionário, tipo de rescisão, data e escala de folga). Ao digitar a data da rescisão, o formulário já mostra o **período de gratificação** (do dia 16 do mês anterior — ou do próprio mês, se a rescisão for a partir do dia 16 — até a data da rescisão), os dias trabalhados, as ocorrências do período e a previsão do valor. Mostra a composição (média, proporcional, desconto, a receber), as regras aplicadas e as ocorrências do período. Pode ser marcada como **paga** (trava a apuração; dá para reabrir). |
-| **Valores mensais** | BPP, Zelo/Equipamento e Produtividade pagos por matrícula e mês (aba GRAT). **Carga mensal por arquivo** (Excel ou CSV com *Matrícula, BPP, Zelo_Equip, Produtividade, Mês*): pode ser a própria planilha — a aba GRAT é aberta sozinha — ou o arquivo do mês, escolhendo o **mês de referência** quando não houver a coluna Mês. Prévia antes de gravar; reimportar não duplica (atualiza o mês). Também dá para digitar um valor. |
-| **Médias (3 meses)** | Equivalente à aba MÉDIA_GRAT: média de BPP, Zelo e Produtividade por matrícula nos 3 meses que terminam no mês de referência (padrão: último mês carregado); célula vazia não entra. Exportação em CSV. |
+| **Valores mensais** | BPP e Produtividade pagos por matrícula e mês (aba GRAT). **Carga mensal por arquivo** (Excel ou CSV com *Matrícula, BPP, Produtividade, Mês*; a coluna Zelo_Equip, se existir, é ignorada): pode ser a própria planilha — a aba GRAT é aberta sozinha — ou o arquivo do mês, escolhendo o **mês de referência** quando não houver a coluna Mês. Prévia antes de gravar; reimportar não duplica (atualiza o mês). Também dá para digitar um valor. |
+| **Médias (3 meses)** | Equivalente à aba MÉDIA_GRAT: média de BPP e Produtividade por matrícula nos 3 meses que terminam no mês de referência (padrão: último mês carregado); célula vazia não entra. Exportação em CSV. |
 | **Ocorrências** | Notificações (NC, ADV, SS, ST, FJ, FF, L, DISP_MEC…), faltas e atestados por funcionário e data. **Carga por arquivo** (exportação do controle de notificações, Excel ou CSV): as colunas são reconhecidas pelo nome — *Data, Mat-Func, Penalid Notific* (ou a *Descrição da Penalidade*), *Gestor* — com prévia; reenviar o arquivo não duplica (mesma matrícula, data e tipo). Também dá para lançar à mão. |
-| **Relatório de pagamento** | Por departamento: médias, valores a receber, descontos e total; exportação em CSV. |
+| **Relatório de pagamento** | Por departamento: médias, valores a receber, descontos e total (gratificação em folha); exportação em CSV. O **BPP de motoristas e operadores não aparece** (vai para o Cartão Gold). |
 | **Demonstrativo (assinaturas)** | Modelo da aba Diversos para imprimir (A4 paisagem): cabeçalho "PAGAMENTO DE B.P.P…", período, quadro por departamento com subtotais e total, o **valor que cada colaborador vai receber** e as **assinaturas** do modelo (coordenador agrícola, gerente de transporte e mecanização, superintendente agrícola e gerente executivo, já com os nomes; editáveis em Parâmetros). |
-| **Parâmetros** | Regras gerais, critérios por tipo de rescisão e a tabela de descontos por grupo de função. |
+| **Cartão Gold (Lista BPP)** | Depósito rescisório do BPP no layout da aba LISTA BPP (*Matrícula, Nome Colaborador, (R$) Receber BPP, Data Rescisão, Centro de Custo, Descrição, PARTE*), filtrado por período e situação, com o número da **parte** (lote). Impressão e CSV para importação. |
+| **Parâmetros** | Regras gerais, critérios por tipo de rescisão, pontos de desconto das demais funções e assinaturas do demonstrativo. |
+| **Motoristas e operadores** | Parâmetros do grupo: **funções** que pertencem a ele (lista das funções do cadastro; inclua ou retire cada uma — vale mais que a palavra-chave), **pontos de desconto e percentuais**, onde os descontos se aplicam (produtividade) e quem recebe o BPP no Cartão Gold. |
 
 Como o valor é calculado: transposição das fórmulas da planilha *GRATIFICAÇÃO - RESCISÓRIA* (parametrizável em **Parâmetros**):
 
 | Etapa | Na planilha | No sistema |
 |---|---|---|
-| Médias | `Digit_Gratif!J:L = AVERAGEIF(MÉDIA_GRAT…)`: tabela dinâmica da aba GRAT filtrada pelos meses | Média de BPP, Zelo/Equip. e Produtividade dos **3 meses de calendário** que terminam no último mês com valores do funcionário (até o mês da rescisão). **Célula vazia não entra na média**; zero entra. |
+| Médias | `Digit_Gratif!J:L = AVERAGEIF(MÉDIA_GRAT…)`: tabela dinâmica da aba GRAT filtrada pelos meses | Média de BPP e Produtividade dos **3 meses de calendário** que terminam no último mês com valores do funcionário (até o mês da rescisão). **Célula vazia não entra na média**; zero entra. |
 | Período | `Diversos!L4 = MÁXIMO(admissão; BD!AT1)`: do dia 16 do ciclo até a rescisão | Do dia 16 anterior à rescisão (ou da admissão, se posterior) até a data da rescisão. |
 | Dias trabalhados | `BD!AU:CT`: calendário "TRAB"/"FOL" pela letra de folga (`BD_Letras`, ciclo A–F) e `BD!AT` = dias trabalhados | Conta os dias "TRAB" pela **escala de folga** escolhida na apuração (letras A–F com o mesmo ciclo do BD_Letras — 01/01/2022 = D —, folga aos domingos ou 5×2). O dia da admissão ("INÍCIO") e os anteriores não contam. Também dá para digitar os dias. |
 | Dias a pagar | `Diversos!N = AT − O`, com `O = CONT.SES(ocorrências ≠ "ADV") + CONT.SES("SS")` | Dias trabalhados − dias das ocorrências do período: cada ocorrência tira os dias configurados no tipo (padrão: 1; ADV 0; SS 2). |
 | Proporcional | `Diversos!F, I, L = média ÷ 25 × N` (justa causa = 0) | Média ÷ 25 × dias a pagar, sem limite (como na planilha). O **critério do tipo de rescisão** define o que é pago (o texto da coluna "Critérios" da planilha virou regra: sem justa causa não paga BPP; justa causa não paga nada). |
-| Desconto | `Diversos!X = SOMASE(% das ocorrências)`, `Y = proporcional × X` (Prod) e `AA = proporcional × X` (BPP) | Soma dos percentuais das ocorrências do período (tabela do grupo da função), limitada a 100%. **Auxiliares e demais funções: desconta do BPP. Operadores e motoristas: desconta da produtividade** (escolha por grupo em Parâmetros). |
-| Totais | `M = F + I + L`; `V = L` (gratificação em folha); `LISTA BPP` (depósito do cartão prêmio) | **Total** = BPP + Zelo + Produtividade líquida; **em folha** = produtividade líquida; **cartão prêmio** = BPP + Zelo. |
+| Desconto | `Diversos!X = SOMASE(% das ocorrências)`, `Y = proporcional × X` (Prod) e `AA = proporcional × X` (BPP) | Soma dos percentuais das ocorrências do período (tabela do grupo da função), limitada a 100%. **Motoristas e operadores: desconta da produtividade. Demais funções: desconta do BPP.** Se o componente do desconto não é pago na rescisão (ex.: BPP na demissão sem justa causa) ou está sem média, o desconto vai para o outro componente pago (pode ser desligado em Parâmetros); a apuração avisa quando isso acontece. |
+| Totais | `M = F + I + L`; `V = L` (gratificação em folha); `LISTA BPP` (depósito do cartão) | **Total** = BPP + Produtividade líquidos. **Motoristas e operadores**: BPP no **Cartão Gold**, produtividade em folha (relatório). **Demais funções**: BPP e produtividade no relatório. O Zelo/Equipamento não é mais pago e saiu do cálculo. |
 
 Descontos por ocorrência, conforme o grupo da função: **auxiliares e demais funções** (NC 4%, ADV 50%, SS 100%, ST 50%, FJ 4%, FF 50%, L 4%) ou
-**operadores e motoristas** (NC 4%, ADV 5%, SS 10%, FJ 4%, FF 5%, L 4%, DISP_MEC 10%). Quem tem "MOTORISTA" ou "OPERADOR" na função entra no segundo
-grupo (editável); também dá para escolher o grupo em cada apuração.
+**motoristas e operadores** (NC 4%, ADV 5%, SS 10%, FJ 4%, FF 5%, L 4%, DISP_MEC 10%). O grupo vem da função: a classificação feita em
+*Motoristas e operadores* vale primeiro; sem ela, quem tem "MOTORISTA" ou "OPERADOR" no nome da função entra no grupo. Também dá para escolher o
+grupo em cada apuração.
+
+Diagnóstico na apuração: o detalhe mostra de onde veio o grupo, sobre qual componente o desconto foi aplicado e as **ocorrências fora do
+período** (até 90 dias antes do início do ciclo ou depois da rescisão), que não descontam — por exemplo, uma suspensão no dia 10 numa rescisão
+cujo ciclo começa no dia 16. Também avisa quando a função não está classificada e o funcionário só tem produtividade (provável motorista ou
+operador com outro nome de função).
 
 A planilha original não é guardada no repositório (contém dados pessoais): só as regras foram transpostas para o sistema.
 

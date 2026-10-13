@@ -347,8 +347,24 @@ ALTER TABLE grat_ocorrencias ADD COLUMN IF NOT EXISTS origem TEXT NOT NULL DEFAU
 ALTER TABLE grat_config ADD COLUMN IF NOT EXISTS desconto_auxiliar TEXT NOT NULL DEFAULT 'bpp';
 ALTER TABLE grat_config ADD COLUMN IF NOT EXISTS desconto_operador TEXT NOT NULL DEFAULT 'prod';
 ALTER TABLE grat_config DROP CONSTRAINT IF EXISTS grat_config_desconto_check;
+-- O Zelo/Equipamento deixou de ser pago: opções antigas que o usavam voltam ao equivalente sem ele
+UPDATE grat_config SET desconto_auxiliar = CASE desconto_auxiliar WHEN 'zelo' THEN 'bpp' WHEN 'todos' THEN 'bpp_prod' ELSE desconto_auxiliar END,
+                       desconto_operador = CASE desconto_operador WHEN 'zelo' THEN 'prod' WHEN 'todos' THEN 'bpp_prod' ELSE desconto_operador END
+  WHERE desconto_auxiliar IN ('zelo','todos') OR desconto_operador IN ('zelo','todos');
 ALTER TABLE grat_config ADD CONSTRAINT grat_config_desconto_check
-  CHECK (desconto_auxiliar IN ('bpp','zelo','prod','bpp_prod','todos','nenhum') AND desconto_operador IN ('bpp','zelo','prod','bpp_prod','todos','nenhum'));
+  CHECK (desconto_auxiliar IN ('bpp','prod','bpp_prod','nenhum') AND desconto_operador IN ('bpp','prod','bpp_prod','nenhum'));
+-- Se o componente do desconto não for pago na rescisão, o desconto vai para o outro componente pago
+ALTER TABLE grat_config ADD COLUMN IF NOT EXISTS desconto_redireciona BOOLEAN NOT NULL DEFAULT true;
+-- Quem recebe o BPP no Cartão Gold (aba LISTA BPP) em vez do relatório: motoristas e operadores, todos ou ninguém
+ALTER TABLE grat_config ADD COLUMN IF NOT EXISTS bpp_cartao TEXT NOT NULL DEFAULT 'operador';
+ALTER TABLE grat_config DROP CONSTRAINT IF EXISTS grat_config_bpp_cartao_check;
+ALTER TABLE grat_config ADD CONSTRAINT grat_config_bpp_cartao_check CHECK (bpp_cartao IN ('operador','todos','nenhum'));
+-- Classificação manual das funções (Parâmetros → Motoristas e operadores); chave = nome da função sem acentos
+CREATE TABLE IF NOT EXISTS grat_funcoes (
+  funcao        TEXT PRIMARY KEY,
+  grupo         TEXT NOT NULL CHECK (grupo IN ('auxiliar','operador')),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 -- Assinaturas do demonstrativo de pagamento (modelo da aba Diversos)
 CREATE TABLE IF NOT EXISTS grat_signatarios (
