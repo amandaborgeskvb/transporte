@@ -172,7 +172,8 @@ async function detalheApuracao({ params, ir, recarregarPagina }) {
       secao('Regras aplicadas', null, h('dl', { class: 'dados um' },
         dado('Tipo de rescisão', `${r.tipo_rescisao} · ${dataBR(r.dt_rescisao)}`),
         dado('Grupo da função', `${GRUPOS[c.grupo]} (${ORIGEM_GRUPO[c.grupo_origem]})`),
-        dado('Desconto das ocorrências', c.desconto_pct ? `${pct(c.desconto_pct)} sobre ${nomesComp(c.desconto_em)}${c.desconto_redirecionado ? ` (o parâmetro do grupo é ${nomesComp(c.desconto_redirecionado.de)})` : ''}` : `nenhum (o grupo desconta sobre ${nomesComp(c.desconto_configurado)})`),
+        dado('Desconto das ocorrências', `${c.desconto_pct ? `${pct(c.desconto_pct)} sobre ${nomesComp(c.desconto_em)}${c.desconto_redirecionado ? ` (a regra é ${nomesComp(c.desconto_redirecionado.de)})` : ''}` : `nenhum (desconta sobre ${nomesComp(c.desconto_configurado)})`}${c.desconto_origem === 'funcao' ? ' · regra escolhida para a função' : ''}`),
+        dado('BPP pago no', `${c.bpp_no_cartao ? 'Cartão Gold' : 'Relatório'} (${c.bpp_origem === 'funcao' ? 'escolhido para a função' : 'padrão do grupo'})`),
         dado('Meses da média', c.meses.length ? c.meses.map(mesRotulo).join(', ') : 'nenhum mês informado'),
         dado('Dias', `${c.dias_trabalhados} trabalhados − ${c.dias_descontados} das ocorrências = ${c.dias_pagar} a pagar (base ${c.base_dias})`),
         dado('Turno e letra de folga', `${r.turno ? `Turno ${r.turno}` : 'turno não informado'} · ${c.escala ? `folga ${ESCALAS.find(([k]) => k === c.escala)?.[1] || c.escala}` : 'sem escala'}`),
@@ -400,8 +401,51 @@ function tabelaDescontos(p, grupo, recarregarPagina, { titulo = GRUPOS[grupo], t
     ], p.penalidades.filter((x) => x.grupo === grupo), { vazioMsg: 'Nenhum ponto de desconto cadastrado.' }));
 }
 
+// Tabela de funções: por função, grupo (tabela de percentuais), onde as ocorrências descontam (BPP ou Produtividade) e
+// onde o BPP é pago (relatório ou Cartão Gold). Em branco = padrão do grupo. Cada escolha é salva na hora.
+function tabelaFuncoes(cfg, inicial) {
+  let itens = inicial;
+  let filtro = '';
+  const corpo = h('div');
+  const padraoDesconto = (g) => (g === 'operador' ? cfg.desconto_operador : cfg.desconto_auxiliar);
+  const padraoCartao = (g) => cfg.bpp_cartao === 'todos' || (cfg.bpp_cartao === 'operador' && g === 'operador');
+  const recarregar = async () => { itens = (await get('/gratificacao/funcoes')).itens; desenhar(); };
+  const salvar = async (x, campos, msg) => {
+    try { await put('/gratificacao/funcoes', { funcao: x.funcao, ...campos }); toast(msg || `${x.funcao}: salvo.`); await recarregar(); } catch (e) { toast(e.message, 'erro'); }
+  };
+  const sel = (x, campo, opcoes, vazio) => h('select', { class: x.escolha[campo] ? 'escolhido' : '', 'aria-label': `${campo} de ${x.funcao}`, onchange: (e) => salvar(x, { [campo]: e.target.value || null }) },
+    h('option', { value: '' }, vazio), opcoes.map(([v, r]) => h('option', { value: v, selected: x.escolha[campo] === v }, r)));
+  function desenhar() {
+    const f = filtro.trim().toUpperCase();
+    const lista = f ? itens.filter((x) => x.chave.includes(f.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))) : itens;
+    corpo.replaceChildren(tabela([
+      { t: 'Função', f: (x) => [x.funcao, h('div', { class: 'muted pequeno' }, x.no_cadastro ? `${fmt(x.qtd)} funcionário${x.qtd === 1 ? '' : 's'} · ${fmt(x.ativos)} ativo${x.ativos === 1 ? '' : 's'}` : 'cadastrada aqui (sem funcionário)')] },
+      { t: 'Grupo', f: (x) => sel(x, 'grupo', [['operador', GRUPOS.operador], ['auxiliar', GRUPOS.auxiliar]], x.escolha.grupo ? 'Automático' : `Auto: ${x.grupo === 'operador' ? 'Motoristas/oper.' : 'Demais funções'}`) },
+      { t: 'Ocorrências descontam do', f: (x) => sel(x, 'desconto', [['bpp', 'BPP'], ['prod', 'Produtividade']], `Padrão: ${rotuloAlvo(padraoDesconto(x.grupo))}`) },
+      { t: 'BPP pago no', f: (x) => sel(x, 'bpp_destino', [['relatorio', 'Relatório'], ['cartao', 'Cartão Gold']], `Padrão: ${padraoCartao(x.grupo) ? 'Cartão Gold' : 'Relatório'}`) },
+      { t: '', f: (x) => (x.escolha.grupo || x.escolha.desconto || x.escolha.bpp_destino || x.cadastrada
+        ? botao(x.no_cadastro ? 'Limpar' : 'Remover', () => salvar(x, { remover: true }, x.no_cadastro ? `${x.funcao}: volta ao padrão.` : `${x.funcao}: removida.`), { tom: 'sec', pequeno: true }) : '') },
+    ], lista, { vazioMsg: f ? 'Nenhuma função com esse nome.' : 'Nenhuma função. Use "Cadastrar função".' }));
+  }
+  const cadastrar = () => dialogo({
+    titulo: 'Cadastrar função',
+    descricao: 'Inclua uma função (mesmo sem funcionário cadastrado com ela) e escolha como ela é tratada. Em branco = padrão do grupo.',
+    campos: [
+      { nome: 'funcao', rotulo: 'Nome da função', obrigatorio: true, max: 120, cheio: true, dica: 'Como vem no cadastro de funcionários (maiúsculas e acentos não importam).' },
+      { nome: 'grupo', rotulo: 'Grupo (tabela de percentuais)', tipo: 'select', opcoes: [{ valor: 'operador', rotulo: GRUPOS.operador }, { valor: 'auxiliar', rotulo: GRUPOS.auxiliar }], vazio: 'Automático (pela palavra-chave)', cheio: true },
+      { nome: 'desconto', rotulo: 'Ocorrências descontam do', tipo: 'select', opcoes: [{ valor: 'bpp', rotulo: 'BPP' }, { valor: 'prod', rotulo: 'Produtividade' }], vazio: 'Padrão do grupo' },
+      { nome: 'bpp_destino', rotulo: 'BPP pago no', tipo: 'select', opcoes: [{ valor: 'relatorio', rotulo: 'Relatório' }, { valor: 'cartao', rotulo: 'Cartão Gold' }], vazio: 'Padrão do grupo' },
+    ], confirmar: 'Cadastrar', aoSalvar: (v) => put('/gratificacao/funcoes', { ...v, cadastrar: true }),
+  }).then(async (ok) => { if (ok) { toast('Função cadastrada.'); await recarregar(); } });
+  desenhar();
+  return secao('Funções: BPP, Produtividade e Cartão Gold', botao('Cadastrar função', cadastrar, { tom: 'sec', pequeno: true, icone: 'mais' }),
+    h('p', { class: 'muted pequeno' }, 'Para cada função: o grupo (define a tabela de percentuais), de onde as ocorrências descontam (BPP ou Produtividade) e onde o BPP é pago (no relatório ou no Cartão Gold). O que ficar em "Padrão"/"Auto" segue as regras gerais acima; o que foi escolhido para a função aparece em negrito. Cada escolha é salva na hora.'),
+    h('div', { class: 'form-grid tres' }, h('label', {}, 'Buscar função', h('input', { type: 'search', placeholder: 'ex.: MOTORISTA', oninput: (e) => { filtro = e.target.value; desenhar(); } }))),
+    corpo);
+}
+
 async function paginaParametros({ recarregarPagina }) {
-  const p = await get('/gratificacao/parametros');
+  const [p, funcoes] = await Promise.all([get('/gratificacao/parametros'), get('/gratificacao/funcoes')]);
   const cfg = p.config;
 
   const editarConfig = () => dialogo({
@@ -454,6 +498,7 @@ async function paginaParametros({ recarregarPagina }) {
       { t: '', f: (x) => h('span', { class: 'acoes' }, botao('Editar', () => editarCriterio(x), { tom: 'sec', pequeno: true }),
         botao('Excluir', async () => { if (await confirmar('Excluir critério', x.tipo_rescisao, { rotulo: 'Excluir', perigo: true })) { try { await del(`/gratificacao/criterios/${x.id}`); recarregarPagina(); } catch (e) { toast(e.message, 'erro'); } } }, { tom: 'perigo sec', pequeno: true })) },
     ], p.criterios)),
+    tabelaFuncoes(cfg, funcoes.itens),
     tabelaDescontos(p, 'auxiliar', recarregarPagina, { titulo: 'Pontos de desconto — demais funções', texto: 'Percentual descontado do BPP por ocorrência no período (somados, até 100%). Os de motoristas e operadores ficam em Motoristas e operadores.' }),
     secao('Assinaturas do demonstrativo', botao('Nova assinatura', () => editarSignatario(null), { tom: 'sec', pequeno: true, icone: 'mais' }),
       h('p', { class: 'muted pequeno' }, 'Quem assina o demonstrativo de pagamento (modelo da aba Diversos). Os nomes aparecem acima do cargo, abaixo da linha de assinatura.'),
@@ -483,10 +528,7 @@ async function paginaOperadores({ recarregarPagina }) {
     ], confirmar: 'Salvar', aoSalvar: (v) => put('/gratificacao/config', v),
   }).then((s) => { if (s) { toast('Parâmetros salvos.'); recarregarPagina(); } });
 
-  const classificar = async (x, grupo) => {
-    try { await put('/gratificacao/funcoes', { funcao: x.funcao, grupo }); toast(grupo ? `${x.funcao}: ${GRUPOS[grupo].toLowerCase()}.` : `${x.funcao}: classificação automática.`); recarregarPagina(); } catch (e) { toast(e.message, 'erro'); }
-  };
-  const origem = (x) => ({ funcao: 'definida aqui', palavra: 'pela palavra-chave', padrao: 'automático' }[x.origem]);
+  const origem = (x) => ({ funcao: 'escolhido na tabela de funções', palavra: 'pela palavra-chave', padrao: 'automático' }[x.origem]);
 
   return [
     cabecalhoPagina({
@@ -502,15 +544,14 @@ async function paginaOperadores({ recarregarPagina }) {
       dado('BPP depositado no Cartão Gold', MODOS_CARTAO.find((m) => m.valor === cfg.bpp_cartao)?.rotulo || cfg.bpp_cartao),
       dado('Palavras-chave das funções', cfg.palavras_operador || '—'))),
     tabelaDescontos(p, 'operador', recarregarPagina, { titulo: 'Pontos de desconto e percentuais', texto: 'Percentual descontado da produtividade por ocorrência no período (somados, até 100%) e dias trabalhados que cada ocorrência tira.' }),
-    secao('Funções do cadastro', null,
-      h('p', { class: 'muted pequeno' }, 'Funções dos funcionários cadastrados. Inclua no grupo as que são de motorista ou operador e não têm a palavra-chave no nome; retire as que têm a palavra mas não são do grupo.'),
+    secao('Funções do grupo', h('a', { class: 'btn sec pequeno', href: '#/gratificacao/parametros' }, icone('editar'), 'Editar na tabela de funções'),
+      h('p', { class: 'muted pequeno' }, 'Funções que estão em "Motoristas e operadores". Para incluir, retirar ou mudar onde descontam e onde o BPP é pago, use a tabela de funções em Parâmetros.'),
       tabela([
         { t: 'Função', f: (x) => [x.funcao, h('div', { class: 'muted pequeno' }, `${fmt(x.qtd)} funcionário${x.qtd === 1 ? '' : 's'} · ${fmt(x.ativos)} ativo${x.ativos === 1 ? '' : 's'}`)] },
-        { t: 'Grupo', f: (x) => [badgeTom(GRUPOS[x.grupo], x.grupo === 'operador' ? 'info' : 'mute'), h('div', { class: 'muted pequeno' }, origem(x))] },
-        { t: '', f: (x) => h('span', { class: 'acoes' },
-          x.grupo === 'operador' ? botao('Retirar do grupo', () => classificar(x, 'auxiliar'), { tom: 'sec', pequeno: true }) : botao('Incluir no grupo', () => classificar(x, 'operador'), { tom: 'sec', pequeno: true }),
-          x.origem === 'funcao' ? botao('Automático', () => classificar(x, null), { tom: 'sec', pequeno: true }) : null) },
-      ], f.itens, { vazioMsg: 'Nenhuma função no cadastro de funcionários.' })),
+        { t: 'Grupo', f: (x) => [badgeTom(GRUPOS[x.grupo], 'info'), h('div', { class: 'muted pequeno' }, origem(x))] },
+        { t: 'Ocorrências descontam do', f: (x) => [rotuloAlvo(x.desconto), h('div', { class: 'muted pequeno' }, x.desconto_origem === 'funcao' ? 'escolhido para a função' : 'padrão do grupo')] },
+        { t: 'BPP pago no', f: (x) => [x.bpp_cartao ? 'Cartão Gold' : 'Relatório', h('div', { class: 'muted pequeno' }, x.bpp_origem === 'funcao' ? 'escolhido para a função' : 'padrão do grupo')] },
+      ], operadores, { vazioMsg: 'Nenhuma função no grupo.' })),
   ];
 }
 const dado = (t, v) => h('div', {}, h('dt', {}, t), h('dd', {}, v));

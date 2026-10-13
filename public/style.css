@@ -480,6 +480,7 @@ td .acoes { display: flex; gap: 6px; flex-wrap: nowrap; justify-content: flex-en
 tfoot th { background: var(--card-2); }
 .grat-previa { margin: 6px 0 10px; padding: 10px 12px; border: 1px solid var(--linha); border-radius: 10px; background: var(--card-2); }
 .grat-previa .dados { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+td select.escolhido { font-weight: 700; border-color: var(--marca, #2563eb); }
 .avisos-previa { margin: 8px 0 0; padding-left: 18px; font-size: .85em; color: var(--warn); display: grid; gap: 3px; }
 
 /* Demonstrativo da gratificação rescisória (modelo da aba Diversos): folha branca, A4 paisagem */

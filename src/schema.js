@@ -365,6 +365,12 @@ CREATE TABLE IF NOT EXISTS grat_funcoes (
   grupo         TEXT NOT NULL CHECK (grupo IN ('auxiliar','operador')),
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Tabela de funções em Parâmetros: por função, onde as ocorrências descontam (BPP/produtividade) e onde o BPP é pago
+-- (relatório/Cartão Gold). Vazio = padrão do grupo; o grupo também pode ficar em branco (automático).
+ALTER TABLE grat_funcoes ALTER COLUMN grupo DROP NOT NULL;
+ALTER TABLE grat_funcoes ADD COLUMN IF NOT EXISTS desconto TEXT CHECK (desconto IS NULL OR desconto IN ('bpp','prod'));
+ALTER TABLE grat_funcoes ADD COLUMN IF NOT EXISTS bpp_destino TEXT CHECK (bpp_destino IS NULL OR bpp_destino IN ('relatorio','cartao'));
+ALTER TABLE grat_funcoes ADD COLUMN IF NOT EXISTS cadastrada BOOLEAN NOT NULL DEFAULT false;
 
 -- Assinaturas do demonstrativo de pagamento (modelo da aba Diversos)
 CREATE TABLE IF NOT EXISTS grat_signatarios (

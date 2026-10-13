@@ -60,18 +60,40 @@ function lerNumero(valor) {
   return Number.isFinite(n) ? n : null;
 }
 
-// ---------- Grupo da função ----------
-// "Motoristas e operadores" ou "demais funções" (auxiliares). Ordem: função classificada em Parâmetros → Motoristas e
-// operadores (lista de funções); senão, palavra-chave no nome da função (MOTORISTA, OPERADOR…); senão, demais funções.
+// ---------- Grupo e regra da função ----------
+// "Motoristas e operadores" ou "demais funções" (auxiliares). Ordem: grupo escolhido na tabela de funções (Parâmetros);
+// senão, palavra-chave no nome da função (MOTORISTA, OPERADOR…); senão, demais funções.
+// funcoes: Map(nome sem acento → { grupo, desconto, bpp_destino }) ou lista [{ funcao, grupo, desconto, bpp_destino }]
 const normFuncao = (s) => semAcento(s).replace(/\s+/g, ' ');
+function definidaNaTabela(funcao, funcoes) {
+  const f = normFuncao(funcao);
+  if (!f) return {};
+  const x = funcoes instanceof Map ? funcoes.get(f) : (funcoes || []).find((y) => normFuncao(y.funcao) === f);
+  return typeof x === 'string' ? { grupo: x } : x || {};
+}
 function classificarFuncao(funcao, palavrasOperador, funcoes) {
   const f = normFuncao(funcao);
-  const manual = funcoes instanceof Map ? funcoes.get(f) : (funcoes || []).find((x) => normFuncao(x.funcao) === f)?.grupo;
-  if (f && manual) return { grupo: manual, origem: 'funcao' };
+  const manual = definidaNaTabela(funcao, funcoes).grupo;
+  if (manual) return { grupo: manual, origem: 'funcao' };
   const palavras = String(palavrasOperador || '').split(',').map((p) => semAcento(p)).filter(Boolean);
   return palavras.some((p) => f.includes(p)) ? { grupo: 'operador', origem: 'palavra' } : { grupo: 'auxiliar', origem: 'padrao' };
 }
 const grupoDaFuncao = (funcao, palavrasOperador, funcoes) => classificarFuncao(funcao, palavrasOperador, funcoes).grupo;
+
+// Regra efetiva da função: grupo, onde as ocorrências descontam (BPP ou produtividade) e onde o BPP é pago (relatório ou
+// Cartão Gold). O que foi escolhido na tabela de funções vale; o que ficou em branco segue o padrão do grupo.
+function regraDaFuncao(funcao, config, funcoes, grupoInformado = null) {
+  const tabela = definidaNaTabela(funcao, funcoes);
+  const c = grupoInformado ? { grupo: grupoInformado, origem: 'informado' } : classificarFuncao(funcao, config.palavras_operador, funcoes);
+  const padraoDesconto = ALVOS_DESCONTO[c.grupo === 'operador' ? config.desconto_operador : config.desconto_auxiliar] ? (c.grupo === 'operador' ? config.desconto_operador : config.desconto_auxiliar) : PADRAO_ALVO[c.grupo];
+  const modo = config.bpp_cartao || 'operador';
+  const padraoCartao = modo === 'todos' || (modo === 'operador' && c.grupo === 'operador');
+  return {
+    grupo: c.grupo, origem: c.origem,
+    desconto: tabela.desconto || padraoDesconto, desconto_origem: tabela.desconto ? 'funcao' : 'grupo',
+    bpp_cartao: tabela.bpp_destino ? tabela.bpp_destino === 'cartao' : padraoCartao, bpp_origem: tabela.bpp_destino ? 'funcao' : 'grupo',
+  };
+}
 
 // ---------- Período das ocorrências ----------
 // Ciclo da folha: do dia de corte (padrão 16) anterior à rescisão até a data da rescisão.
@@ -135,7 +157,8 @@ const br = (isoTxt) => isoTxt.split('-').reverse().join('/');
 const num = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
 
 function calcular({ config, criterio, rescisao, funcao, admissao, valores, ocorrencias, penalidades, funcoes = [] }) {
-  const { grupo, origem: grupoOrigem } = rescisao.grupo ? { grupo: rescisao.grupo, origem: 'informado' } : classificarFuncao(funcao, config.palavras_operador, funcoes);
+  const regra = regraDaFuncao(funcao, config, funcoes, rescisao.grupo || null);
+  const { grupo, origem: grupoOrigem } = regra;
   const ciclo = periodoDe(rescisao.dt_rescisao, config.dia_corte);
   // Diversos!L4: o período começa no início do ciclo ou na admissão, o que for mais recente
   const periodo = { inicio: admissao && dataIso(admissao) > ciclo.inicio ? dataIso(admissao) : ciclo.inicio, fim: ciclo.fim };
@@ -188,8 +211,7 @@ function calcular({ config, criterio, rescisao, funcao, admissao, valores, ocorr
   // rescisão ou está sem média), o desconto vai para o outro componente pago — salvo se desligado em Parâmetros.
   const pagos = { bpp: !!criterio.pagar_bpp, prod: !!criterio.pagar_prod };
   const proporcional = { bpp: pagos.bpp ? round2(medias.bpp * fator) : 0, prod: pagos.prod ? round2(medias.prod * fator) : 0 };
-  const alvoGrupo = grupo === 'operador' ? config.desconto_operador : config.desconto_auxiliar;
-  const alvoConfig = ALVOS_DESCONTO[alvoGrupo] || ALVOS_DESCONTO[PADRAO_ALVO[grupo]];
+  const alvoConfig = ALVOS_DESCONTO[regra.desconto];
   let alvo = alvoConfig;
   let redirecionado = null;
   const avisos = [];
@@ -213,8 +235,7 @@ function calcular({ config, criterio, rescisao, funcao, admissao, valores, ocorr
 
   // 5. Forma de pagamento: o BPP de motoristas e operadores vai para o depósito do Cartão Gold (aba LISTA BPP) e não
   //    aparece no relatório; a gratificação em folha é o restante.
-  const modoCartao = config.bpp_cartao || 'operador';
-  const bppNoCartao = modoCartao === 'todos' || (modoCartao === 'operador' && grupo === 'operador');
+  const bppNoCartao = regra.bpp_cartao;
   const cartaoGold = bppNoCartao ? bpp.receber : 0;
 
   if (!meses.length) avisos.push('Sem valores mensais (BPP/produtividade) até o mês da rescisão.');
@@ -226,14 +247,15 @@ function calcular({ config, criterio, rescisao, funcao, admissao, valores, ocorr
   if (foraDoPeriodo.length) {
     avisos.push(`${foraDoPeriodo.length} ocorrência(s) do funcionário fora do período de gratificação (${br(periodo.inicio)} a ${br(periodo.fim)}) não descontam: ${foraDoPeriodo.map((o) => `${o.abrev} em ${br(o.data)}`).join(', ')}.`);
   }
-  if (grupoOrigem === 'padrao' && medias.bpp === 0 && medias.prod > 0) {
-    avisos.push(`A função "${funcao || 'não informada'}" está em "demais funções" (desconto no BPP), mas o funcionário só tem produtividade. Se for motorista ou operador, classifique a função em Parâmetros → Motoristas e operadores.`);
+  if (grupoOrigem === 'padrao' && regra.desconto_origem === 'grupo' && medias.bpp === 0 && medias.prod > 0) {
+    avisos.push(`A função "${funcao || 'não informada'}" está em "demais funções" (desconto no BPP), mas o funcionário só tem produtividade. Se for motorista ou operador, defina a função na tabela de funções em Parâmetros.`);
   }
   if (diasPagar > config.base_dias) avisos.push(`Dias a pagar (${diasPagar}) acima da base de ${config.base_dias}: o valor passa da média, como na planilha.`);
 
   return {
     grupo, grupo_origem: grupoOrigem, periodo, criterio: criterio.tipo_rescisao, criterio_texto: textoCriterio(criterio),
     desconto_em: descontoPct > 0 ? alvo.filter((k) => proporcional[k] > 0) : [...alvoConfig], desconto_configurado: [...alvoConfig], desconto_redirecionado: redirecionado,
+    desconto_origem: regra.desconto_origem, bpp_origem: regra.bpp_origem,
     meses: meses.map((v) => v.mes), medias,
     ocorrencias: doPeriodo, ocorrencias_fora: foraDoPeriodo, desconto_pct: descontoPct, dias_descontados: diasDescontados,
     escala: escala || null, dias_informados: informado,
@@ -353,6 +375,6 @@ function lerOcorrencias(dados, mapa, primeiraLinha, tipos) {
 }
 
 module.exports = {
-  lerData, lerOcorrencias, CAMPOS_OCORRENCIAS, ALVOS_DESCONTO, textoCriterio, classificarFuncao, normFuncao,
+  lerData, lerOcorrencias, CAMPOS_OCORRENCIAS, ALVOS_DESCONTO, textoCriterio, classificarFuncao, regraDaFuncao, normFuncao,
   lerMes, lerNumero, grupoDaFuncao, periodoDe, calcular, diasTrabalhados, letraDoDia, ESCALAS, sugerirColunas, lerValores, normMatricula, semAcento, CAMPOS_VALORES, MESES,
 };

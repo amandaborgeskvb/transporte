@@ -11,7 +11,7 @@ const { exigirPerfil, ADM, FIN } = require('../workflow');
 const { abrirPlanilha, MAX_BYTES } = require('../planilha');
 const {
   calcular, sugerirColunas, lerValores, lerOcorrencias, normMatricula, semAcento, CAMPOS_VALORES, CAMPOS_OCORRENCIAS, ESCALAS, ALVOS_DESCONTO,
-  classificarFuncao, normFuncao,
+  regraDaFuncao, normFuncao,
 } = require('../gratificacao');
 
 const bool = (v) => v === true || v === 'true' || v === 1 || v === '1';
@@ -653,10 +653,11 @@ function criarGratificacao({ pool }) {
     ]);
   }));
 
-  // ================= Funções: motoristas e operadores =================
-  // Lista as funções do cadastro com o grupo efetivo (manual, pela palavra-chave ou padrão) e permite classificar cada uma
+  // ================= Tabela de funções (Parâmetros) =================
+  // Funções do cadastro de funcionários + as cadastradas à mão, com o grupo, onde as ocorrências descontam e onde o BPP é
+  // pago. O que não foi escolhido segue o padrão do grupo.
   async function lerFuncoes(db) {
-    return new Map((await db.query('SELECT funcao, grupo FROM grat_funcoes')).rows.map((r) => [r.funcao, r.grupo]));
+    return new Map((await db.query('SELECT funcao, grupo, desconto, bpp_destino, cadastrada FROM grat_funcoes')).rows.map((r) => [r.funcao, r]));
   }
   router.get('/gratificacao/funcoes', wrap(async (_req, res) => {
     const [cfg, manuais, cad] = await Promise.all([
@@ -671,20 +672,42 @@ function criarGratificacao({ pool }) {
       lista.set(k, x);
     }
     for (const k of manuais.keys()) if (!lista.has(k)) lista.set(k, { chave: k, funcao: k, qtd: 0, ativos: 0 });
-    const itens = [...lista.values()].map((x) => ({ ...x, ...classificarFuncao(x.funcao, cfg.palavras_operador, manuais) }))
-      .sort((a, b) => (a.grupo === b.grupo ? a.funcao.localeCompare(b.funcao, 'pt-BR') : a.grupo === 'operador' ? -1 : 1));
+    const itens = [...lista.values()].map((x) => {
+      const t = manuais.get(x.chave) || {};
+      return {
+        ...x, ...regraDaFuncao(x.funcao, cfg, manuais), no_cadastro: x.qtd > 0, cadastrada: !!t.cadastrada,
+        escolha: { grupo: t.grupo || null, desconto: t.desconto || null, bpp_destino: t.bpp_destino || null },
+      };
+    }).sort((a, b) => (a.grupo === b.grupo ? a.funcao.localeCompare(b.funcao, 'pt-BR') : a.grupo === 'operador' ? -1 : 1));
     res.json({ itens, palavras_operador: cfg.palavras_operador });
   }));
+  // Salva as escolhas de uma função. Só os campos enviados mudam; vazio/null = padrão do grupo (ou automático, no grupo).
+  // cadastrar: true inclui a função na tabela mesmo sem funcionário com ela; remover: true apaga as escolhas.
   router.put('/gratificacao/funcoes', wrap(async (req, res) => {
-    const funcao = normFuncao(texto(req.body.funcao, 120, { obrigatorio: true, rotulo: 'Função' }));
-    const grupo = req.body.grupo === null || req.body.grupo === '' || req.body.grupo === undefined ? null : opcaoDe(req.body.grupo, ['auxiliar', 'operador'], 'Grupo');
-    if (grupo) {
-      await pool.query(`INSERT INTO grat_funcoes (funcao, grupo) VALUES ($1,$2) ON CONFLICT (funcao) DO UPDATE SET grupo = EXCLUDED.grupo, atualizado_em = now()`, [funcao, grupo]);
-    } else {
+    const b = req.body;
+    const funcao = normFuncao(texto(b.funcao, 120, { obrigatorio: true, rotulo: 'Função' }));
+    const vazio = (v) => v === null || v === '' || v === undefined;
+    const antes = (await pool.query('SELECT grupo, desconto, bpp_destino, cadastrada FROM grat_funcoes WHERE funcao = $1', [funcao])).rows[0]
+      || { grupo: null, desconto: null, bpp_destino: null, cadastrada: false };
+    const novo = { ...antes };
+    if ('grupo' in b) novo.grupo = vazio(b.grupo) ? null : opcaoDe(b.grupo, ['auxiliar', 'operador'], 'Grupo');
+    if ('desconto' in b) novo.desconto = vazio(b.desconto) ? null : opcaoDe(b.desconto, ['bpp', 'prod'], 'Desconto das ocorrências');
+    if ('bpp_destino' in b) novo.bpp_destino = vazio(b.bpp_destino) ? null : opcaoDe(b.bpp_destino, ['relatorio', 'cartao'], 'BPP pago no');
+    if (b.cadastrar) novo.cadastrada = true;
+    if (b.remover) Object.assign(novo, { grupo: null, desconto: null, bpp_destino: null, cadastrada: false });
+    if (!novo.grupo && !novo.desconto && !novo.bpp_destino && !novo.cadastrada) {
       await pool.query('DELETE FROM grat_funcoes WHERE funcao = $1', [funcao]);
+    } else {
+      await pool.query(
+        `INSERT INTO grat_funcoes (funcao, grupo, desconto, bpp_destino, cadastrada) VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (funcao) DO UPDATE SET grupo = EXCLUDED.grupo, desconto = EXCLUDED.desconto, bpp_destino = EXCLUDED.bpp_destino,
+           cadastrada = EXCLUDED.cadastrada, atualizado_em = now()`,
+        [funcao, novo.grupo, novo.desconto, novo.bpp_destino, novo.cadastrada]);
     }
-    await auditar(pool, req.usuario, 'editar', 'grat_funcao', null, { funcao, grupo: grupo || 'automático' });
-    res.json({ funcao, grupo });
+    await auditar(pool, req.usuario, 'editar', 'grat_funcao', null, {
+      funcao, grupo: novo.grupo || 'automático', desconto: novo.desconto || 'padrão do grupo', bpp_pago_no: novo.bpp_destino || 'padrão do grupo',
+    });
+    res.json({ funcao, ...novo });
   }));
 
   return router;
