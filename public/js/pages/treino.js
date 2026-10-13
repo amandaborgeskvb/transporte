@@ -118,7 +118,7 @@ async function lista({ query, ir }) {
 // Planilha (como a aba Digitar): digita-se linha a linha; as colunas cinza são puxadas/calculadas. Cada linha salva
 // sozinha ao sair dela e recebe o Nº DOC (Seq./ano), o mesmo impresso em "C.I. DEST". Marque as linhas e imprima no formulário.
 // ======================================================================
-async function planilha({ query, ir }) {
+async function planilha({ query, ir, recarregarPagina }) {
   const filtro = { ...query, ordem: 'doc' };
   const [{ itens }, p] = await Promise.all([get(`/treino/registros?${new URLSearchParams(filtro)}`), get('/treino/parametros')]);
   const cfg = p.config;
@@ -319,15 +319,19 @@ async function planilha({ query, ir }) {
     tabelaPl.querySelectorAll('thead th.fixa').forEach((th, i) => { tabelaPl.style.setProperty(`--l${i + 1}`, `${x}px`); x += th.getBoundingClientRect().width; });
   };
   new ResizeObserver(fixar).observe(tabelaPl);
+  // Recuperar a planilha Excel: os treinamentos da aba Digitar entram nesta planilha (sem repetir), com o mesmo Nº DOC
+  const caixaImportar = h('div', { hidden: itens.length > 0 }, cartaoImportacao(p, { aoImportar: recarregarPagina, comTreinamentos: true }));
   return [
     cabecalhoPagina({
       migalhas: [...BASE, ['Planilha']], titulo: 'Planilha de treinamento (Digitar)',
       sub: `Como a aba Digitar da RE.1005.04: digite a matrícula e as colunas cinza são puxadas. Cada linha salva ao sair dela e recebe o Nº DOC, o mesmo da C.I. · ${fmt(itens.length)} linha${itens.length === 1 ? '' : 's'}`,
       acoes: [
+        botao('Importar planilha Excel', () => { caixaImportar.hidden = !caixaImportar.hidden; }, { tom: 'sec', icone: 'upload' }),
         h('a', { class: 'btn sec', href: `/api/treino/registros.csv?${new URLSearchParams(query)}`, download: '' }, icone('baixar'), 'Exportar (mala direta)'),
         btnImprimir,
       ],
     }),
+    caixaImportar,
     barraFiltros([
       { nome: 'q', rotulo: 'Busca', placeholder: 'Nome, matrícula, função ou setor' },
       { nome: 'doc_ano', rotulo: 'Ano do Nº DOC', tipo: 'select', opcoes: anos.map((a) => ({ valor: a, rotulo: a })) },
@@ -585,6 +589,52 @@ async function formulario({ params, query, ir }) {
 // ======================================================================
 // Parâmetros: C.I., assinaturas, gestores responsáveis e carga da planilha
 // ======================================================================
+// Carga da planilha Excel RE.1005.04 (base de funcionários, escala, gestores e, se marcado, os treinamentos da aba Digitar)
+function cartaoImportacao(p, { aoImportar, comTreinamentos = false }) {
+  const cartao = h('div', { class: 'card' });
+  const telaImportar = () => {
+    const entrada = h('input', { type: 'file', accept: '.xlsx', class: 'oculto', 'aria-label': 'Escolher a planilha de treinamento' });
+    const comRegistros = h('input', { type: 'checkbox', checked: comTreinamentos });
+    const status = h('small', { class: 'muted' });
+    const enviar = async (arquivo) => {
+      if (!arquivo) return;
+      status.textContent = `Lendo ${arquivo.name}… (planilhas grandes podem levar alguns segundos)`;
+      try {
+        const q = { registros: comRegistros.checked ? '1' : '0' };
+        const r = await enviarArquivo('/treino/importar', arquivo, q);
+        const linha = (t, a, b, c) => h('tr', {}, h('td', {}, t), h('td', { class: 'num' }, fmt(a)), h('td', { class: 'num' }, fmt(b)), h('td', { class: 'num' }, c));
+        cartao.replaceChildren(...[
+          h('div', { class: 'card-topo' }, h('h2', {}, `Prévia: ${r.arquivo}`)),
+          h('div', { class: 'scroll' }, h('table', {},
+            h('thead', {}, h('tr', {}, ['Aba', 'Lidos', 'Novos', 'Observação'].map((t, i) => h('th', { class: i && i < 3 ? 'num' : '' }, t)))),
+            h('tbody', {},
+              linha('APFO (base de funcionários: CNH, contato, cidade)', r.base.lidos, r.base.criar, `${fmt(r.base.atualizar)} atualizados · ${fmt(r.base.com_escala)} com escala`),
+              linha('Gestores (da aba Digitar)', r.gestores.lidos, r.gestores.criar, 'os já cadastrados não mudam'),
+              r.registros ? linha('Digitar (treinamentos)', r.registros.lidos, r.registros.criar, `${fmt(r.registros.ja_existentes)} já existentes${r.registros.renumerar ? ` (${fmt(r.registros.renumerar)} com o Nº DOC corrigido para o da planilha)` : ''} · ${fmt(r.registros.erros)} com erro`) : null))),
+          r.registros?.erros ? h('details', { class: 'imp-motivo' }, h('summary', {}, `Linhas não importadas: ${r.registros.erros}`),
+            h('ul', {}, r.registros.exemplos_erros.map((e) => h('li', {}, `Linha ${e.linha}${e.matricula ? ` (mat. ${e.matricula})` : ''}: ${e.motivo}`)))) : null,
+          h('div', { class: 'linha-botoes' }, botao('Cancelar', telaImportar, { tom: 'sec' }),
+            botao('Importar', async () => {
+              try { await enviarArquivo('/treino/importar', arquivo, { ...q, aplicar: '1' }); toast('Planilha importada.'); aoImportar(); } catch (e) { toast(e.message, 'erro'); }
+            }, { icone: 'ok' })),
+        ].filter(Boolean));
+      } catch (e) { status.textContent = ''; toast(e.message, 'erro'); }
+    };
+    entrada.addEventListener('change', () => enviar(entrada.files[0]));
+    const zona = h('div', { class: 'imp-zona', tabindex: 0, role: 'button', 'aria-label': 'Escolher a planilha de treinamento',
+      onclick: () => entrada.click(), onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') entrada.click(); },
+      ondragover: (e) => { e.preventDefault(); zona.classList.add('sobre'); }, ondragleave: () => zona.classList.remove('sobre'),
+      ondrop: (e) => { e.preventDefault(); zona.classList.remove('sobre'); enviar(e.dataTransfer.files[0]); } },
+    icone('upload'), h('strong', {}, 'Importar a planilha RE.1005.04 - Treinamento Prático Operacional (.xlsx)'),
+    h('span', { class: 'muted pequeno' }, 'Lê a base de funcionários (aba APFO: só função, setor, admissão, situação, CNH, categoria, validade, celular e cidade), a ESCALA e os gestores. Reenviar atualiza a base sem duplicar.'), entrada);
+    cartao.replaceChildren(h('div', { class: 'card-topo' }, h('h2', {}, 'Carga da planilha')), zona,
+      h('label', { class: 'check' }, comRegistros, ' Importar também os treinamentos já lançados (aba Digitar), sem repetir matrícula, início e função'), status,
+      h('p', { class: 'muted pequeno' }, p.base?.n ? `Base carregada: ${fmt(p.base.n)} funcionários.` : 'Base ainda não carregada.'));
+  };
+  telaImportar();
+  return cartao;
+}
+
 async function parametros({ recarregarPagina }) {
   const p = await get('/treino/parametros');
   const cfg = p.config;
@@ -623,48 +673,7 @@ async function parametros({ recarregarPagina }) {
     ], confirmar: 'Salvar', aoSalvar: (v) => (x ? put(`/treino/signatarios/${x.id}`, v) : post('/treino/signatarios', v)),
   }).then((ok) => { if (ok) { toast('Assinatura salva.'); recarregarPagina(); } });
 
-  // Carga da planilha (base de funcionários, escala, gestores e, opcionalmente, os treinamentos da aba Digitar)
-  const cartao = h('div', { class: 'card' });
-  const telaImportar = () => {
-    const entrada = h('input', { type: 'file', accept: '.xlsx', class: 'oculto', 'aria-label': 'Escolher a planilha de treinamento' });
-    const comRegistros = h('input', { type: 'checkbox' });
-    const status = h('small', { class: 'muted' });
-    const enviar = async (arquivo) => {
-      if (!arquivo) return;
-      status.textContent = `Lendo ${arquivo.name}… (planilhas grandes podem levar alguns segundos)`;
-      try {
-        const q = { registros: comRegistros.checked ? '1' : '0' };
-        const r = await enviarArquivo('/treino/importar', arquivo, q);
-        const linha = (t, a, b, c) => h('tr', {}, h('td', {}, t), h('td', { class: 'num' }, fmt(a)), h('td', { class: 'num' }, fmt(b)), h('td', { class: 'num' }, c));
-        cartao.replaceChildren(...[
-          h('div', { class: 'card-topo' }, h('h2', {}, `Prévia: ${r.arquivo}`)),
-          h('div', { class: 'scroll' }, h('table', {},
-            h('thead', {}, h('tr', {}, ['Aba', 'Lidos', 'Novos', 'Observação'].map((t, i) => h('th', { class: i && i < 3 ? 'num' : '' }, t)))),
-            h('tbody', {},
-              linha('APFO (base de funcionários: CNH, contato, cidade)', r.base.lidos, r.base.criar, `${fmt(r.base.atualizar)} atualizados · ${fmt(r.base.com_escala)} com escala`),
-              linha('Gestores (da aba Digitar)', r.gestores.lidos, r.gestores.criar, 'os já cadastrados não mudam'),
-              r.registros ? linha('Digitar (treinamentos)', r.registros.lidos, r.registros.criar, `${fmt(r.registros.ja_existentes)} já existentes${r.registros.renumerar ? ` (${fmt(r.registros.renumerar)} com o Nº DOC corrigido para o da planilha)` : ''} · ${fmt(r.registros.erros)} com erro`) : null))),
-          r.registros?.erros ? h('details', { class: 'imp-motivo' }, h('summary', {}, `Linhas não importadas: ${r.registros.erros}`),
-            h('ul', {}, r.registros.exemplos_erros.map((e) => h('li', {}, `Linha ${e.linha}${e.matricula ? ` (mat. ${e.matricula})` : ''}: ${e.motivo}`)))) : null,
-          h('div', { class: 'linha-botoes' }, botao('Cancelar', telaImportar, { tom: 'sec' }),
-            botao('Importar', async () => {
-              try { await enviarArquivo('/treino/importar', arquivo, { ...q, aplicar: '1' }); toast('Planilha importada.'); recarregarPagina(); } catch (e) { toast(e.message, 'erro'); }
-            }, { icone: 'ok' })),
-        ].filter(Boolean));
-      } catch (e) { status.textContent = ''; toast(e.message, 'erro'); }
-    };
-    entrada.addEventListener('change', () => enviar(entrada.files[0]));
-    const zona = h('div', { class: 'imp-zona', tabindex: 0, role: 'button', 'aria-label': 'Escolher a planilha de treinamento',
-      onclick: () => entrada.click(), onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') entrada.click(); },
-      ondragover: (e) => { e.preventDefault(); zona.classList.add('sobre'); }, ondragleave: () => zona.classList.remove('sobre'),
-      ondrop: (e) => { e.preventDefault(); zona.classList.remove('sobre'); enviar(e.dataTransfer.files[0]); } },
-    icone('upload'), h('strong', {}, 'Importar a planilha RE.1005.04 - Treinamento Prático Operacional (.xlsx)'),
-    h('span', { class: 'muted pequeno' }, 'Lê a base de funcionários (aba APFO: só função, setor, admissão, situação, CNH, categoria, validade, celular e cidade), a ESCALA e os gestores. Reenviar atualiza a base sem duplicar.'), entrada);
-    cartao.replaceChildren(h('div', { class: 'card-topo' }, h('h2', {}, 'Carga da planilha')), zona,
-      h('label', { class: 'check' }, comRegistros, ' Importar também os treinamentos já lançados (aba Digitar), sem repetir matrícula, início e função'), status,
-      h('p', { class: 'muted pequeno' }, p.base?.n ? `Base carregada: ${fmt(p.base.n)} funcionários.` : 'Base ainda não carregada.'));
-  };
-  telaImportar();
+  const cartao = cartaoImportacao(p, { aoImportar: recarregarPagina });
 
   return [
     cabecalhoPagina({ migalhas: [...BASE, ['Parâmetros']], titulo: 'Parâmetros do treinamento prático', sub: 'Vigência, textos e assinaturas da C.I. do crachá, gestores responsáveis e carga da planilha' }),

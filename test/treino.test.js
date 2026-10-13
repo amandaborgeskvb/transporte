@@ -38,6 +38,8 @@ test('regras: vigência +3 meses, status, mês de vencimento, situação 2 e lei
     { status: '2025-08-07', mes_vencimento: 'AGO', funcao_para_treinamento: 'OPERADOR(IRRIGAÇÃO LOCALIZADA)', situacao2: 'TREINADO', vencido: false, dias_para_vencer: 0 });
   assert.equal(derivados({ vigencia_ate: '2025-08-06' }, '2025-08-05').situacao2, 'TREINANDO');
   assert.equal(lerData(45813), '2025-06-05');
+  assert.equal(lerData('26/082025'), '2025-08-26'); // barra faltando, como numa linha da planilha real
+  assert.equal(lerData('31/022025'), null);
   assert.equal(normMatricula('00123.0'), '123');
   const x = lerXlsx(planilha());
   const { base } = lerBase(x);

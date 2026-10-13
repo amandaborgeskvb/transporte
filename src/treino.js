@@ -56,6 +56,9 @@ function lerData(v) {
   if ((m = t.match(/^(\d{4})-(\d{2})-(\d{2})/))) return monta(+m[1], +m[2], +m[3]);
   if ((m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/))) return monta(+m[3], +m[2], +m[1]);
   if (/^\d{4,6}(\.\d+)?$/.test(t)) return iso(new Date(Date.UTC(1899, 11, 30) + Math.floor(Number(t)) * 86400000));
+  // digitada com a barra faltando ou trocada (ex.: 26/082025, 26-08-2025): dd mm aaaa
+  const dig = t.replace(/\D/g, '');
+  if (/[/.-]/.test(t) && /^\d{8}$/.test(dig)) return monta(+dig.slice(4), +dig.slice(2, 4), +dig.slice(0, 2));
   return null;
 }
 // Validade da CNH como aparece no formulário (dd/mm/aaaa)
