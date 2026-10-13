@@ -4,7 +4,7 @@ const { iniciar } = require('./setup');
 const { criarXlsx } = require('./xlsx-util');
 const { calcular, lerMes, lerNumero, periodoDe, grupoDaFuncao, classificarFuncao, sugerirColunas, lerValores, diasTrabalhados, letraDoDia } = require('../src/gratificacao');
 
-const CONFIG = { base_dias: 25, meses_media: 3, dia_corte: 16, palavras_operador: 'MOTORISTA, OPERADOR', desconto_auxiliar: 'bpp', desconto_operador: 'prod', desconto_redireciona: true, bpp_cartao: 'operador' };
+const CONFIG = { base_dias: 25, meses_media: 3, dia_corte: 16, palavras_operador: 'MOTORISTA, OPERADOR' };
 const PEN = [
   { grupo: 'operador', abrev: 'FF', descricao: 'FALTA INJUSTIFICADA', percentual: 0.05, desconta_dia: true },
   { grupo: 'operador', abrev: 'ADV', descricao: 'ADVERTÊNCIA', percentual: 0.05, desconta_dia: false },
@@ -74,13 +74,13 @@ test('cálculo: critério da rescisão define o que é pago; auxiliar usa a tabe
   assert.equal(sem.bpp.receber, 0);
   assert.equal(sem.prod.proporcional, 500);
   assert.equal(sem.desconto_pct, 0.5);
-  // demais funções descontam no BPP; como a demissão sem justa causa não paga BPP, o desconto vai para a produtividade
-  assert.deepEqual(sem.desconto_redirecionado.de, ['bpp']);
-  assert.deepEqual(sem.desconto_em, ['prod']);
-  assert.equal(sem.total, 250);
+  // demais funções descontam só do BPP; a demissão sem justa causa não paga BPP, então o desconto fica sem efeito (com aviso)
+  assert.deepEqual(sem.desconto_em, ['bpp']);
+  assert.equal(sem.prod.desconto, 0);
+  assert.equal(sem.total, 500);
   assert.ok(sem.avisos.some((a) => a.includes('2 mês')));
-  assert.ok(sem.avisos.some((a) => a.includes('foi aplicado sobre a produtividade')));
-  assert.deepEqual([sem.bpp_no_cartao, sem.cartao_gold, sem.folha], [false, 0, 250]);
+  assert.ok(sem.avisos.some((a) => a.includes('não há valor a descontar (BPP não é pago em DEMISSÃO S/ J. CAUSA)')));
+  assert.deepEqual([sem.bpp_no_cartao, sem.cartao_gold, sem.folha], [false, 0, 500]);
 
   const justa = calcular({
     config: CONFIG, criterio: { tipo_rescisao: 'DEMISSÃO C/ J. CAUSA', pagar_bpp: false, pagar_prod: false },
@@ -177,7 +177,7 @@ test('acesso: só administrador e financeiro', async () => {
   assert.equal(p.corpo.penalidades.filter((x) => x.grupo === 'operador' && x.abrev === 'DISP_MEC')[0].percentual, 0.1);
   const pen = (g, a) => p.corpo.penalidades.find((x) => x.grupo === g && x.abrev === a);
   assert.deepEqual([pen('auxiliar', 'SS').dias_desconto, pen('auxiliar', 'ADV').dias_desconto, pen('operador', 'NC').dias_desconto], [2, 0, 1]);
-  assert.deepEqual([p.corpo.config.desconto_auxiliar, p.corpo.config.desconto_operador, p.corpo.config.desconto_redireciona, p.corpo.config.bpp_cartao], ['bpp', 'prod', true, 'operador']);
+  assert.deepEqual(Object.keys(p.corpo.config).filter((k) => /^desconto_|bpp_cartao/.test(k)), []); // regra por grupo é fixa
 });
 
 test('valores mensais: importa o arquivo (prévia → aplicar) e reimportar não duplica', async () => {
@@ -254,10 +254,9 @@ test('apuração: operador (Ana) e auxiliar (Carlos) com os valores do arquivo e
   const dc = (await davi.get(`/api/gratificacao/rescisoes/${c}`)).corpo.calculo;
   assert.equal(dc.grupo, 'auxiliar');
   assert.equal(dc.desconto_pct, 0.5);
-  // auxiliar desconta no BPP; a rescisão sem justa causa não paga BPP, então o desconto vai para a produtividade
-  assert.deepEqual(dc.desconto_configurado, ['bpp']);
-  assert.deepEqual(dc.desconto_em, ['prod']);
-  assert.equal(dc.total, 250);
+  // auxiliar desconta só do BPP, que a rescisão sem justa causa não paga: a produtividade sai inteira
+  assert.deepEqual(dc.desconto_em, ['bpp']);
+  assert.equal(dc.total, 500);
   assert.deepEqual(da.desconto_em, ['prod']); // operador/motorista: descontam da produtividade
 
   const lista = (await davi.get('/api/gratificacao/rescisoes')).corpo;
@@ -274,12 +273,11 @@ test('parâmetros alteram o resultado (percentual e componentes sujeitos a desco
   let r = (await davi.get(`/api/gratificacao/rescisoes/${ids.apuracaoAna}`)).corpo.calculo;
   assert.equal(r.bpp.desconto, 0);
   assert.equal(r.prod.desconto, 68.4); // 456 × 15%
-  // motoristas e operadores descontando no BPP e na produtividade (só o campo enviado muda)
-  assert.equal((await davi.put('/api/gratificacao/config', { desconto_operador: 'bpp_prod' })).status, 200);
+  // a regra do grupo não é configurável: tentar mudar não altera nada; campos ausentes mantêm o valor
+  assert.equal((await davi.put('/api/gratificacao/config', { desconto_operador: 'bpp', palavras_operador: 'MOTORISTA, OPERADOR' })).status, 200);
   r = (await davi.get(`/api/gratificacao/rescisoes/${ids.apuracaoAna}`)).corpo.calculo;
-  assert.deepEqual([r.bpp.desconto, r.prod.desconto], [79.8, 68.4]);
+  assert.deepEqual([r.bpp.desconto, r.prod.desconto], [0, 68.4]);
   assert.equal((await davi.get('/api/gratificacao/parametros')).corpo.config.base_dias, 25);
-  assert.equal((await davi.put('/api/gratificacao/config', { desconto_operador: 'zelo' })).status, 400);
   assert.equal((await davi.put('/api/gratificacao/config', { ...p.config, base_dias: 40 })).status, 400);
   await davi.put('/api/gratificacao/config', p.config);
   await davi.put(`/api/gratificacao/penalidades/${ff.id}`, { ...ff, percentual: 0.05 });
@@ -293,8 +291,8 @@ test('pagar trava a apuração; relatório com totais e CSV', async () => {
   assert.equal(rel.itens.length, 1);
   assert.deepEqual([rel.totais.total, rel.totais.folha, rel.totais.cartao_gold, rel.totais.bpp], [942.4, 410.4, 532, 0]);
   const todos = (await davi.get('/api/gratificacao/relatorio')).corpo;
-  assert.equal(todos.totais.total, 1192.4); // 942,40 + 250,00
-  assert.equal(todos.totais.folha, 660.4); // sem o BPP da motorista (Cartão Gold)
+  assert.equal(todos.totais.total, 1442.4); // 942,40 + 500,00
+  assert.equal(todos.totais.folha, 910.4); // sem o BPP da motorista (Cartão Gold)
   const csv = await davi.get('/api/gratificacao/relatorio.csv');
   assert.equal(csv.status, 200);
   assert.match(csv.corpo, /Departamento;Matrícula;Nome/);
@@ -361,7 +359,7 @@ test('prévia do período: rescisão no dia 10 conta do dia 16 do mês anterior 
 
 test('desconto por grupo: auxiliar desconta do BPP, operador da produtividade (Parâmetros)', () => {
   const base = {
-    config: { ...CONFIG, desconto_auxiliar: 'bpp', desconto_operador: 'prod' },
+    config: CONFIG,
     criterio: { tipo_rescisao: 'PEDIDO DE DEMISSÃO', pagar_bpp: true, pagar_prod: true },
     rescisao: { dt_rescisao: '2026-04-20', dias_trabalhados: 25 },
     valores: [{ mes: '2026-04-01', bpp: 400, prod: 600 }],
@@ -373,16 +371,16 @@ test('desconto por grupo: auxiliar desconta do BPP, operador da produtividade (P
   const op = calcular({ ...base, funcao: 'MOTORISTA' }); // ADV operador = 5%
   assert.deepEqual([op.bpp.desconto, op.prod.desconto], [0, 30]);
   assert.equal(op.criterio_texto, 'PAGAR BPP E PRODUTIV. PROPORCIONAIS');
-  const ambos = calcular({ ...base, funcao: 'AUXILIAR', config: { ...base.config, desconto_auxiliar: 'bpp_prod' } });
-  assert.deepEqual([ambos.bpp.desconto, ambos.prod.desconto], [200, 300]);
+  // relatório: BPP do auxiliar sai no relatório; o do motorista vai para o Cartão Gold
+  assert.deepEqual([aux.bpp_no_cartao, aux.folha, aux.cartao_gold], [false, 800, 0]);
+  assert.deepEqual([op.bpp_no_cartao, op.folha, op.cartao_gold], [true, 570, 400]);
 });
 
 test('parâmetros: grupo define onde desconta; assinaturas do demonstrativo', async () => {
   const p = (await davi.get('/api/gratificacao/parametros')).corpo;
-  assert.deepEqual([p.config.desconto_auxiliar, p.config.desconto_operador], ['bpp', 'prod']);
   assert.deepEqual(p.signatarios.map((x) => x.cargo), ['COORDENADOR AGRÍCOLA', 'GERENTE TRANSPORTE E MECANIZAÇÃO', 'SUPERINTENDENTE AGRÍCOLA', 'GERENTE EXECUTIVO']);
   assert.deepEqual(p.signatarios.map((x) => x.nome), ['29117 - AURENIO DE OLIVEIRA LIMA', '34939 - JOAO EDUARDO DOS SANTOS', 'CLOVES RODRIGUES DE OLIVEIRA JUNIOR', 'LEONARDO DIAS ALMEIDA']);
-  assert.equal((await davi.put('/api/gratificacao/config', { ...p.config, desconto_auxiliar: 'xx' })).status, 400);
+  assert.equal((await davi.put('/api/gratificacao/config', { ...p.config, dia_corte: 'xx' })).status, 400);
   const s1 = p.signatarios[0];
   const r = await davi.put(`/api/gratificacao/signatarios/${s1.id}`, { ...s1, nome: 'Fulano de Tal' });
   assert.equal(r.corpo.nome, 'FULANO DE TAL');
@@ -445,13 +443,10 @@ test('suspensão: desconta no componente do grupo; sem valor nele, vai para o ou
   const a = calcular({ ...base, criterio: pedido, funcao: 'AUXILIAR AGRICOLA' });
   assert.equal(a.dias_pagar, 20);
   assert.deepEqual([a.bpp.proporcional, a.bpp.desconto, a.bpp.receber, a.prod.receber], [400, 400, 0, 600]);
-  // auxiliar, sem justa causa (BPP não pago): os 100% vão para a produtividade
+  // auxiliar, sem justa causa (BPP não pago): o desconto é só no BPP, então fica sem efeito e o aviso explica o motivo
   const b = calcular({ ...base, criterio: semJusta, funcao: 'AUXILIAR AGRICOLA' });
-  assert.deepEqual([b.prod.proporcional, b.prod.desconto, b.total], [600, 600, 0]);
-  // com o redirecionamento desligado, o desconto fica sem efeito e o aviso explica o motivo
-  const c = calcular({ ...base, criterio: semJusta, funcao: 'AUXILIAR AGRICOLA', config: { ...CONFIG, desconto_redireciona: false } });
-  assert.equal(c.total, 600);
-  assert.ok(c.avisos.some((x) => x.includes('não há valor a descontar') && x.includes('BPP não é pago em DEMISSÃO S/ J. CAUSA')));
+  assert.deepEqual([b.prod.proporcional, b.prod.desconto, b.total], [600, 0, 600]);
+  assert.ok(b.avisos.some((x) => x.includes('não há valor a descontar') && x.includes('BPP não é pago em DEMISSÃO S/ J. CAUSA')));
   // operador: SS 10% sobre a produtividade
   const d = calcular({ ...base, criterio: semJusta, funcao: 'OPERADOR MAQ. AGRICOLAS II' });
   assert.deepEqual([d.prod.desconto, d.total], [60, 540]);
@@ -464,10 +459,9 @@ test('suspensão: desconta no componente do grupo; sem valor nele, vai para o ou
   const f = calcular({ ...base, criterio: pedido, funcao: 'OP. COLHEDORA', valores: [{ mes: '2026-09-01', bpp: null, prod: 750 }] });
   assert.equal(f.grupo, 'auxiliar');
   assert.ok(f.avisos.some((x) => x.includes('Motoristas e operadores')));
-  // BPP no Cartão Gold para todos / para ninguém
-  assert.equal(calcular({ ...base, criterio: pedido, funcao: 'AUXILIAR', config: { ...CONFIG, bpp_cartao: 'todos' } }).cartao_gold, 0); // BPP zerado pela SS
-  const g = calcular({ ...base, criterio: pedido, funcao: 'MOTORISTA', config: { ...CONFIG, bpp_cartao: 'nenhum' } });
-  assert.deepEqual([g.cartao_gold, g.folha], [0, g.total]);
+  // motorista: SS desconta da produtividade e o BPP inteiro vai para o Cartão Gold
+  const g = calcular({ ...base, criterio: pedido, funcao: 'MOTORISTA' });
+  assert.deepEqual([g.bpp.desconto, g.prod.desconto, g.cartao_gold, g.folha], [0, 60, 400, 540]);
 });
 
 test('funções de motoristas e operadores: lista do cadastro e classificação manual muda o grupo da apuração', async () => {

@@ -10,7 +10,7 @@ const {
 const { exigirPerfil, ADM, FIN } = require('../workflow');
 const { abrirPlanilha, MAX_BYTES } = require('../planilha');
 const {
-  calcular, sugerirColunas, lerValores, lerOcorrencias, normMatricula, semAcento, CAMPOS_VALORES, CAMPOS_OCORRENCIAS, ESCALAS, ALVOS_DESCONTO,
+  calcular, sugerirColunas, lerValores, lerOcorrencias, normMatricula, semAcento, CAMPOS_VALORES, CAMPOS_OCORRENCIAS, ESCALAS,
   classificarFuncao, normFuncao,
 } = require('../gratificacao');
 
@@ -30,7 +30,6 @@ function obterPendente(chave) {
 const dataLocal = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : d);
 const numOuNulo = (v) => (v === null || v === undefined ? null : Number(v));
 const mesmoValor = (a, b) => (a === null || a === undefined ? b === null : b !== null && Number(a) === b);
-const MODOS_CARTAO = ['operador', 'todos', 'nenhum'];
 const TURNOS = ['A', 'B', 'C'];
 
 function criarGratificacao({ pool }) {
@@ -58,15 +57,10 @@ function criarGratificacao({ pool }) {
     const novo = {
       base_dias: num(b.base_dias, 1, 31, 'Base de dias'), meses_media: num(b.meses_media, 1, 12, 'Meses da média'), dia_corte: num(b.dia_corte, 1, 28, 'Dia de corte'),
       palavras_operador: texto(b.palavras_operador, 200),
-      desconto_auxiliar: opcaoDe(b.desconto_auxiliar ?? 'bpp', Object.keys(ALVOS_DESCONTO), 'Desconto das demais funções'),
-      desconto_operador: opcaoDe(b.desconto_operador ?? 'prod', Object.keys(ALVOS_DESCONTO), 'Desconto de motoristas e operadores'),
-      desconto_redireciona: bool(b.desconto_redireciona),
-      bpp_cartao: opcaoDe(b.bpp_cartao ?? 'operador', MODOS_CARTAO, 'BPP no Cartão Gold'),
     };
     await pool.query(
-      `UPDATE grat_config SET base_dias=$1, meses_media=$2, dia_corte=$3, palavras_operador=$4, desconto_auxiliar=$5, desconto_operador=$6,
-         desconto_redireciona=$7, bpp_cartao=$8 WHERE id = 1`,
-      [novo.base_dias, novo.meses_media, novo.dia_corte, novo.palavras_operador, novo.desconto_auxiliar, novo.desconto_operador, novo.desconto_redireciona, novo.bpp_cartao]);
+      'UPDATE grat_config SET base_dias=$1, meses_media=$2, dia_corte=$3, palavras_operador=$4 WHERE id = 1',
+      [novo.base_dias, novo.meses_media, novo.dia_corte, novo.palavras_operador]);
     await auditar(pool, req.usuario, 'editar', 'grat_config', 1, diff(antes, novo, Object.keys(novo)));
     res.json(await lerConfig(pool));
   }));

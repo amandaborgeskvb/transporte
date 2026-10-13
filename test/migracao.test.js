@@ -97,20 +97,17 @@ test('gratificação: instalação anterior ganha dias por ocorrência, valores 
   assert.equal((await q('SELECT descontar_bpp FROM grat_config')).rows[0].descontar_bpp, true);
 });
 
-test('gratificação: sem Zelo, as opções de desconto antigas viram o equivalente; Cartão Gold e funções do grupo', async () => {
+test('gratificação: regra por grupo fixa (opções antigas saem do banco); turno e funções do grupo', async () => {
   const { migrate } = require('../src/db');
   const q = (sql, p) => t.pool.query(sql, p);
-  // estado da versão anterior: opções com Zelo, sem as colunas novas e sem a tabela de funções
-  await q('ALTER TABLE grat_config DROP CONSTRAINT grat_config_desconto_check');
-  await q('ALTER TABLE grat_config DROP COLUMN desconto_redireciona, DROP COLUMN bpp_cartao');
+  // estado de versões anteriores: opções de desconto configuráveis e sem a tabela de funções
+  await q(`ALTER TABLE grat_config ADD COLUMN desconto_auxiliar TEXT NOT NULL DEFAULT 'todos', ADD COLUMN desconto_operador TEXT, ADD COLUMN bpp_cartao TEXT`);
   await q('DROP TABLE grat_funcoes');
-  await q(`UPDATE grat_config SET desconto_auxiliar = 'todos', desconto_operador = 'zelo'`);
   await migrate(t.pool);
-  const cfg = (await q('SELECT desconto_auxiliar, desconto_operador, desconto_redireciona, bpp_cartao FROM grat_config')).rows[0];
-  assert.deepEqual(cfg, { desconto_auxiliar: 'bpp_prod', desconto_operador: 'prod', desconto_redireciona: true, bpp_cartao: 'operador' });
-  await assert.rejects(q(`UPDATE grat_config SET desconto_auxiliar = 'zelo'`));
-  await assert.rejects(q(`UPDATE grat_config SET bpp_cartao = 'x'`));
+  const cols = (await q(`SELECT column_name FROM information_schema.columns WHERE table_name = 'grat_config'`)).rows.map((r) => r.column_name);
+  assert.deepEqual(cols.filter((c) => /^desconto_(auxiliar|operador|redireciona)$|^bpp_cartao$/.test(c)), []);
   await q(`INSERT INTO grat_funcoes (funcao, grupo) VALUES ('OP. COLHEDORA', 'operador')`);
+  assert.equal((await q(`SELECT count(*)::int AS n FROM pg_constraint WHERE conname = 'grat_rescisoes_turno_check'`)).rows[0].n, 1); // turno A, B ou C
   await migrate(t.pool); // idempotente
   assert.equal((await q('SELECT count(*)::int AS n FROM grat_funcoes')).rows[0].n, 1);
 });

@@ -81,12 +81,11 @@ function periodoDe(dtRescisao, diaCorte) {
   return { inicio: iso(inicio), fim: dataIso(dtRescisao) };
 }
 
-// Componentes que recebem o desconto das ocorrências, conforme a opção do grupo de função
-const ALVOS_DESCONTO = { bpp: ['bpp'], prod: ['prod'], bpp_prod: ['bpp', 'prod'], nenhum: [] };
-const PADRAO_ALVO = { auxiliar: 'bpp', operador: 'prod' };
+// Regra por grupo de função (fixa):
+//  - demais funções (auxiliares…): as ocorrências descontam do BPP, e o BPP sai no relatório;
+//  - motoristas e operadores: as ocorrências descontam da produtividade, e o BPP vai para o Cartão Gold (não sai no relatório).
+const REGRA_GRUPO = { auxiliar: { desconto: 'bpp', bppNoCartao: false }, operador: { desconto: 'prod', bppNoCartao: true } };
 const NOME_COMP = { bpp: 'BPP', prod: 'produtividade' };
-const ARTIGO = { bpp: 'o BPP', prod: 'a produtividade' };
-const nomes = (lista) => lista.map((k) => ARTIGO[k]).join(' e ');
 
 // Texto do critério da rescisão, como na coluna "Critérios da Rescisão" da planilha
 function textoCriterio(c) {
@@ -125,7 +124,7 @@ function diasTrabalhados({ inicio, fim, admissao, escala }) {
 
 // ---------- Cálculo ----------
 // entrada: {
-//   config: { base_dias, meses_media, dia_corte, palavras_operador, desconto_auxiliar, desconto_operador, desconto_redireciona, bpp_cartao },
+//   config: { base_dias, meses_media, dia_corte, palavras_operador },
 //   criterio: { tipo_rescisao, pagar_bpp, pagar_prod },
 //   rescisao: { dt_rescisao, dias_trabalhados (opcional: informado), escala (A–F, DOM, 5X2), grupo (opcional) },
 //   funcao, admissao, valores: [{ mes, bpp, prod }] (null = célula vazia), ocorrencias: [{ data, abrev }],
@@ -183,29 +182,19 @@ function calcular({ config, criterio, rescisao, funcao, admissao, valores, ocorr
   const diasPagar = Math.max(diasTrab - diasDescontados, 0);
   const fator = config.base_dias ? diasPagar / config.base_dias : 0;
 
-  // 4. Proporcional e desconto. Onde as ocorrências descontam: por grupo (demais funções → BPP; motoristas e
-  // operadores → produtividade). Se o componente do desconto não tem valor nesta rescisão (não é pago pelo tipo de
-  // rescisão ou está sem média), o desconto vai para o outro componente pago — salvo se desligado em Parâmetros.
+  // 4. Proporcional e desconto: as ocorrências descontam só do componente do grupo (demais funções → BPP;
+  //    motoristas e operadores → produtividade). Sem valor nesse componente, o desconto não tem efeito (e avisa).
+  const regra = REGRA_GRUPO[grupo];
   const pagos = { bpp: !!criterio.pagar_bpp, prod: !!criterio.pagar_prod };
   const proporcional = { bpp: pagos.bpp ? round2(medias.bpp * fator) : 0, prod: pagos.prod ? round2(medias.prod * fator) : 0 };
-  const alvoGrupo = grupo === 'operador' ? config.desconto_operador : config.desconto_auxiliar;
-  const alvoConfig = ALVOS_DESCONTO[alvoGrupo] || ALVOS_DESCONTO[PADRAO_ALVO[grupo]];
-  let alvo = alvoConfig;
-  let redirecionado = null;
+  const alvo = regra.desconto;
   const avisos = [];
-  if (descontoPct > 0 && alvo.length && !alvo.some((k) => proporcional[k] > 0)) {
-    const motivo = alvo.map((k) => (!pagos[k] ? `${NOME_COMP[k]} não é pago em ${criterio.tipo_rescisao || 'neste tipo de rescisão'}` : `${NOME_COMP[k]} sem valor na média`)).join('; ');
-    const outros = ['bpp', 'prod'].filter((k) => !alvo.includes(k) && proporcional[k] > 0);
-    if (config.desconto_redireciona !== false && outros.length) {
-      redirecionado = { de: alvo, para: outros, motivo };
-      alvo = outros;
-      avisos.push(`O desconto das ocorrências (${Math.round(descontoPct * 10000) / 100}%) seria sobre ${nomes(redirecionado.de)}, mas ${motivo}: foi aplicado sobre ${nomes(outros)}.`);
-    } else if (doPeriodo.length) {
-      avisos.push(`As ocorrências somam ${Math.round(descontoPct * 10000) / 100}% de desconto, mas não há valor a descontar (${motivo}).`);
-    }
+  if (descontoPct > 0 && !(proporcional[alvo] > 0)) {
+    const motivo = !pagos[alvo] ? `${NOME_COMP[alvo]} não é pago em ${criterio.tipo_rescisao || 'neste tipo de rescisão'}` : `${NOME_COMP[alvo]} sem valor na média`;
+    avisos.push(`As ocorrências somam ${Math.round(descontoPct * 10000) / 100}% de desconto sobre ${grupo === 'operador' ? 'a produtividade' : 'o BPP'}, mas não há valor a descontar (${motivo}).`);
   }
   const componente = (chave) => {
-    const desconto = alvo.includes(chave) ? round2(proporcional[chave] * descontoPct) : 0;
+    const desconto = chave === alvo ? round2(proporcional[chave] * descontoPct) : 0;
     return { media: medias[chave], paga: pagos[chave], proporcional: proporcional[chave], desconto, receber: round2(proporcional[chave] - desconto) };
   };
   const bpp = componente('bpp');
@@ -213,8 +202,7 @@ function calcular({ config, criterio, rescisao, funcao, admissao, valores, ocorr
 
   // 5. Forma de pagamento: o BPP de motoristas e operadores vai para o depósito do Cartão Gold (aba LISTA BPP) e não
   //    aparece no relatório; a gratificação em folha é o restante.
-  const modoCartao = config.bpp_cartao || 'operador';
-  const bppNoCartao = modoCartao === 'todos' || (modoCartao === 'operador' && grupo === 'operador');
+  const bppNoCartao = regra.bppNoCartao;
   const cartaoGold = bppNoCartao ? bpp.receber : 0;
 
   if (!meses.length) avisos.push('Sem valores mensais (BPP/produtividade) até o mês da rescisão.');
@@ -233,7 +221,7 @@ function calcular({ config, criterio, rescisao, funcao, admissao, valores, ocorr
 
   return {
     grupo, grupo_origem: grupoOrigem, periodo, criterio: criterio.tipo_rescisao, criterio_texto: textoCriterio(criterio),
-    desconto_em: descontoPct > 0 ? alvo.filter((k) => proporcional[k] > 0) : [...alvoConfig], desconto_configurado: [...alvoConfig], desconto_redirecionado: redirecionado,
+    desconto_em: [alvo],
     meses: meses.map((v) => v.mes), medias,
     ocorrencias: doPeriodo, ocorrencias_fora: foraDoPeriodo, desconto_pct: descontoPct, dias_descontados: diasDescontados,
     escala: escala || null, dias_informados: informado,
@@ -353,6 +341,6 @@ function lerOcorrencias(dados, mapa, primeiraLinha, tipos) {
 }
 
 module.exports = {
-  lerData, lerOcorrencias, CAMPOS_OCORRENCIAS, ALVOS_DESCONTO, textoCriterio, classificarFuncao, normFuncao,
+  lerData, lerOcorrencias, CAMPOS_OCORRENCIAS, REGRA_GRUPO, textoCriterio, classificarFuncao, normFuncao,
   lerMes, lerNumero, grupoDaFuncao, periodoDe, calcular, diasTrabalhados, letraDoDia, ESCALAS, sugerirColunas, lerValores, normMatricula, semAcento, CAMPOS_VALORES, MESES,
 };
