@@ -104,6 +104,14 @@ test('importação da planilha: prévia, aplicação sem repetir e números de C
   const de2 = await importar(davi, 'registros=1&aplicar=1');
   assert.equal(de2.corpo.registros.criar, 0);
   assert.equal(de2.corpo.registros.renumerar, 1);
+  assert.equal(de2.corpo.registros.atualizar, 0); // nada mudou na planilha
+  // alterado no sistema: reimportar traz de volta os dados da planilha (campos vazios na planilha não apagam)
+  await t.pool.query("UPDATE trein_registros SET situacao_funcao = 'RENOVADO', gestor_nome = 'Outro', cursos = 'NR-12' WHERE matricula = '7001'");
+  const prev = await importar(davi, 'registros=1');
+  assert.equal(prev.corpo.registros.atualizar, 1);
+  await importar(davi, 'registros=1&aplicar=1');
+  const vol = (await t.pool.query("SELECT situacao_funcao, gestor_nome, cursos FROM trein_registros WHERE matricula = '7001'")).rows[0];
+  assert.deepEqual(vol, { situacao_funcao: 'CLASSIFICADO', gestor_nome: 'Gestor Teste', cursos: 'NR-12' });
   assert.equal(de2.corpo.base.atualizar, 3);
 
   const { itens } = (await davi.get('/api/treino/registros')).corpo;

@@ -420,7 +420,7 @@ function criarTreino({ pool }) {
       const existBase = new Set((await db.query('SELECT matricula FROM trein_base')).rows.map((r) => r.matricula));
       const existGest = new Set((await db.query('SELECT matricula FROM trein_gestores')).rows.map((r) => r.matricula));
       const chave = (r) => `${r.matricula}|${r.vigencia_de}|${semAcento(r.funcao_treinamento)}`;
-      const regsBanco = (await db.query('SELECT id, matricula, vigencia_de, funcao_treinamento, doc_numero, doc_ano, origem FROM trein_registros')).rows;
+      const regsBanco = (await db.query('SELECT * FROM trein_registros')).rows;
       const porChave = new Map(regsBanco.map((r) => [chave({ ...r, vigencia_de: dataLocal(r.vigencia_de) }), r]));
       const existReg = new Set(porChave.keys());
       // Nº DOC: a planilha manda. Cada número (Nº DOC ou Seq./ano) fica com a primeira linha da planilha que o tem; quem já está
@@ -442,6 +442,25 @@ function criarTreino({ pool }) {
         if (meu) return e.doc_numero !== meu.numero || e.doc_ano !== meu.ano; // vai receber o número da planilha
         return e.doc_numero && donoDoNumero.has(`${e.doc_ano}|${e.doc_numero}`); // ocupa o número de outra linha da planilha
       });
+      // Treinamentos que já estão no sistema: os dados vêm da planilha (cada campo preenchido nela substitui o do sistema)
+      const CAMPOS_PLANILHA = CAMPOS.filter((c) => !['matricula', 'vigencia_de'].includes(c));
+      const comparavel = (v) => (v instanceof Date ? dataLocal(v) : v ?? '');
+      const atualizar = [];
+      if (comRegistros) {
+        const feitos = new Set();
+        for (const r of lidos.registros) {
+          const e = porChave.get(chave(r));
+          if (!e || feitos.has(e.id)) continue;
+          feitos.add(e.id);
+          const campos = {};
+          for (const c of CAMPOS_PLANILHA) {
+            const v = r[c];
+            if (v === null || v === undefined || v === '') continue; // vazio na planilha: mantém o do sistema
+            if (String(comparavel(e[c])) !== String(v)) campos[c] = v;
+          }
+          if (Object.keys(campos).length) atualizar.push({ id: e.id, campos });
+        }
+      }
       const vistos = new Set();
       const novos = comRegistros ? lidos.registros.filter((r) => { const k = chave(r); if (existReg.has(k) || vistos.has(k)) return false; vistos.add(k); return true; }) : [];
       const r = {
@@ -449,7 +468,7 @@ function criarTreino({ pool }) {
         base: { lidos: base.length, criar: base.filter((b) => !existBase.has(b.matricula)).length, atualizar: base.filter((b) => existBase.has(b.matricula)).length, com_escala: base.filter((b) => b.escala).length },
         gestores: { lidos: gestores.size, criar: [...gestores.keys()].filter((m) => !existGest.has(m)).length },
         registros: comRegistros ? {
-          lidos: lidos.registros.length, criar: novos.length, ja_existentes: lidos.registros.length - novos.length, renumerar: liberar.length, erros: lidos.erros.length, exemplos_erros: lidos.erros.slice(0, 10),
+          lidos: lidos.registros.length, criar: novos.length, ja_existentes: lidos.registros.length - novos.length, renumerar: liberar.length, atualizar: atualizar.length, erros: lidos.erros.length, exemplos_erros: lidos.erros.slice(0, 10),
         } : null,
       };
       if (!aplicar) return r;
@@ -480,12 +499,16 @@ function criarTreino({ pool }) {
             [...cols.map((c, i) => l.map((x) => x[c] ?? (tipos[i] === 'text' && !['situacao', 'situacao_funcao'].includes(c) ? '' : null))), arquivo.slice(0, 150), req.usuario.id]);
         }
       }
+      for (const { id, campos } of atualizar) {
+        const cols = Object.keys(campos);
+        await db.query(`UPDATE trein_registros SET ${cols.map((c, i) => `${c} = $${i + 1}`).join(', ')}, atualizado_em = now() WHERE id = $${cols.length + 1}`, [...Object.values(campos), id]);
+      }
       for (const e of liberar) {
         const n = numeroDe.get(chave({ ...e, vigencia_de: dataLocal(e.vigencia_de) }));
         if (n) await db.query('UPDATE trein_registros SET doc_numero = $1, doc_ano = $2 WHERE id = $3', [n.numero, n.ano, e.id]);
       }
       await db.query(SQL_NUMERAR_PENDENTES); // linhas sem Seq./ano (ou com número repetido) recebem os próximos números
-      await auditar(db, req.usuario, 'importar', 'trein_importacao', null, { arquivo, base: base.length, gestores: gestores.size, registros: novos.length });
+      await auditar(db, req.usuario, 'importar', 'trein_importacao', null, { arquivo, base: base.length, gestores: gestores.size, registros: novos.length, atualizados: atualizar.length });
       return { ...r, aplicado: true };
     });
     res.status(aplicar ? 201 : 200).json(resumo);

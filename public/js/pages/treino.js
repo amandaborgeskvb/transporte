@@ -724,7 +724,7 @@ function cartaoImportacao(p, { aoImportar, comTreinamentos = false }) {
             h('tbody', {},
               linha('APFO (base de funcionários: CNH, contato, cidade)', r.base.lidos, r.base.criar, `${fmt(r.base.atualizar)} atualizados · ${fmt(r.base.com_escala)} com escala`),
               linha('Gestores (da aba Digitar)', r.gestores.lidos, r.gestores.criar, 'os já cadastrados não mudam'),
-              r.registros ? linha('Digitar (treinamentos)', r.registros.lidos, r.registros.criar, `${fmt(r.registros.ja_existentes)} já existentes${r.registros.renumerar ? ` (${fmt(r.registros.renumerar)} com o Nº DOC corrigido para o da planilha)` : ''} · ${fmt(r.registros.erros)} com erro`) : null))),
+              r.registros ? linha('Digitar (treinamentos)', r.registros.lidos, r.registros.criar, `${fmt(r.registros.ja_existentes)} já existentes · ${fmt(r.registros.atualizar)} atualizados com os dados da planilha${r.registros.renumerar ? ` · ${fmt(r.registros.renumerar)} com o Nº DOC corrigido` : ''} · ${fmt(r.registros.erros)} com erro`) : null))),
           r.registros?.erros ? h('details', { class: 'imp-motivo' }, h('summary', {}, `Linhas não importadas: ${r.registros.erros}`),
             h('ul', {}, r.registros.exemplos_erros.map((e) => h('li', {}, `Linha ${e.linha}${e.matricula ? ` (mat. ${e.matricula})` : ''}: ${e.motivo}`)))) : null,
           h('div', { class: 'linha-botoes' }, botao('Cancelar', telaImportar, { tom: 'sec' }),
@@ -742,7 +742,7 @@ function cartaoImportacao(p, { aoImportar, comTreinamentos = false }) {
     icone('upload'), h('strong', {}, 'Importar a planilha RE.1005.04 - Treinamento Prático Operacional (.xlsx)'),
     h('span', { class: 'muted pequeno' }, 'Lê a base de funcionários (aba APFO: só função, setor, admissão, situação, CNH, categoria, validade, celular e cidade), a ESCALA e os gestores. Reenviar atualiza a base sem duplicar.'), entrada);
     cartao.replaceChildren(h('div', { class: 'card-topo' }, h('h2', {}, 'Carga da planilha')), zona,
-      h('label', { class: 'check' }, comRegistros, ' Importar também os treinamentos já lançados (aba Digitar), sem repetir matrícula, início e função'), status,
+      h('label', { class: 'check' }, comRegistros, ' Importar também os treinamentos (aba Digitar): os novos entram e os que já existem (mesma matrícula, início e função) são atualizados com os dados da planilha'), status,
       h('p', { class: 'muted pequeno' }, p.base?.n ? `Base carregada: ${fmt(p.base.n)} funcionários.` : 'Base ainda não carregada.'));
   };
   telaImportar();
