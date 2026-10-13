@@ -160,6 +160,15 @@ test('relatório: por mês e ano, classificados ou não', async () => {
   assert.deepEqual([fim.meses[5].total, fim.meses[8].classificado], [0, 1]);
   const g = (await davi.get('/api/treino/relatorio?ano=2025&gestor=9001')).corpo;
   assert.deepEqual([g.resumo.total, g.gestores[0].nome], [1, 'Gestor Teste']);
+
+  // PDF dos estados (agrupado e com o quadro por mês)
+  assert.equal((await ana.req('GET', '/api/treino/situacao.pdf')).status, 403);
+  for (const q of ['agrupar=situacao', 'agrupar=situacao_funcao&ano=2025&por_mes=1', 'agrupar=colab&gestor=9001', 'agrupar=situacao2&ano=1999']) {
+    const pdf = await davi.req('GET', `/api/treino/situacao.pdf?${q}`);
+    assert.equal(pdf.status, 200, q);
+    assert.match(pdf.headers.get('content-type'), /application\/pdf/);
+    assert.match(String(pdf.corpo).slice(0, 5), /^%PDF-/);
+  }
 });
 
 test('lançamento: a matrícula puxa os dados, vigência automática, gestor, Nº DOC e filtros', async () => {

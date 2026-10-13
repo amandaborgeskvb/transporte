@@ -11,6 +11,7 @@ const {
 
 const CODIGO_RE = 'RE. 0940.02D';
 const { SQL_NUMERAR_TREINO: SQL_NUMERAR_PENDENTES } = require('../schema');
+const { gerarPdfSituacao } = require('../treinoPdf');
 const bool = (v) => v === true || v === 'true' || v === 1 || v === '1';
 const triBool = (v) => (v === true || v === 'true' || v === 'sim' ? true : v === false || v === 'false' || v === 'nao' ? false : null);
 const hoje = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
@@ -206,6 +207,9 @@ function criarTreino({ pool }) {
     if (['ATIVO', 'AFASTADO', 'DEMITIDO'].includes(q.colab)) add(`COALESCE(NULLIF(upper(f.situacao), ''), NULLIF(b.situacao, ''), r.situacao_colab) = $?`, q.colab);
     if (q.ids && /^\d+(,\d+)*$/.test(q.ids)) add('r.id = ANY($?)', q.ids.split(',').map(Number));
     if (/^\d{4}$/.test(q.doc_ano || '')) add('r.doc_ano = $?', Number(q.doc_ano));
+    if (/^\d{4}$/.test(q.ano_fim || '')) add('extract(year FROM r.vigencia_ate) = $?', Number(q.ano_fim));
+    if (q.funcao) add('r.funcao_treinamento = $?', String(q.funcao).slice(0, 120));
+    if (q.setor) add('r.setor_nova = $?', String(q.setor).slice(0, 120));
     return { where: cond.join(' AND '), params };
   }
 
@@ -291,6 +295,33 @@ function criarTreino({ pool }) {
         br(r.status), r.mes_vencimento, r.funcao_para_treinamento, r.remetente, r.gestor_matricula, r.gestor_nome, r.gestor_funcao, r.contato, r.situacao2, br(r.data_cracha),
         r.numero_doc, r.funcao, r.situacao_funcao || '', r.escala, `${r.matricula} - ${r.nome}`, r.cidade, r.situacao || '']),
     ]);
+  }));
+
+  // PDF dos estados dos treinamentos (mesmos filtros da lista). agrupar=situacao|situacao_funcao|situacao2|colab;
+  // por_mes=1 (com ano/ano_fim) inclui o quadro mês a mês do relatório
+  router.get('/treino/situacao.pdf', wrap(async (req, res) => {
+    const q = req.query;
+    const { where, params } = filtros(q);
+    const { rows } = await pool.query(`${SELECT} WHERE ${where} ORDER BY r.doc_ano NULLS LAST, r.doc_numero NULLS LAST, r.id LIMIT 5000`, params);
+    const itens = rows.map(formatar);
+    const desc = [];
+    if (q.q) desc.push(`busca "${String(q.q).slice(0, 40)}"`);
+    if (/^\d{4}$/.test(q.ano || '')) desc.push(`início da vigência em ${q.ano}`);
+    if (/^\d{4}$/.test(q.ano_fim || '')) desc.push(`fim da vigência em ${q.ano_fim}`);
+    if (/^\d{4}$/.test(q.doc_ano || '')) desc.push(`Nº DOC de ${q.doc_ano}`);
+    for (const [k, t] of [['situacao', 'situação'], ['situacao_funcao', 'situação da função'], ['situacao2', 'situação 2'], ['mes', 'vencimento em'], ['colab', 'colaborador'], ['funcao', 'função'], ['setor', 'setor']]) {
+      if (q[k]) desc.push(`${t} ${String(q[k]).slice(0, 60)}`);
+    }
+    if (q.gestor) desc.push(`gestor ${itens.find((r) => r.gestor_matricula === normMatricula(q.gestor))?.gestor_nome || normMatricula(q.gestor)}`);
+    if (ehData(q.de) || ehData(q.ate)) desc.push(`vencimento ${q.de || '…'} a ${q.ate || '…'}`);
+    const ano = Number(q.ano || q.ano_fim);
+    const pdf = gerarPdfSituacao({
+      itens, agrupar: q.agrupar, filtros: desc, emitidoPor: req.usuario.nome,
+      porMes: bool(q.por_mes) && ano ? { ano, base: q.ano_fim ? 'fim' : 'inicio' } : null,
+    });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="situacao-treinamentos${ano ? `-${ano}` : ''}.pdf"`);
+    pdf.pipe(res);
   }));
 
   router.get('/treino/registros/:id', wrap(async (req, res) => {

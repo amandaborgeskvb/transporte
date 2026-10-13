@@ -86,6 +86,7 @@ async function lista({ query, ir }) {
       acoes: [
         h('a', { class: 'btn sec', href: `/api/treino/registros.csv${qs ? `?${qs}` : ''}`, download: '' }, icone('baixar'), 'Exportar (mala direta)'),
         h('a', { class: 'btn sec', href: `#/treino/imprimir${qs ? `?${qs}` : ''}` }, icone('impressora'), 'Imprimir C.I.'),
+        botao('Gerar PDF', () => gerarPdf(query), { tom: 'sec', icone: 'documento' }),
         botao('Novo treinamento', () => ir('#/treino/novo'), { icone: 'mais' }),
       ],
     }),
@@ -340,6 +341,7 @@ async function planilha({ query, ir, recarregarPagina }) {
       sub: `Como a aba Digitar da RE.1005.04: digite a matrícula e as colunas cinza são puxadas. Cada linha salva ao sair dela e recebe o Nº DOC, o mesmo da C.I. · ${fmt(itens.length)} linha${itens.length === 1 ? '' : 's'}`,
       acoes: [
         botao('Importar planilha Excel', () => { caixaImportar.hidden = !caixaImportar.hidden; }, { tom: 'sec', icone: 'upload' }),
+        botao('Gerar PDF', () => gerarPdf(query), { tom: 'sec', icone: 'documento' }),
         h('a', { class: 'btn sec', href: `/api/treino/registros.csv?${new URLSearchParams(query)}`, download: '' }, icone('baixar'), 'Exportar (mala direta)'),
         btnImprimir,
       ],
@@ -358,6 +360,29 @@ async function planilha({ query, ir, recarregarPagina }) {
     h('datalist', { id: 'tr-setores' }, p.sugestoes.setores.map((f) => h('option', { value: f }))),
     h('datalist', { id: 'tr-gestores' }, p.gestores.filter((g) => g.ativo).map((g) => h('option', { value: g.matricula }, `${g.matricula} - ${g.nome}`))),
   ];
+}
+
+// PDF dos estados dos treinamentos: escolhe como agrupar e baixa o arquivo gerado no servidor (mesmos filtros da tela)
+function gerarPdf(filtrosTela, { agrupar = 'situacao', porMes = false } = {}) {
+  return dialogo({
+    titulo: 'Gerar PDF dos estados de treinamento',
+    descricao: 'O PDF traz o resumo de cada estado (situação do treinamento, situação da função e situação 2) e a lista dos treinamentos agrupada como escolher abaixo, com os filtros da tela.',
+    confirmar: 'Gerar PDF',
+    campos: [
+      { nome: 'agrupar', rotulo: 'Agrupar a lista por', tipo: 'select', valor: agrupar, cheio: true, opcoes: [
+        { valor: 'situacao', rotulo: 'Situação do treinamento (treinando, treinado, não classificado)' },
+        { valor: 'situacao_funcao', rotulo: 'Situação da função (classificado, renovado, não classificado)' },
+        { valor: 'situacao2', rotulo: 'Situação 2 (treinando ou treinado, pela vigência)' },
+        { valor: 'colab', rotulo: 'Situação do colaborador (ativo, afastado, demitido)' },
+      ] },
+    ],
+    aoSalvar: (v) => {
+      const q = new URLSearchParams({ ...filtrosTela, agrupar: v.agrupar, ...(porMes ? { por_mes: '1' } : {}) });
+      const a = h('a', { href: `/api/treino/situacao.pdf?${q}`, download: '' });
+      document.body.append(a); a.click(); a.remove();
+      toast('Gerando o PDF…');
+    },
+  });
 }
 
 // ======================================================================
@@ -407,7 +432,10 @@ async function relatorio({ query, ir }) {
       sub: `Classificados ou não, por mês (${baseTxt}) e por ano. Cancelados não entram${r.cancelados ? ` (${fmt(r.cancelados)} no ano)` : ''}.`,
       acoes: [
         botao('Exportar (CSV)', exportar, { tom: 'sec', icone: 'baixar' }),
-        botao('Imprimir', () => window.print(), { icone: 'impressora' }),
+        botao('Imprimir', () => window.print(), { tom: 'sec', icone: 'impressora' }),
+        botao('Gerar PDF', () => gerarPdf({
+          [d.base === 'fim' ? 'ano_fim' : 'ano']: d.ano, ...(query.gestor ? { gestor: query.gestor } : {}), ...(query.funcao ? { funcao: query.funcao } : {}), ...(query.setor ? { setor: query.setor } : {}),
+        }, { agrupar: 'situacao_funcao', porMes: true }), { icone: 'documento' }),
       ],
     }),
     h('div', { class: 'nao-imprime' }, barraFiltros([
