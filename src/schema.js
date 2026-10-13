@@ -375,6 +375,10 @@ CREATE TABLE IF NOT EXISTS grat_signatarios (
   ativo  BOOLEAN NOT NULL DEFAULT true
 );
 ALTER TABLE grat_rescisoes ALTER COLUMN dias_trabalhados DROP NOT NULL;
+-- Turno do funcionário (A, B ou C), ao lado da letra de folga como na aba BD; informativo (não entra no cálculo)
+ALTER TABLE grat_rescisoes ADD COLUMN IF NOT EXISTS turno TEXT;
+ALTER TABLE grat_rescisoes DROP CONSTRAINT IF EXISTS grat_rescisoes_turno_check;
+ALTER TABLE grat_rescisoes ADD CONSTRAINT grat_rescisoes_turno_check CHECK (turno IS NULL OR turno IN ('A','B','C'));
 -- Padrões da planilha nas instalações que ainda não mexeram nos parâmetros: desconto só na produtividade;
 -- "sem justa causa" paga o Zelo (a fórmula só zera na justa causa; o texto do critério fala apenas do BPP)
 UPDATE grat_config SET descontar_bpp = false, descontar_zelo = false

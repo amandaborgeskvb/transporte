@@ -15,6 +15,7 @@ const ORIGEM_GRUPO = { informado: 'informado na apuração', funcao: 'função c
 const SIT = { apurada: ['Apurada', 'warn'], paga: ['Paga', 'ok'] };
 const badgeSit = (s) => badgeTom(SIT[s]?.[0] || s, SIT[s]?.[1]);
 const BASE = [['Gratificação rescisória'], ['Apuração']];
+const TURNOS = ['A', 'B', 'C'].map((t) => ({ valor: t, rotulo: `Turno ${t}` }));
 const ESCALAS = [['A', 'Letra A (escala 5×1)'], ['B', 'Letra B (escala 5×1)'], ['C', 'Letra C (escala 5×1)'], ['D', 'Letra D (escala 5×1)'], ['E', 'Letra E (escala 5×1)'], ['F', 'Letra F (escala 5×1)'], ['DOM', 'Folga aos domingos'], ['5X2', 'Folga sábado e domingo (5×2 / ADM)']];
 const ALVOS = [['bpp', 'BPP'], ['prod', 'Produtividade'], ['bpp_prod', 'BPP e Produtividade'], ['nenhum', 'Nenhum (não descontar)']].map(([valor, rotulo]) => ({ valor, rotulo }));
 const MODOS_CARTAO = [['operador', 'Motoristas e operadores'], ['todos', 'Todas as funções'], ['nenhum', 'Ninguém (BPP no relatório)']].map(([valor, rotulo]) => ({ valor, rotulo }));
@@ -69,8 +70,9 @@ async function formApuracao({ ir, apuracao }) {
       { nome: 'funcionario_id', rotulo: 'Funcionário (matrícula ou nome)', tipo: 'funcionario', funcionarios: c.funcionarios, valor: apuracao?.funcionario_id ?? '', obrigatorio: true, somenteAtivos: false, cheio: true },
       { nome: 'criterio_id', rotulo: 'Tipo de rescisão', tipo: 'select', opcoes: ativos.map((x) => ({ valor: x.id, rotulo: x.tipo_rescisao })), valor: apuracao?.criterio_id, vazio: 'Selecione…', obrigatorio: true, cheio: true },
       { nome: 'dt_rescisao', rotulo: 'Data da rescisão', tipo: 'date', valor: apuracao?.dt_rescisao || hojeISO(), obrigatorio: true },
-      { nome: 'escala', rotulo: 'Escala de folga (letra)', tipo: 'select', opcoes: ESCALAS.map(([valor, rotulo]) => ({ valor, rotulo })), valor: apuracao?.escala || '', vazio: 'Sem escala (informar os dias)', dica: 'Com a letra de folga, os dias trabalhados do ciclo (dia 16 até a rescisão) são contados pelo calendário de folgas, como na aba BD.' },
       { nome: 'dias_trabalhados', rotulo: 'Dias trabalhados (opcional)', tipo: 'number', passo: '1', min: '0', max: '62', valor: apuracao?.dias_trabalhados ?? '', dica: 'Preencha só para substituir a contagem pela escala. As ocorrências (faltas, suspensão…) são descontadas depois.' },
+      { nome: 'turno', rotulo: 'Turno', tipo: 'select', opcoes: TURNOS, valor: apuracao?.turno || '', vazio: 'Selecione…', obrigatorio: true, dica: 'Turno do funcionário (A, B ou C), como na aba BD.' },
+      { nome: 'escala', rotulo: 'Escala de folga (letra)', tipo: 'select', opcoes: ESCALAS.map(([valor, rotulo]) => ({ valor, rotulo })), valor: apuracao?.escala || '', vazio: 'Sem escala (informar os dias)', dica: 'Com a letra de folga, os dias trabalhados do ciclo (dia 16 até a rescisão) são contados pelo calendário de folgas, como na aba BD.' },
       { nome: 'grupo', rotulo: 'Grupo da função', tipo: 'select', opcoes: [{ valor: 'operador', rotulo: `${GRUPOS.operador} (desconto na produtividade)` }, { valor: 'auxiliar', rotulo: `${GRUPOS.auxiliar} (desconto no BPP)` }], valor: apuracao?.grupo || '', vazio: 'Automático (pela função)', cheio: true },
       { nome: 'observacao', rotulo: 'Observação', tipo: 'textarea', valor: apuracao?.observacao, cheio: true, max: 300 },
     ],
@@ -89,7 +91,7 @@ function ligarPreviaPeriodo(dlg) {
   const form = dlg.querySelector('form');
   const campoFunc = dlg.querySelector('.campo-func');
   const caixa = h('div', { class: 'grat-previa cheio', 'aria-live': 'polite' });
-  form.elements.dias_trabalhados.closest('label').after(caixa); // logo abaixo de data, escala e dias
+  form.elements.escala.closest('label').after(caixa); // logo abaixo de data, dias, turno e letra de folga
   let timer;
   let seq = 0;
   const linha = (t, v) => h('div', {}, h('dt', {}, t), h('dd', {}, v));
@@ -173,6 +175,7 @@ async function detalheApuracao({ params, ir, recarregarPagina }) {
         dado('Desconto das ocorrências', c.desconto_pct ? `${pct(c.desconto_pct)} sobre ${nomesComp(c.desconto_em)}${c.desconto_redirecionado ? ` (o parâmetro do grupo é ${nomesComp(c.desconto_redirecionado.de)})` : ''}` : `nenhum (o grupo desconta sobre ${nomesComp(c.desconto_configurado)})`),
         dado('Meses da média', c.meses.length ? c.meses.map(mesRotulo).join(', ') : 'nenhum mês informado'),
         dado('Dias', `${c.dias_trabalhados} trabalhados − ${c.dias_descontados} das ocorrências = ${c.dias_pagar} a pagar (base ${c.base_dias})`),
+        dado('Turno e letra de folga', `${r.turno ? `Turno ${r.turno}` : 'turno não informado'} · ${c.escala ? `folga ${ESCALAS.find(([k]) => k === c.escala)?.[1] || c.escala}` : 'sem escala'}`),
         dado('Origem dos dias trabalhados', c.dias_informados ? 'informados na apuração' : c.escala ? `escala ${ESCALAS.find(([k]) => k === c.escala)?.[1] || c.escala}` : '—'),
         dado('Período (ciclo)', `${dataBR(c.periodo.inicio)} a ${dataBR(c.periodo.fim)}`),
         r.paga_em ? dado('Paga em', dataBR(r.paga_em)) : null,

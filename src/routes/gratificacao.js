@@ -31,6 +31,7 @@ const dataLocal = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : d);
 const numOuNulo = (v) => (v === null || v === undefined ? null : Number(v));
 const mesmoValor = (a, b) => (a === null || a === undefined ? b === null : b !== null && Number(a) === b);
 const MODOS_CARTAO = ['operador', 'todos', 'nenhum'];
+const TURNOS = ['A', 'B', 'C'];
 
 function criarGratificacao({ pool }) {
   const router = express.Router();
@@ -519,10 +520,12 @@ function criarGratificacao({ pool }) {
     if (!semDias && (!Number.isInteger(dias) || dias < 0 || dias > 62)) throw erro400('Dias trabalhados: informe um número inteiro entre 0 e 62.');
     const escala = b.escala ? opcaoDe(String(b.escala).toUpperCase(), ESCALAS, 'Escala de folga') : null;
     if (semDias && !escala) throw erro400('Informe a escala de folga (para calcular os dias) ou os dias trabalhados.');
+    if (!b.turno) throw erro400('Informe o turno (A, B ou C).');
+    const turno = opcaoDe(String(b.turno).trim().toUpperCase(), TURNOS, 'Turno');
     const grupo = b.grupo ? opcaoDe(b.grupo, ['auxiliar', 'operador'], 'Grupo') : null;
     const dup = await db.query('SELECT id FROM grat_rescisoes WHERE funcionario_id = $1 AND dt_rescisao = $2 AND ($3::int IS NULL OR id <> $3)', [f.id, data(b.dt_rescisao, 'Data da rescisão'), idAtual]);
     if (dup.rowCount) throw erro409('Já existe uma apuração deste funcionário para essa data de rescisão.');
-    return { funcionario_id: f.id, funcionario_nome: f.nome, criterio_id: criterio.id, dt_rescisao: b.dt_rescisao, dias_trabalhados: dias, escala, grupo, observacao: texto(b.observacao, 300) };
+    return { funcionario_id: f.id, funcionario_nome: f.nome, criterio_id: criterio.id, dt_rescisao: b.dt_rescisao, dias_trabalhados: dias, escala, turno, grupo, observacao: texto(b.observacao, 300) };
   }
 
   // Prévia (não grava): período de gratificação do ciclo (dia 16 → rescisão), dias trabalhados pela escala, ocorrências e valores
@@ -547,9 +550,9 @@ function criarGratificacao({ pool }) {
   router.post('/gratificacao/rescisoes', wrap(async (req, res) => {
     const r = await lerRescisao(pool, req.body);
     const { rows } = await pool.query(
-      `INSERT INTO grat_rescisoes (funcionario_id, criterio_id, dt_rescisao, dias_trabalhados, escala, grupo, observacao, criado_por) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-      [r.funcionario_id, r.criterio_id, r.dt_rescisao, r.dias_trabalhados, r.escala, r.grupo, r.observacao, req.usuario.id]);
-    await auditar(pool, req.usuario, 'criar', 'grat_rescisao', rows[0].id, { funcionario: r.funcionario_nome, dt_rescisao: r.dt_rescisao, dias: r.dias_trabalhados, escala: r.escala });
+      `INSERT INTO grat_rescisoes (funcionario_id, criterio_id, dt_rescisao, dias_trabalhados, escala, turno, grupo, observacao, criado_por) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      [r.funcionario_id, r.criterio_id, r.dt_rescisao, r.dias_trabalhados, r.escala, r.turno, r.grupo, r.observacao, req.usuario.id]);
+    await auditar(pool, req.usuario, 'criar', 'grat_rescisao', rows[0].id, { funcionario: r.funcionario_nome, dt_rescisao: r.dt_rescisao, dias: r.dias_trabalhados, escala: r.escala, turno: r.turno });
     res.status(201).json({ id: rows[0].id });
   }));
 
@@ -560,9 +563,9 @@ function criarGratificacao({ pool }) {
     if (antes.situacao === 'paga') throw erro409('Apuração já paga: reabra antes de alterar.');
     const r = await lerRescisao(pool, req.body, id);
     await pool.query(
-      `UPDATE grat_rescisoes SET funcionario_id=$1, criterio_id=$2, dt_rescisao=$3, dias_trabalhados=$4, escala=$5, grupo=$6, observacao=$7, atualizado_em=now() WHERE id=$8`,
-      [r.funcionario_id, r.criterio_id, r.dt_rescisao, r.dias_trabalhados, r.escala, r.grupo, r.observacao, id]);
-    await auditar(pool, req.usuario, 'editar', 'grat_rescisao', id, diff({ ...antes, dt_rescisao: dataLocal(antes.dt_rescisao) }, r, ['funcionario_id', 'criterio_id', 'dt_rescisao', 'dias_trabalhados', 'escala', 'grupo', 'observacao']));
+      `UPDATE grat_rescisoes SET funcionario_id=$1, criterio_id=$2, dt_rescisao=$3, dias_trabalhados=$4, escala=$5, turno=$6, grupo=$7, observacao=$8, atualizado_em=now() WHERE id=$9`,
+      [r.funcionario_id, r.criterio_id, r.dt_rescisao, r.dias_trabalhados, r.escala, r.turno, r.grupo, r.observacao, id]);
+    await auditar(pool, req.usuario, 'editar', 'grat_rescisao', id, diff({ ...antes, dt_rescisao: dataLocal(antes.dt_rescisao) }, r, ['funcionario_id', 'criterio_id', 'dt_rescisao', 'dias_trabalhados', 'escala', 'turno', 'grupo', 'observacao']));
     res.json({ ok: true });
   }));
 
@@ -621,12 +624,12 @@ function criarGratificacao({ pool }) {
     const oculto = (c, v) => (c.bpp_no_cartao ? '' : moedaCsv(v));
     enviarCsv(res, 'gratificacao_rescisoria.csv', [
       ['Departamento', 'Matrícula', 'Nome', 'Função', 'Grupo', 'Média BPP (R$)', 'Receber BPP (R$)', 'Média Prod. (R$)', 'Receber Prod. (R$)',
-        'Escala', 'Dias trabalhados', 'Dias descontados', 'Dias a pagar', 'Desconto (%)', 'Desconto (R$)', 'Desconto sobre', 'Tipo de rescisão', 'Admissão', 'Rescisão',
+        'Escala', 'Turno', 'Dias trabalhados', 'Dias descontados', 'Dias a pagar', 'Desconto (%)', 'Desconto (R$)', 'Desconto sobre', 'Tipo de rescisão', 'Admissão', 'Rescisão',
         'Total a receber (R$)', 'Situação'],
       ...itens.map((r) => { const c = r.calculo; return [
         r.funcionario_setor, r.funcionario_matricula, r.funcionario_nome, r.funcionario_funcao, c.grupo === 'operador' ? 'Motoristas e operadores' : 'Demais funções',
         oculto(c, c.bpp.media), oculto(c, c.bpp.receber), moedaCsv(c.prod.media), moedaCsv(c.prod.receber),
-        c.escala || 'informado', c.dias_trabalhados, c.dias_descontados, c.dias_pagar, pct(c.desconto_pct), moedaCsv(c.desconto), c.desconto_em.map((k) => (k === 'bpp' ? 'BPP' : 'Produtividade')).join(' e '),
+        c.escala || 'informado', r.turno || '', c.dias_trabalhados, c.dias_descontados, c.dias_pagar, pct(c.desconto_pct), moedaCsv(c.desconto), c.desconto_em.map((k) => (k === 'bpp' ? 'BPP' : 'Produtividade')).join(' e '),
         r.tipo_rescisao, r.funcionario_admissao || '', r.dt_rescisao, moedaCsv(c.folha), r.situacao]; }),
     ]);
   }));

@@ -221,20 +221,24 @@ test('apuração: operador (Ana) e auxiliar (Carlos) com os valores do arquivo e
   const crit = (await davi.get('/api/gratificacao/parametros')).corpo.criterios;
   const pedido = crit.find((c) => c.tipo_rescisao === 'PEDIDO DE DEMISSÃO').id;
   const semJusta = crit.find((c) => c.tipo_rescisao === 'DEMISSÃO S/ J. CAUSA').id;
-  const a = await davi.post('/api/gratificacao/rescisoes', { funcionario_id: ids.ana, criterio_id: pedido, dt_rescisao: '2026-04-20', dias_trabalhados: 20 });
+  // turno (A, B ou C) é obrigatório
+  assert.equal((await davi.post('/api/gratificacao/rescisoes', { funcionario_id: ids.ana, criterio_id: pedido, dt_rescisao: '2026-04-20', dias_trabalhados: 20 })).status, 400);
+  assert.equal((await davi.post('/api/gratificacao/rescisoes', { funcionario_id: ids.ana, criterio_id: pedido, dt_rescisao: '2026-04-20', dias_trabalhados: 20, turno: 'D' })).status, 400);
+  const a = await davi.post('/api/gratificacao/rescisoes', { funcionario_id: ids.ana, criterio_id: pedido, dt_rescisao: '2026-04-20', dias_trabalhados: 20, turno: 'b' });
   assert.equal(a.status, 201);
+  assert.equal((await davi.get(`/api/gratificacao/rescisoes/${a.corpo.id}`)).corpo.turno, 'B');
   ids.apuracaoAna = a.corpo.id;
-  assert.equal((await davi.post('/api/gratificacao/rescisoes', { funcionario_id: ids.ana, criterio_id: pedido, dt_rescisao: '2026-04-20', dias_trabalhados: 20 })).status, 409); // duplicada
-  assert.equal((await davi.post('/api/gratificacao/rescisoes', { funcionario_id: ids.ana, criterio_id: pedido, dt_rescisao: '2026-04-21', dias_trabalhados: 99 })).status, 400);
-  assert.equal((await davi.post('/api/gratificacao/rescisoes', { funcionario_id: ids.ana, criterio_id: pedido, dt_rescisao: '2026-04-22' })).status, 400); // sem escala e sem dias
-  const pelaEscala = await davi.post('/api/gratificacao/rescisoes', { funcionario_id: ids.ana, criterio_id: pedido, dt_rescisao: '2026-04-29', escala: 'f' });
+  assert.equal((await davi.post('/api/gratificacao/rescisoes', { funcionario_id: ids.ana, criterio_id: pedido, dt_rescisao: '2026-04-20', dias_trabalhados: 20, turno: 'A' })).status, 409); // duplicada
+  assert.equal((await davi.post('/api/gratificacao/rescisoes', { funcionario_id: ids.ana, criterio_id: pedido, dt_rescisao: '2026-04-21', dias_trabalhados: 99, turno: 'A' })).status, 400);
+  assert.equal((await davi.post('/api/gratificacao/rescisoes', { funcionario_id: ids.ana, criterio_id: pedido, dt_rescisao: '2026-04-22', turno: 'A' })).status, 400); // sem escala e sem dias
+  const pelaEscala = await davi.post('/api/gratificacao/rescisoes', { funcionario_id: ids.ana, criterio_id: pedido, dt_rescisao: '2026-04-29', escala: 'f', turno: 'C' });
   assert.equal(pelaEscala.status, 201);
   const pe = (await davi.get(`/api/gratificacao/rescisoes/${pelaEscala.corpo.id}`)).corpo.calculo;
   assert.equal(pe.escala, 'F');
   assert.equal(pe.dias_informados, false);
   assert.ok(pe.dias_trabalhados > 0 && pe.dias_trabalhados <= 14);
   await davi.del(`/api/gratificacao/rescisoes/${pelaEscala.corpo.id}`);
-  const c = (await davi.post('/api/gratificacao/rescisoes', { funcionario_id: ids.carlos, criterio_id: semJusta, dt_rescisao: '2026-04-10', dias_trabalhados: 25 })).corpo.id;
+  const c = (await davi.post('/api/gratificacao/rescisoes', { funcionario_id: ids.carlos, criterio_id: semJusta, dt_rescisao: '2026-04-10', dias_trabalhados: 25, turno: 'A' })).corpo.id;
 
   const da = (await davi.get(`/api/gratificacao/rescisoes/${ids.apuracaoAna}`)).corpo.calculo;
   assert.equal(da.grupo, 'operador');
@@ -294,6 +298,7 @@ test('pagar trava a apuração; relatório com totais e CSV', async () => {
   const csv = await davi.get('/api/gratificacao/relatorio.csv');
   assert.equal(csv.status, 200);
   assert.match(csv.corpo, /Departamento;Matrícula;Nome/);
+  assert.match(csv.corpo, /;Escala;Turno;/);
   assert.doesNotMatch(csv.corpo, /Zelo/);
   assert.match(csv.corpo, /410,40/);
   assert.doesNotMatch(csv.corpo, /700,00|532,00/); // BPP da motorista não aparece no relatório
