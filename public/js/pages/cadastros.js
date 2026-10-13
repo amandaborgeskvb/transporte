@@ -37,7 +37,7 @@ export const TIPOS_CADASTRO = {
   },
   documentos: {
     titulo: 'Formulários (RE)', singular: 'formulário', fixo: true, grade: 'tres',
-    nota: 'Cabeçalho de controle do formulário RE. 0150.09 (Autorização de Desconto). Ao revisar o formulário, altere a versão e a data: as autorizações já emitidas continuam com a versão em que foram emitidas. A pessoa responsável (RH) é impressa abaixo do quadro de assinatura.',
+    nota: 'Cabeçalho de controle dos formulários RE: RE. 0150.09 (Autorização de Desconto) e RE.0150.03 (Ficha de Informe de Contratação). Ao revisar um formulário, altere a versão e a data: os documentos já emitidos continuam com a versão em que foram emitidos. Na autorização de desconto, a pessoa responsável (RH) é impressa abaixo do quadro de assinatura.',
     campos: (x = {}) => [
       { nome: 'titulo', rotulo: 'Título do formulário', valor: x.titulo, obrigatorio: true, cheio: true },
       { nome: 'sistema', rotulo: 'Sistema', valor: x.sistema, obrigatorio: true },

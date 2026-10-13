@@ -38,7 +38,7 @@ const ROTAS = {
     pagina: (c) => (!c.params.length ? listaDescontos(c) : c.params[0] === 'novo' || c.params[1] === 'editar' ? formDesconto(c) : detalheDesconto(c)),
     voltar: (c) => (c.params.length ? '#/descontos' : null),
   },
-  contratacao: { titulo: 'Contratação', pagina: contratacao, perfis: ['administrador', 'financeiro'] },
+  contratacao: { titulo: 'Contratação', pagina: contratacao, perfis: ['administrador', 'financeiro'], voltar: (c) => (c.params[0] === 'fichas' && c.params.length > 1 ? '#/contratacao/fichas' : null) },
   gratificacao: { titulo: 'Gratificação rescisória', pagina: gratificacao, perfis: ['administrador', 'financeiro'], voltar: (c) => (c.params.length > 1 ? `#/gratificacao/${c.params[0]}` : null) },
   treinamento: { titulo: 'Treinamento', pagina: treinamento },
   relatorios: { titulo: 'Relatório de viagem', pagina: relatorios },
@@ -78,7 +78,15 @@ const MENU = [
       { href: '#/gratificacao/operadores', titulo: 'Motoristas e operadores', prefixo: true },
     ],
   },
-  { rota: 'contratacao', titulo: 'Contratação', icone: 'documento', perfis: ['administrador', 'financeiro'] },
+  {
+    rota: 'contratacao', titulo: 'Contratação', icone: 'documento', perfis: ['administrador', 'financeiro'],
+    filhos: [
+      { href: '#/contratacao/fichas', titulo: 'Fichas de contratação', prefixo: true },
+      { href: '#/contratacao/nova', titulo: 'Nova ficha (RE.0150.03)', prefixo: true },
+      { href: '#/contratacao/resumo', titulo: 'Resumo do dia', prefixo: true },
+      { href: '#/contratacao/parametros', titulo: 'Parâmetros', prefixo: true },
+    ],
+  },
   { rota: 'treinamento', titulo: 'Treinamento', icone: 'ajuda' },
   { grupo: 'Configurações', perfis: ADMIN },
   { rota: 'cadastros', titulo: 'Cadastros', icone: 'cadastros', perfis: ADMIN, filhos: Object.entries(TIPOS_CADASTRO).map(([k, t]) => ({ href: `#/cadastros/${k}`, titulo: t.titulo })) },
@@ -106,6 +114,7 @@ function marcarMenu(rota) {
   let atual = location.hash.split('?')[0];
   if (atual === '#/cadastros') atual = '#/cadastros/funcionarios'; // tela padrão dos cadastros
   if (atual === '#/gratificacao') atual = '#/gratificacao/apuracao';
+  if (atual === '#/contratacao' || atual === '#/contratacao/imprimir') atual = '#/contratacao/fichas';
   app.querySelectorAll('.nav a').forEach((a) => {
     // sub-itens com rota própria acendem em qualquer tela da rota (lista e detalhe); os demais, só no endereço exato
     const pref = a.dataset.prefixo;

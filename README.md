@@ -33,8 +33,8 @@ conceitos de ERPs e plataformas de operação agrícola:
 - **Barra superior** azul-marinho com a linha verde da marca, busca **"Buscar tela ou viagem" (`Ctrl K`)**, tema
   claro/escuro, menu do usuário (alterar senha, sair) e a logo.
 - **Menu lateral por grupos** (Operação, Configurações), recolhível, com o item ativo destacado. O menu **Viagem** reúne
-  Programação de viagens, Adiantamentos, Despesas, Reembolsos, Autorização de desconto e Relatório de viagem; **Contratação** é um menu novo (administrador e
-  financeiro), por enquanto só a estrutura, à espera da definição do que será controlado ali. **Treinamento** (todos os perfis, no grupo Operação) é um menu com um
+  Programação de viagens, Adiantamentos, Despesas, Reembolsos, Autorização de desconto e Relatório de viagem; **Contratação** (administrador e
+  financeiro) tem a Ficha de Informe de Contratação (RE.0150.03), o resumo do dia e os parâmetros (veja abaixo). **Treinamento** (todos os perfis, no grupo Operação) é um menu com um
   passo a passo do sistema, com os tópicos do perfil de quem está logado em destaque.
 - **Telas lista + detalhe** em Usuários e Cadastros (busca à esquerda, formulário do item à direita).
 - **Registro da viagem** no estilo Dynamics 365: faixa de etapas (Programada → Realizada →
@@ -121,6 +121,23 @@ na hora **função, setor, centro de custo e empresa**; texto que não correspon
 salvamento. Nas listas, nos relatórios (inclusive CSV) e nas buscas (nº, destino, nome ou matrícula) os dados do
 funcionário vêm do cadastro no momento da consulta, então uma atualização via importador aparece em todo o sistema. O
 perfil *solicitante* enxerga apenas o próprio registro de funcionário.
+
+## Contratação
+
+Menu **Contratação** (administrador e financeiro), no lugar da planilha *RE.1005.03 - Ficha de Informe de Contratação* e da mala
+direta do Word:
+
+| Subgrupo | O que faz |
+|---|---|
+| **Fichas de contratação** | Lista das fichas com busca e período; abre a ficha no formulário da empresa para imprimir. *Imprimir fichas* imprime todas as do filtro (uma por página) e *Exportar (mala direta)* gera um CSV com as mesmas colunas da aba P_Mala-Direta. |
+| **Nova ficha (RE.0150.03)** | Digita-se o **nome**, a **função** e o **departamento** (código Depto/Seção); o **salário** é puxado da função (aba Func_salário), a **descrição do departamento** do código (aba Depto) e o **horário** do turno (Matutino 07:00 AS 15:20, Vespertino 15:00 AS 23:20, Noturno 23:00 AS 07:20, Administrativo 07:00 AS 16:00; jornada 07:20). Contrato (Safra, Experiência, Determinado, Indeterminado), gerência/gestor, telefones, cidade e observação. A prévia do formulário aparece ao lado; *Salvar e nova* repete os dados do contrato para a próxima pessoa. |
+| **Resumo do dia** | Como a aba Resumo: fichas feitas no dia, por função e departamento, com nome, cidade, celular e quantidade; imprime e leva às fichas do dia. |
+| **Parâmetros** | As abas da planilha: **funções e salários**, **departamentos** e **gerências/gestores**, com busca, inclusão, edição e exclusão. A **carga pela planilha** lê as abas Func_salário, Depto e Gerências (cria ou atualiza pelo código, com prévia) e, se marcado, também as fichas já preenchidas da aba P_Mala-Direta (sem repetir a mesma pessoa, data e função). |
+
+O formulário impresso mantém os textos do modelo da empresa: cabeçalho do SGI (*Sistema de Gestão Integrada - SGI*, *Registro*,
+*FICHA DE INFORME DE CONTRATAÇÃO*, *Código: RE.0150.03*, *Versão: 03*, *Data: 03/02/2023*, *Periodicidade: Sempre que houver
+contratação*, *Página: 1 de 1*), as linhas da ficha e as assinaturas (Gerente, Coordenador e Gerente de Transportes). O cabeçalho é
+editável em Cadastros → Formulários (RE). A planilha e o Word originais não ficam no repositório (contêm dados pessoais).
 
 ## Gratificação rescisória
 

@@ -65,6 +65,15 @@ const TOPICOS = [
     ],
   },
   {
+    titulo: 'Contratação (Ficha de Informe de Contratação — RE.0150.03)', perfis: ['administrador', 'financeiro'], corpo: () => [
+      lista('Primeiro, em **Contratação → Parâmetros**, importe a planilha de controle (.xlsx): as abas Func_salário, Depto e Gerências viram os parâmetros. Marque a opção para trazer também as fichas já preenchidas (aba P_Mala-Direta).',
+        'Em **Nova ficha**, digite o nome, escolha a função (o salário vem dela) e o código do departamento (a descrição vem dele); marque o turno (o horário é preenchido) e o tipo de contrato. A prévia do formulário aparece ao lado.',
+        'Use **Salvar e nova** para lançar várias pessoas do mesmo contrato em sequência. Para imprimir, abra a ficha ou use **Imprimir fichas** (todas do filtro, uma por página).',
+        'O **Resumo do dia** mostra as fichas feitas no dia, por função e departamento, pronto para imprimir.'),
+      dica('O cabeçalho do formulário (código, versão e data) fica em Cadastros → Formulários (RE). O CSV de *Exportar (mala direta)* tem as mesmas colunas da aba P_Mala-Direta, para quem ainda usa a mala direta do Word.'),
+    ],
+  },
+  {
     titulo: 'Gratificação rescisória', perfis: ['administrador', 'financeiro'], corpo: () => [
       lista('Todo mês, em **Gratificação rescisória → Valores mensais**, faça a carga do arquivo (Excel ou CSV) com **Matrícula, BPP, Produtividade e Mês** — pode ser a própria planilha (a aba GRAT abre sozinha). Sem a coluna Mês, escolha o mês de referência. Confira em **Médias (3 meses)**.',
         'Em **Ocorrências**, envie o arquivo exportado do controle de notificações (Data, Mat-Func, Penalid Notific…): a prévia mostra o que entra e reenviar não duplica. Também dá para lançar uma ocorrência à mão.',

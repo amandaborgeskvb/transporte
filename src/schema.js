@@ -402,6 +402,67 @@ UPDATE grat_config SET descontar_bpp = false, descontar_zelo = false
 UPDATE grat_criterios SET pagar_zelo = true
   WHERE tipo_rescisao = 'DEMISSÃO S/ J. CAUSA' AND NOT pagar_zelo AND NOT EXISTS (SELECT 1 FROM auditoria WHERE entidade = 'grat_criterio');
 
+-- ===== Contratação: Ficha de Informe de Contratação (formulário RE.0150.03) =====
+-- Parâmetros (abas da planilha de controle): funções e salários, departamentos e gerências/gestores
+CREATE TABLE IF NOT EXISTS contr_funcoes (
+  id               SERIAL PRIMARY KEY,
+  codigo           TEXT NOT NULL UNIQUE,
+  descricao        TEXT NOT NULL,
+  salario          NUMERIC(12,2) CHECK (salario IS NULL OR salario >= 0),
+  tipo_salario     TEXT NOT NULL DEFAULT '',
+  cbo              TEXT NOT NULL DEFAULT '',
+  cnh_obrigatoria  BOOLEAN NOT NULL DEFAULT false,
+  bloqueada        BOOLEAN NOT NULL DEFAULT false,
+  atualizado_em    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS contr_departamentos (
+  id         SERIAL PRIMARY KEY,
+  codigo     TEXT NOT NULL UNIQUE,
+  descricao  TEXT NOT NULL,
+  ativo      BOOLEAN NOT NULL DEFAULT true,
+  grau       INTEGER
+);
+CREATE TABLE IF NOT EXISTS contr_gerencias (
+  id      SERIAL PRIMARY KEY,
+  codigo  INTEGER NOT NULL UNIQUE,
+  nome    TEXT NOT NULL,
+  ativo   BOOLEAN NOT NULL DEFAULT true
+);
+-- Fichas (base da mala direta): o nome, a função e o departamento são digitados; salário, descrição do departamento
+-- e horário são puxados dos parâmetros e gravados na ficha (a ficha impressa não muda se o parâmetro mudar depois)
+CREATE TABLE IF NOT EXISTS contr_fichas (
+  id                      SERIAL PRIMARY KEY,
+  data                    DATE NOT NULL,
+  nome                    TEXT NOT NULL,
+  funcao_id               INTEGER REFERENCES contr_funcoes(id) ON DELETE SET NULL,
+  funcao                  TEXT NOT NULL DEFAULT '',
+  depto_codigo            TEXT NOT NULL DEFAULT '',
+  depto_descricao         TEXT NOT NULL DEFAULT '',
+  destino                 TEXT NOT NULL DEFAULT '',
+  setor                   TEXT NOT NULL DEFAULT '',
+  jornada                 TEXT NOT NULL DEFAULT '',
+  horario                 TEXT NOT NULL DEFAULT '',
+  turno                   TEXT CHECK (turno IS NULL OR turno IN ('adm','matutino','vespertino','noturno')),
+  contrato_safra          BOOLEAN NOT NULL DEFAULT false,
+  contrato_experiencia    BOOLEAN NOT NULL DEFAULT false,
+  contrato_determinado    BOOLEAN NOT NULL DEFAULT false,
+  contrato_indeterminado  BOOLEAN NOT NULL DEFAULT false,
+  salario                 NUMERIC(12,2),
+  gerencia_id             INTEGER REFERENCES contr_gerencias(id) ON DELETE SET NULL,
+  gestor                  TEXT NOT NULL DEFAULT '',
+  telefone                TEXT NOT NULL DEFAULT '',
+  celular1                TEXT NOT NULL DEFAULT '',
+  celular2                TEXT NOT NULL DEFAULT '',
+  email                   TEXT NOT NULL DEFAULT '',
+  cidade                  TEXT NOT NULL DEFAULT '',
+  observacao              TEXT NOT NULL DEFAULT '',
+  origem                  TEXT NOT NULL DEFAULT 'digitada',
+  criado_por              INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em               TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS contr_fichas_data_idx ON contr_fichas (data DESC, id DESC);
+
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,
   tipo         TEXT NOT NULL,
@@ -450,6 +511,11 @@ ON CONFLICT (nome) DO NOTHING;
 INSERT INTO documentos_re (codigo, titulo, versao, data_versao, periodicidade, empresa, cidade, responsavel_cargo)
 VALUES ('RE. 0150.09', 'AUTORIZAÇÃO DE DESCONTO', '02', '2023-02-03', 'Sempre que houver desconto',
         'CRV INDUSTRIAL LTDA', 'Capinópolis-MG', 'COORDENADORA DE RH')
+ON CONFLICT (codigo) DO NOTHING;
+-- Formulário padrão RE.0150.03 (Ficha de Informe de Contratação), versão 03 de 03/02/2023 — texto do cabeçalho como no modelo
+INSERT INTO documentos_re (codigo, titulo, sistema, versao, data_versao, periodicidade, empresa, cidade)
+VALUES ('RE.0150.03', 'FICHA DE INFORME DE CONTRATAÇÃO', 'Sistema de Gestão Integrada - SGI', '03', '2023-02-03', 'Sempre que houver contratação',
+        'CRV INDUSTRIAL LTDA', 'Capinópolis-MG')
 ON CONFLICT (codigo) DO NOTHING;
 -- Gratificação rescisória: parâmetros iniciais (editáveis em Gratificação rescisória → Parâmetros)
 INSERT INTO grat_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING;

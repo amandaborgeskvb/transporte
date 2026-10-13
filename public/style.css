@@ -421,6 +421,24 @@ html[data-tema="escuro"] .re-mesa { background: #0a1120; }
 .dicas-form { margin: -4px 0 10px; display: grid; gap: 2px; }
 .dicas-form .dica { margin: 0; }
 
+/* ===== Contratação: Ficha de Informe de Contratação (RE.0150.03) ===== */
+.rf-folha { font-size: 11pt; }
+.rf-topo { margin: 9mm 0 3mm; display: grid; gap: 2.5mm; }
+.rf-topo p, .rf-caixa p { margin: 0; }
+.rf-v { color: #0b5394; font-weight: 700; margin-left: 1mm; }
+.rf-caixa { border: 1.5px solid #000; padding: 5mm 4mm 6mm; display: grid; gap: 2.6mm; font-family: Arial, Helvetica, sans-serif; font-size: 10.5pt; }
+.rf-dupla { display: flex; gap: 10mm; flex-wrap: wrap; }
+.rf-opcoes { display: flex; gap: 6mm; flex-wrap: wrap; align-items: baseline; }
+.rf-op { white-space: nowrap; }
+.rf-marca { display: inline-block; min-width: 3.5mm; text-align: center; color: #0b5394; }
+.rf-assinaturas { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8mm; margin-top: 16mm; text-align: center; font-size: 9.5pt; }
+.rf-traco { border-top: 1px solid #000; margin: 0 2mm 1.2mm; }
+.rf-data { margin-top: 3mm; }
+.rf-grupo { border: 1px solid var(--linha); border-radius: 8px; padding: 6px 10px 8px; display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.rf-grupo legend { font-size: .85em; color: var(--muted); padding: 0 4px; }
+input.maiusc { text-transform: uppercase; }
+.rf-resumo .demo-tab td { font-size: 8pt; }
+
 /* ===== Importação de funcionários ===== */
 .imp-zona { border: 2px dashed var(--campo-borda); border-radius: 12px; padding: 34px 16px; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; text-align: center; background: var(--card-2); margin-bottom: 12px; }
 .imp-zona:hover, .imp-zona.sobre { border-color: var(--marca); background: var(--sel); }
