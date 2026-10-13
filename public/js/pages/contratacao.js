@@ -54,7 +54,7 @@ const mesa = (fichas, doc) => ajustarEscala(h('div', { class: 're-mesa' }, ficha
 // ======================================================================
 async function listaFichas({ query, ir }) {
   const qs = new URLSearchParams(query).toString();
-  const { itens, total } = await get(`/contratacao/fichas${qs ? `?${qs}` : ''}`);
+  const [{ itens, total }, p] = await Promise.all([get(`/contratacao/fichas${qs ? `?${qs}` : ''}`), get('/contratacao/parametros')]);
   const hoje = itens.filter((f) => f.data === hojeISO()).length;
   return [
     cabecalhoPagina({
@@ -71,6 +71,7 @@ async function listaFichas({ query, ir }) {
       kpi('Feitas hoje', fmt(hoje), { icone: 'calendario', link: `#/contratacao/resumo?data=${hojeISO()}` })),
     barraFiltros([
       { nome: 'de', rotulo: 'Data de', tipo: 'date' }, { nome: 'ate', rotulo: 'até', tipo: 'date' },
+      { nome: 'depto', rotulo: 'Departamento', placeholder: 'Código ou parte do nome', lista: p.departamentos.map((d) => `${deptoFmt(d.codigo)} - ${d.descricao}`) },
       { nome: 'q', rotulo: 'Busca', placeholder: 'Nome, função, departamento, cidade ou gestor' },
     ], query, (v) => ir('#/contratacao/fichas', v)),
     h('div', { class: 'card' }, tabela([
@@ -164,17 +165,17 @@ async function formFicha({ params, query, ir }) {
   const deptoEscolhido = () => (el.deptoSel.value && el.deptoSel.value !== OUTRO ? deptos.get(el.deptoSel.value) : null);
   const funcaoEscolhida = () => (el.funcaoSel.value && el.funcaoSel.value !== OUTRO ? funcaoPorId.get(Number(el.funcaoSel.value)) : null);
 
-  // Lista de departamentos pelo filtro (até 300); mantém o escolhido; se só um bate, já escolhe
+  // Lista com todos os departamentos do arquivo (aba Depto), filtrados pelo texto; mantém o escolhido; se só um bate, já escolhe
   function montarDeptos(manterValor = el.deptoSel.value) {
     const f = semAc(el.deptoFiltro.value).trim();
     const fDig = f.replace(/\D/g, '');
-    const lista = p.departamentos.filter((d) => (d.ativo || d.codigo === manterValor) && (!f || semAc(d.descricao).includes(f) || (fDig && d.codigo.includes(fDig)) || deptoFmt(d.codigo).includes(f)));
-    const mostrar = lista.slice(0, 300);
+    const lista = p.departamentos.filter((d) => !f || semAc(d.descricao).includes(f) || (fDig && d.codigo.includes(fDig)) || deptoFmt(d.codigo).includes(f));
+    const mostrar = [...lista];
     if (manterValor && manterValor !== OUTRO && !mostrar.some((d) => d.codigo === manterValor) && deptos.has(manterValor)) mostrar.unshift(deptos.get(manterValor));
     const valor = f && lista.length === 1 ? lista[0].codigo : manterValor;
     el.deptoSel.replaceChildren(
-      h('option', { value: '' }, f ? `${fmt(lista.length)} departamento${lista.length === 1 ? '' : 's'} encontrado${lista.length === 1 ? '' : 's'} — selecione` : 'Selecione o departamento…'),
-      ...mostrar.map((d) => h('option', { value: d.codigo, selected: d.codigo === valor }, `${deptoFmt(d.codigo)} - ${d.descricao}`)),
+      h('option', { value: '' }, f ? `${fmt(lista.length)} departamento${lista.length === 1 ? '' : 's'} encontrado${lista.length === 1 ? '' : 's'} — selecione` : `Selecione o departamento (${fmt(lista.length)} no arquivo)…`),
+      ...mostrar.map((d) => h('option', { value: d.codigo, selected: d.codigo === valor }, `${deptoFmt(d.codigo)} - ${d.descricao}${d.ativo ? '' : ' (inativo)'}`)),
       h('option', { value: OUTRO, selected: valor === OUTRO }, 'Outro código (não cadastrado)…'));
     if (el.deptoSel.value !== manterValor) el.deptoSel.dispatchEvent(new Event('change', { bubbles: true }));
   }

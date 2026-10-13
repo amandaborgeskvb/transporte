@@ -253,6 +253,10 @@ function criarContratacao({ pool }) {
       params.push(`%${String(q.q).slice(0, 80).replace(/[%_\\]/g, '\\$&')}%`);
       cond.push(`(f.nome ILIKE $${params.length} OR f.funcao ILIKE $${params.length} OR f.depto_descricao ILIKE $${params.length} OR f.cidade ILIKE $${params.length} OR f.gestor ILIKE $${params.length})`);
     }
+    // Departamento: código (104.001.004, ou "104.001.004 - DESCRIÇÃO" escolhido nas sugestões) ou parte do nome
+    const dep = String(q.depto || '').trim().slice(0, 150);
+    if (dep && /^[\d.\s]+(\s-\s.*)?$/.test(dep)) { params.push(normDepto(dep.split(' - ')[0])); cond.push(`f.depto_codigo = $${params.length}`); }
+    else if (dep) { params.push(`%${dep.replace(/[%_\\]/g, '\\$&')}%`); cond.push(`f.depto_descricao ILIKE $${params.length}`); }
     if (q.ids && /^\d+(,\d+)*$/.test(q.ids)) { params.push(q.ids.split(',').map(Number)); cond.push(`f.id = ANY($${params.length})`); }
     return { where: cond.join(' AND '), params };
   }

@@ -346,9 +346,10 @@ export function barraFiltros(campos, valores, aoFiltrar) {
     }
     const el = c.tipo === 'select'
       ? h('select', { name: c.nome }, h('option', { value: '' }, c.vazio || 'Todos'), c.opcoes.map((o) => h('option', { value: o.valor, selected: String(o.valor) === String(valores[c.nome] ?? '') }, o.rotulo)))
-      : h('input', { type: c.tipo || 'text', name: c.nome, value: valores[c.nome] ?? '', placeholder: c.placeholder });
+      : h('input', { type: c.tipo || 'text', name: c.nome, value: valores[c.nome] ?? '', placeholder: c.placeholder, list: c.lista ? `filtro-${c.nome}` : null, autocomplete: c.lista ? 'off' : null });
     leitores[c.nome] = () => el.value;
-    form.append(h('label', {}, c.rotulo, el));
+    // c.lista: sugestões enquanto digita (o texto livre também filtra)
+    form.append(h('label', {}, c.rotulo, el, c.lista ? h('datalist', { id: `filtro-${c.nome}` }, c.lista.map((t) => h('option', { value: t }))) : null));
   }
   form.append(h('button', { type: 'submit' }, 'Filtrar'), h('button', { type: 'button', class: 'sec', onclick: () => aoFiltrar({}) }, 'Limpar'));
   form.addEventListener('submit', (e) => {

@@ -107,6 +107,10 @@ test('ficha: salário pela função, descrição pelo código do departamento, h
   // lista, busca, mala direta (CSV) e resumo do dia
   assert.equal((await davi.get('/api/contratacao/fichas?q=novo%20candidato')).corpo.total, 1);
   assert.equal((await davi.get('/api/contratacao/fichas?de=2026-10-14&ate=2026-10-14')).corpo.total, 2);
+  assert.equal((await davi.get('/api/contratacao/fichas?depto=104.001.004')).corpo.total, 4); // filtro por departamento (3 importadas + 1 nova)
+  assert.equal((await davi.get('/api/contratacao/fichas?depto=999')).corpo.total, 1);
+  assert.equal((await davi.get(`/api/contratacao/fichas?depto=${encodeURIComponent('104.001.004 - OPERADOR - TRATOR TRANSBORDO')}`)).corpo.total, 4);
+  assert.equal((await davi.get('/api/contratacao/fichas?depto=transbordo')).corpo.total, 4); // parte do nome
   const csv = (await davi.get('/api/contratacao/fichas.csv?de=2026-10-14')).corpo;
   assert.match(csv, /Seq\.;Nome do Candidato;Função;Depto\/Seção;Desc-Depto;Destino\/local trab\.;Setor de locação;Jornada;Horário;Matutino;Vespertino;Noturno;ADM;Salário \(R\$\)/);
   assert.match(csv, /NOVO CANDIDATO;OPERADOR MAQ\. AGR\.  II;104001004;OPERADOR - TRATOR TRANSBORDO;;;07:20;23:00 AS 07:20;;;P;;2066,15;P;;;;21 - Fulano - Frente 1/);
