@@ -23,10 +23,10 @@ const planilha = (extras = []) => criarXlsx([
   { nome: 'Digitar', linhas: [DIGITAR,
     linhaDigitar({ 'Matrícula': 7001, 'Nome do Colaborador': 'PESSOA SEM CNH', 'Função': 'TRABALHADOR RURAL', '*Possui CNH NÃO': 'X', 'Função de Treinamento': 'OPERADOR MAQ. AGR. II',
       'Setor-Função-Nova': 'TRATOR TRANSBORDO', 'Periodo de vigência de:': 45813, 'Periodo de vigência até:': 45905, 'Matrícula Gestor': 9001, 'Nome Gestor Responsável': 'Gestor Teste',
-      'Função do Gestor': 'Coordenador Agrícola', 'Situação2': 'TREINADO', 'Data de Confecção do Crachá': 45813, 'Nº DOC': '5/2025', 'Situação-Função': 'CLASSIFICADO' }),
+      'Função do Gestor': 'Coordenador Agrícola', 'Situação2': 'TREINADO', 'Data de Confecção do Crachá': 45813, 'Nº DOC': '1/2025', 'Situação-Função': 'CLASSIFICADO' }),
     linhaDigitar({ 'Matrícula': 7001, 'Função de Treinamento': 'OPERADOR MAQ. AGR. II', 'Setor-Função-Nova': 'TRATOR TRANSBORDO', 'Periodo de vigência de:': 45813 }), // repetida
-    linhaDigitar({ 'Matrícula': 1, 'Função de Treinamento': 'MOTORISTA CARRETA', 'Setor-Função-Nova': 'TRANSPORTE', 'Periodo de vigência de:': '01/09/2025', 'Seq.': 7, 'ano': 2025 }), // sem data do crachá: Seq./ano
-    linhaDigitar({ 'Matrícula': 9001, 'Função de Treinamento': 'LIDER', 'Setor-Função-Nova': 'IRRIGAÇÃO', 'Periodo de vigência de:': '01/10/2025', 'Nº DOC': '5/2025' }), // número repetido
+    linhaDigitar({ 'Matrícula': 1, 'Função de Treinamento': 'MOTORISTA CARRETA', 'Setor-Função-Nova': 'TRANSPORTE', 'Periodo de vigência de:': '01/09/2025', 'Seq.': 2, 'ano': 2025 }), // sem data do crachá: Seq./ano
+    linhaDigitar({ 'Matrícula': 9001, 'Função de Treinamento': 'LIDER', 'Setor-Função-Nova': 'IRRIGAÇÃO', 'Periodo de vigência de:': '01/10/2025', 'Nº DOC': '1/2025' }), // número repetido
     linhaDigitar({ 'Matrícula': 7001, 'Função de Treinamento': 'OPERADOR', 'Setor-Função-Nova': 'IRRIGAÇÃO LOCALIZADA' }), // sem início da vigência
     ...extras.map(linhaDigitar),
   ] },
@@ -55,7 +55,7 @@ test('regras: vigência +3 meses, status, mês de vencimento, situação 2 e lei
   assert.equal(registros.length, 4);
   assert.deepEqual(erros.map((e) => e.motivo), ['Sem início da vigência.']);
   assert.deepEqual([registros[0].vigencia_de, registros[0].vigencia_ate, registros[0].possui_cnh, registros[0].situacao, registros[0].situacao_funcao, registros[0].doc_numero, registros[0].doc_ano],
-    ['2025-06-05', '2025-09-05', false, 'TREINADO', 'CLASSIFICADO', 5, 2025]);
+    ['2025-06-05', '2025-09-05', false, 'TREINADO', 'CLASSIFICADO', 1, 2025]);
 });
 
 let t; let admin; let ana; let davi;
@@ -118,11 +118,11 @@ test('importação da planilha: prévia, aplicação sem repetir e números de C
   assert.equal(itens.length, 3);
   const sem = itens.find((r) => r.matricula === '7001');
   assert.deepEqual([sem.numero_doc, sem.status, sem.mes_vencimento, sem.situacao2, sem.funcao_para_treinamento, sem.situacao_atual],
-    ['5/2025', '2025-09-06', 'SET', 'TREINADO', 'OPERADOR MAQ. AGR. II(TRATOR TRANSBORDO)', 'AFASTADO']);
+    ['1/2025', '2025-09-06', 'SET', 'TREINADO', 'OPERADOR MAQ. AGR. II(TRATOR TRANSBORDO)', 'AFASTADO']);
   const ana1 = itens.find((r) => r.matricula === '1');
-  assert.equal(ana1.numero_doc, '7/2025'); // sem Nº DOC na planilha: Seq./ano
-  // número repetido (5/2025): recebe o próximo do ano; a ordem da planilha é a do Nº DOC
-  assert.deepEqual((await davi.get('/api/treino/registros?ordem=doc&doc_ano=2025')).corpo.itens.map((r) => [r.matricula, r.numero_doc]), [['7001', '5/2025'], ['1', '7/2025'], ['9001', '8/2025']]);
+  assert.equal(ana1.numero_doc, '2/2025'); // sem Nº DOC na planilha: Seq./ano
+  // número repetido (1/2025): recebe o próximo do ano; a ordem da planilha é a do Nº DOC
+  assert.deepEqual((await davi.get('/api/treino/registros?ordem=doc&doc_ano=2025')).corpo.itens.map((r) => [r.matricula, r.numero_doc]), [['7001', '1/2025'], ['1', '2/2025'], ['9001', '3/2025']]);
   assert.equal(ana1.vigencia_ate, '2025-12-01'); // sem fim na planilha: início + 3 meses
   const p = (await davi.get('/api/treino/parametros')).corpo;
   assert.deepEqual(p.gestores.map((g) => [g.matricula, g.nome, g.cargo]), [['9001', 'Gestor Teste', 'COORDENADOR AGRÍCOLA']]);
@@ -131,16 +131,16 @@ test('importação da planilha: prévia, aplicação sem repetir e números de C
   // e quem ocupava esses números (lançado no sistema ou numerado antes) vai para o próximo livre do ano
   const dig = await davi.post('/api/treino/registros', { matricula: '1', funcao_treinamento: 'AJUDANTE', setor_nova: 'OFICINA', vigencia_de: '2025-11-10' });
   const num = async (id) => (await davi.get(`/api/treino/registros/${id}`)).corpo.numero_doc;
-  assert.equal(await num(dig.corpo.id), '9/2025');
+  assert.equal(await num(dig.corpo.id), '4/2025');
   const extras = [
-    { 'Matrícula': 7001, 'Função de Treinamento': 'MOTORISTA', 'Setor-Função-Nova': 'CANAVIEIRO', 'Periodo de vigência de:': '03/11/2025', 'Nº DOC': '8/2025' },
-    { 'Matrícula': 9001, 'Função de Treinamento': 'MOTORISTA', 'Setor-Função-Nova': 'CANAVIEIRO', 'Periodo de vigência de:': '04/11/2025', 'Seq.': 9, 'ano': 2025 },
+    { 'Matrícula': 7001, 'Função de Treinamento': 'MOTORISTA', 'Setor-Função-Nova': 'CANAVIEIRO', 'Periodo de vigência de:': '03/11/2025', 'Nº DOC': '3/2025' },
+    { 'Matrícula': 9001, 'Função de Treinamento': 'MOTORISTA', 'Setor-Função-Nova': 'CANAVIEIRO', 'Periodo de vigência de:': '04/11/2025', 'Seq.': 4, 'ano': 2025 },
   ];
   const de3 = await importar(davi, 'registros=1&aplicar=1', extras);
   assert.deepEqual([de3.corpo.registros.criar, de3.corpo.registros.renumerar], [2, 2]);
   const seq = (await davi.get('/api/treino/registros?ordem=doc&doc_ano=2025')).corpo.itens.map((r) => [r.matricula, r.funcao_treinamento, r.numero_doc]);
-  assert.deepEqual(seq, [['7001', 'OPERADOR MAQ. AGR. II', '5/2025'], ['1', 'MOTORISTA CARRETA', '7/2025'], ['7001', 'MOTORISTA', '8/2025'], ['9001', 'MOTORISTA', '9/2025'],
-    ['9001', 'LIDER', '10/2025'], ['1', 'AJUDANTE', '11/2025']]);
+  assert.deepEqual(seq, [['7001', 'OPERADOR MAQ. AGR. II', '1/2025'], ['1', 'MOTORISTA CARRETA', '2/2025'], ['7001', 'MOTORISTA', '3/2025'], ['9001', 'MOTORISTA', '4/2025'],
+    ['9001', 'LIDER', '5/2025'], ['1', 'AJUDANTE', '6/2025']]);
   for (const r of (await davi.get('/api/treino/registros?doc_ano=2025')).corpo.itens.filter((x) => ['MOTORISTA', 'AJUDANTE'].includes(x.funcao_treinamento))) {
     await davi.del(`/api/treino/registros/${r.id}`);
   }
@@ -248,4 +248,28 @@ test('gestores: a matrícula puxa nome e função do cadastro', async () => {
   assert.equal((await admin.put('/api/treino/gestores/2', { cargo: 'Gerente de Transportes' })).corpo.cargo, 'Gerente de Transportes');
   assert.equal((await admin.post('/api/treino/gestores', { matricula: '88888' })).status, 400);
   assert.equal((await admin.del('/api/treino/gestores/2')).status, 204);
+});
+
+test('numeração: cada ano recomeça do 1 e o ano segue a data (480/2025 → 1/2026)', async () => {
+  await davi.post('/api/treino/numeracao/ajustar', {}); // fecha as lacunas deixadas pelas exclusões dos testes anteriores
+  const cria = async (vig, cracha) => (await davi.post('/api/treino/registros', { matricula: '1', funcao_treinamento: 'MOTORISTA', setor_nova: 'NUMERACAO', vigencia_de: vig, data_cracha: cracha })).corpo.id;
+  const a = await cria('2027-12-20', '2027-12-28');
+  const b = await cria('2028-01-05', '2028-01-06');
+  const c = await cria('2028-01-10');
+  const num = async (id) => (await davi.get(`/api/treino/registros/${id}`)).corpo.numero_doc;
+  assert.deepEqual([await num(a), await num(b), await num(c)], ['1/2027', '1/2028', '2/2028']);
+  // como estava errado no sistema: a numeração de 2028 continuou a de 2027 e um de 2028 ficou com o ano de 2027
+  await t.pool.query('UPDATE trein_registros SET doc_numero = NULL, doc_ano = NULL WHERE id = ANY($1)', [[a, b, c]]);
+  await t.pool.query('UPDATE trein_registros SET doc_numero = 480, doc_ano = 2027 WHERE id = $1', [a]);
+  await t.pool.query('UPDATE trein_registros SET doc_numero = 481, doc_ano = 2027 WHERE id = $1', [b]);
+  await t.pool.query('UPDATE trein_registros SET doc_numero = 482, doc_ano = 2028 WHERE id = $1', [c]);
+  const v = (await davi.get('/api/treino/numeracao')).corpo;
+  assert.equal(v.mudar, 3);
+  assert.deepEqual(v.exemplos.map((x) => [x.de, x.para]), [['480/2027', '1/2027'], ['482/2028', '1/2028'], ['481/2027', '2/2028']]);
+  assert.equal((await ana.req('POST', '/api/treino/numeracao/ajustar', {})).status, 403);
+  assert.equal((await davi.post('/api/treino/numeracao/ajustar', {})).corpo.ajustados, 3);
+  assert.deepEqual([await num(a), await num(b), await num(c)], ['1/2027', '2/2028', '1/2028']);
+  assert.equal((await davi.get('/api/treino/numeracao')).corpo.mudar, 0);
+  assert.equal((await t.pool.query('SELECT numeracao_por_ano FROM trein_config')).rows[0].numeracao_por_ano, true);
+  for (const id of [a, b, c]) await davi.del(`/api/treino/registros/${id}`);
 });

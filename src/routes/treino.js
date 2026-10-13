@@ -428,6 +428,27 @@ function criarTreino({ pool }) {
     res.status(204).end();
   }));
 
+  // ================= Numeração do Nº DOC =================
+  // O ano é o da data do crachá (sem ela, o do início da vigência) e cada ano recomeça do 1 (480/2025 → 1/2026).
+  router.get('/treino/numeracao', wrap(async (_req, res) => {
+    const { rows } = await pool.query(
+      `SELECT c.doc_numero, c.doc_ano, c.n, c.ano, r.matricula, r.nome FROM trein_numeracao_correta c JOIN trein_registros r ON r.id = c.id
+       WHERE c.doc_ano IS DISTINCT FROM c.ano OR c.doc_numero IS DISTINCT FROM c.n ORDER BY c.ano, c.n`);
+    res.json({
+      mudar: rows.length,
+      exemplos: rows.slice(0, 15).map((x) => ({ matricula: x.matricula, nome: x.nome, de: x.doc_numero ? `${x.doc_numero}/${x.doc_ano}` : 'sem número', para: `${x.n}/${x.ano}` })),
+    });
+  }));
+  router.post('/treino/numeracao/ajustar', wrap(async (req, res) => {
+    const n = await tx(pool, async (db) => {
+      await db.query('LOCK TABLE trein_registros IN SHARE ROW EXCLUSIVE MODE');
+      const q = (await db.query('SELECT trein_ajustar_numeracao() AS n')).rows[0].n;
+      await auditar(db, req.usuario, 'ajustar_numeracao', 'trein_registro', null, { ajustados: q });
+      return q;
+    });
+    res.json({ ajustados: n });
+  }));
+
   // ================= Importação da planilha RE.1005.04 =================
   // POST /treino/importar?aplicar=1&registros=1 (corpo: o .xlsx). Base (APFO + ESCALA) → trein_base; gestores da aba Digitar;
   // com registros=1, os treinamentos da aba Digitar (sem repetir matrícula, início e função de treinamento).
@@ -539,7 +560,8 @@ function criarTreino({ pool }) {
         if (n) await db.query('UPDATE trein_registros SET doc_numero = $1, doc_ano = $2 WHERE id = $3', [n.numero, n.ano, e.id]);
       }
       await db.query(SQL_NUMERAR_PENDENTES); // linhas sem Seq./ano (ou com número repetido) recebem os próximos números
-      await auditar(db, req.usuario, 'importar', 'trein_importacao', null, { arquivo, base: base.length, gestores: gestores.size, registros: novos.length, atualizados: atualizar.length });
+      const ajustados = (await db.query('SELECT trein_ajustar_numeracao() AS n')).rows[0].n; // o ano segue a data e cada ano recomeça do 1
+      await auditar(db, req.usuario, 'importar', 'trein_importacao', null, { arquivo, base: base.length, gestores: gestores.size, registros: novos.length, atualizados: atualizar.length, numeracao_ajustada: ajustados });
       return { ...r, aplicado: true };
     });
     res.status(aplicar ? 201 : 200).json(resumo);

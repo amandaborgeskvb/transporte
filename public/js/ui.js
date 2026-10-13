@@ -375,6 +375,7 @@ const EVENTOS = {
   'anexar:despesa': 'anexou comprovante à despesa', 'anexar:adiantamento': 'anexou comprovante ao adiantamento', 'anexar:reembolso': 'anexou comprovante ao reembolso',
   'remover_anexo:despesa': 'removeu comprovante da despesa', 'remover_anexo:adiantamento': 'removeu comprovante do adiantamento', 'remover_anexo:reembolso': 'removeu comprovante do reembolso',
   'trocar_senha:usuarios': 'alterou a própria senha',
+  'ajustar_numeracao:trein_registro': 'ajustou a numeração do Nº DOC dos treinamentos',
   'importar:importacao_funcionarios': 'importou funcionários de arquivos do ERP',
   'emitir:autorizacao_desconto': 'emitiu a autorização de desconto', 'editar:autorizacao_desconto': 'editou a autorização de desconto',
   'assinar:autorizacao_desconto': 'registrou a assinatura da autorização de desconto', 'concluir:autorizacao_desconto': 'concluiu o desconto em folha',

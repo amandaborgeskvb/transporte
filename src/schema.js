@@ -557,6 +557,30 @@ CREATE INDEX IF NOT EXISTS trein_registros_ate_idx ON trein_registros (vigencia_
 CREATE UNIQUE INDEX IF NOT EXISTS trein_registros_doc_idx ON trein_registros (doc_ano, doc_numero) WHERE doc_numero IS NOT NULL;
 -- Nº DOC (Seq./ano) para todo treinamento, como na planilha: numera os que ficaram sem número
 ${SQL_NUMERAR_TREINO};
+-- Numeração correta do Nº DOC: o ano é o da data do crachá (sem ela, o do início da vigência) e cada ano recomeça do 1.
+-- Quem já está numerado naquele ano mantém a ordem; quem vem de outro ano (ou sem número) entra depois, pela data.
+CREATE OR REPLACE VIEW trein_numeracao_correta AS
+SELECT id, doc_ano, doc_numero, ano, n::int AS n FROM (
+  SELECT id, doc_ano, doc_numero, ano, row_number() OVER (PARTITION BY ano
+           ORDER BY COALESCE(doc_ano = ano AND doc_numero IS NOT NULL, false) DESC, CASE WHEN doc_ano = ano THEN doc_numero END, dref, id) AS n
+  FROM (SELECT id, doc_ano, doc_numero, COALESCE(data_cracha, vigencia_de) AS dref, extract(year FROM COALESCE(data_cracha, vigencia_de))::int AS ano
+        FROM trein_registros) b
+) x;
+-- Aplica a numeração correta; devolve quantos treinamentos mudaram de número
+CREATE OR REPLACE FUNCTION trein_ajustar_numeracao() RETURNS integer LANGUAGE plpgsql AS $f$
+DECLARE qtd integer;
+BEGIN
+  CREATE TEMP TABLE IF NOT EXISTS _trein_num (id integer PRIMARY KEY, ano integer, n integer) ON COMMIT DROP;
+  TRUNCATE _trein_num;
+  INSERT INTO _trein_num SELECT id, ano, n FROM trein_numeracao_correta WHERE doc_ano IS DISTINCT FROM ano OR doc_numero IS DISTINCT FROM n;
+  GET DIAGNOSTICS qtd = ROW_COUNT;
+  IF qtd > 0 THEN
+    UPDATE trein_registros r SET doc_numero = NULL, doc_ano = NULL FROM _trein_num t WHERE r.id = t.id;
+    UPDATE trein_registros r SET doc_numero = t.n, doc_ano = t.ano FROM _trein_num t WHERE r.id = t.id;
+  END IF;
+  RETURN qtd;
+END $f$;
+ALTER TABLE trein_config ADD COLUMN IF NOT EXISTS numeracao_por_ano BOOLEAN NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,
@@ -618,6 +642,13 @@ VALUES ('RE. 0940.02D', 'COMUNICAÇÃO INTERNA (C.I)', 'Sistema de Gestão Integ
         'CRV INDUSTRIAL LTDA', 'Ipiaçu-MG')
 ON CONFLICT (codigo) DO NOTHING;
 INSERT INTO trein_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+-- Uma vez: acerta o Nº DOC dos treinamentos já no sistema (o ano segue a data e cada ano recomeça do 1)
+DO $$ BEGIN
+  IF EXISTS (SELECT 1 FROM trein_config WHERE id = 1 AND NOT numeracao_por_ano) THEN
+    PERFORM trein_ajustar_numeracao();
+    UPDATE trein_config SET numeracao_por_ano = true WHERE id = 1;
+  END IF;
+END $$;
 -- Assinaturas fixas da C.I. (a do gestor responsável vem do treinamento); editáveis em Treinamento prático → Parâmetros
 INSERT INTO trein_signatarios (nome, cargo, ordem)
 SELECT n, c, o FROM (VALUES

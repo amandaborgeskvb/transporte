@@ -816,6 +816,20 @@ async function parametros({ recarregarPagina }) {
   }).then((ok) => { if (ok) { toast('Assinatura salva.'); recarregarPagina(); } });
 
   const cartao = cartaoImportacao(p, { aoImportar: recarregarPagina });
+  // Numeração do Nº DOC: verifica e acerta (ano pela data, cada ano recomeça do 1)
+  const ajustarNumeracao = async () => {
+    const v = await get('/treino/numeracao');
+    if (!v.mudar) { toast('A numeração já está certa: cada ano começa do 1 e o ano segue a data.'); return; }
+    const lista = h('ul', { class: 'pequeno' }, v.exemplos.map((x) => h('li', {}, `${x.de} → ${x.para} · ${x.matricula} - ${x.nome}`)), v.mudar > v.exemplos.length ? h('li', { class: 'muted' }, `… e mais ${fmt(v.mudar - v.exemplos.length)}`) : null);
+    const ok = await confirmar('Ajustar a numeração do Nº DOC', h('div', {}, h('p', {}, `${fmt(v.mudar)} treinamento${v.mudar === 1 ? '' : 's'} vão mudar de número para seguir a regra: o ano é o da data do crachá (sem ela, o do início da vigência) e cada ano recomeça do 1.`), lista), { rotulo: 'Ajustar' });
+    if (!ok) return;
+    const r = await post('/treino/numeracao/ajustar', {});
+    toast(`Numeração ajustada: ${fmt(r.ajustados)} treinamento${r.ajustados === 1 ? '' : 's'}.`);
+    recarregarPagina();
+  };
+  const cartaoNumeracao = h('div', { class: 'card' }, h('div', { class: 'card-topo' }, h('h2', {}, 'Numeração do Nº DOC (C.I. DEST)'),
+    h('div', { class: 'acoes' }, botao('Verificar e ajustar', ajustarNumeracao, { tom: 'sec', icone: 'ok' }))),
+  h('p', { class: 'muted pequeno' }, 'O número da C.I. recomeça do 1 a cada ano: se o último de 2025 for 480/2025, o primeiro de 2026 é 1/2026. O ano é o da data de confecção do crachá (sem ela, o do início da vigência). A importação da planilha já aplica esta regra; use o botão para conferir e acertar os que estão no sistema.'));
 
   return [
     cabecalhoPagina({ migalhas: [...BASE, ['Parâmetros']], titulo: 'Parâmetros do treinamento prático', sub: 'Vigência, textos e assinaturas da C.I. do crachá, gestores responsáveis e carga da planilha' }),
@@ -836,6 +850,7 @@ async function parametros({ recarregarPagina }) {
         { t: '', f: (x) => h('span', { class: 'acoes' }, botao('Editar', () => editarGestor(x), { tom: 'sec', pequeno: true }),
           botao('Excluir', async () => { if (await confirmar('Excluir gestor', `${x.matricula} - ${x.nome}`, { rotulo: 'Excluir', perigo: true })) { await del(`/treino/gestores/${x.matricula}`); recarregarPagina(); } }, { tom: 'perigo sec', pequeno: true })) },
       ], p.gestores, { vazioMsg: 'Nenhum gestor: cadastre ou importe a planilha.' })),
+    cartaoNumeracao,
     cartao,
     h('p', { class: 'muted pequeno' }, `O cabeçalho da C.I. (código ${p.documento?.codigo || 'RE. 0940.02D'}, versão e data) fica em Cadastros → Formulários (RE).`),
   ];
