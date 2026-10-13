@@ -17,10 +17,11 @@ const badgeSit = (s) => badgeTom(SIT[s]?.[0] || s, SIT[s]?.[1]);
 const BASE = [['Gratificação rescisória'], ['Apuração']];
 const TURNOS = ['A', 'B', 'C'].map((t) => ({ valor: t, rotulo: `Turno ${t}` }));
 const ESCALAS = [['A', 'Letra A (escala 5×1)'], ['B', 'Letra B (escala 5×1)'], ['C', 'Letra C (escala 5×1)'], ['D', 'Letra D (escala 5×1)'], ['E', 'Letra E (escala 5×1)'], ['F', 'Letra F (escala 5×1)'], ['DOM', 'Folga aos domingos'], ['5X2', 'Folga sábado e domingo (5×2 / ADM)']];
-// Regra fixa por grupo: demais funções descontam do BPP (BPP no relatório); motoristas e operadores descontam da produtividade (BPP no Cartão Gold)
-const REGRA = { auxiliar: 'ocorrências descontam do BPP · BPP aparece no relatório', operador: 'ocorrências descontam da produtividade · BPP vai para o Cartão Gold (não aparece no relatório)' };
+const ALVOS = [['bpp', 'BPP'], ['prod', 'Produtividade'], ['bpp_prod', 'BPP e Produtividade'], ['nenhum', 'Nenhum (não descontar)']].map(([valor, rotulo]) => ({ valor, rotulo }));
+const MODOS_CARTAO = [['operador', 'Motoristas e operadores'], ['todos', 'Todas as funções'], ['nenhum', 'Ninguém (BPP no relatório)']].map(([valor, rotulo]) => ({ valor, rotulo }));
 const NOME_COMP = { bpp: 'BPP', prod: 'Produtividade' };
 const nomesComp = (lista) => (lista.length ? lista.map((k) => NOME_COMP[k]).join(' e ') : '—');
+const rotuloAlvo = (k) => ALVOS.find((a) => a.valor === k)?.rotulo || k;
 const valorOuTraco = (v) => (v === null || v === undefined ? '—' : brl(v));
 
 // ======================================================================
@@ -171,7 +172,7 @@ async function detalheApuracao({ params, ir, recarregarPagina }) {
       secao('Regras aplicadas', null, h('dl', { class: 'dados um' },
         dado('Tipo de rescisão', `${r.tipo_rescisao} · ${dataBR(r.dt_rescisao)}`),
         dado('Grupo da função', `${GRUPOS[c.grupo]} (${ORIGEM_GRUPO[c.grupo_origem]})`),
-        dado('Desconto das ocorrências', `${c.desconto_pct ? pct(c.desconto_pct) : 'nenhum'} sobre ${nomesComp(c.desconto_em)} (regra do grupo: ${REGRA[c.grupo]})`),
+        dado('Desconto das ocorrências', c.desconto_pct ? `${pct(c.desconto_pct)} sobre ${nomesComp(c.desconto_em)}${c.desconto_redirecionado ? ` (o parâmetro do grupo é ${nomesComp(c.desconto_redirecionado.de)})` : ''}` : `nenhum (o grupo desconta sobre ${nomesComp(c.desconto_configurado)})`),
         dado('Meses da média', c.meses.length ? c.meses.map(mesRotulo).join(', ') : 'nenhum mês informado'),
         dado('Dias', `${c.dias_trabalhados} trabalhados − ${c.dias_descontados} das ocorrências = ${c.dias_pagar} a pagar (base ${c.base_dias})`),
         dado('Turno e letra de folga', `${r.turno ? `Turno ${r.turno}` : 'turno não informado'} · ${c.escala ? `folga ${ESCALAS.find(([k]) => k === c.escala)?.[1] || c.escala}` : 'sem escala'}`),
@@ -409,6 +410,8 @@ async function paginaParametros({ recarregarPagina }) {
       { nome: 'base_dias', rotulo: 'Base de dias do proporcional', tipo: 'number', passo: '1', min: '1', max: '31', valor: cfg.base_dias, obrigatorio: true, dica: 'Valor ÷ base × dias a pagar (25 na planilha).' },
       { nome: 'meses_media', rotulo: 'Meses da média', tipo: 'number', passo: '1', min: '1', max: '12', valor: cfg.meses_media, obrigatorio: true },
       { nome: 'dia_corte', rotulo: 'Dia de corte do ciclo', tipo: 'number', passo: '1', min: '1', max: '28', valor: cfg.dia_corte, obrigatorio: true, dica: 'As ocorrências contam do dia de corte anterior até a data da rescisão.' },
+      { nome: 'desconto_auxiliar', rotulo: 'Ocorrências das demais funções descontam do', tipo: 'select', opcoes: ALVOS, valor: cfg.desconto_auxiliar, obrigatorio: true, cheio: true },
+      { nome: 'desconto_redireciona', rotulo: 'Se o componente do desconto não for pago na rescisão (ex.: BPP na demissão sem justa causa), descontar do outro componente pago', tipo: 'checkbox', valor: cfg.desconto_redireciona, cheio: true },
     ], confirmar: 'Salvar',
     aoSalvar: (v) => put('/gratificacao/config', { ...v, base_dias: Number(v.base_dias), meses_media: Number(v.meses_media), dia_corte: Number(v.dia_corte) }),
   }).then((s) => { if (s) { toast('Regras salvas.'); recarregarPagina(); } });
@@ -441,8 +444,9 @@ async function paginaParametros({ recarregarPagina }) {
     }),
     secao('Regras gerais', botao('Editar', editarConfig, { tom: 'sec', pequeno: true, icone: 'editar' }), h('dl', { class: 'dados' },
       ...[['Base de dias', cfg.base_dias], ['Meses da média', cfg.meses_media], ['Dia de corte do ciclo', cfg.dia_corte],
-        ['Demais funções (auxiliares…)', REGRA.auxiliar],
-        ['Motoristas e operadores', h('span', {}, `${REGRA.operador} · `, h('a', { href: '#/gratificacao/operadores' }, 'funções do grupo'))]]
+        ['Ocorrências das demais funções', `descontam do ${rotuloAlvo(cfg.desconto_auxiliar)}`],
+        ['Ocorrências de motoristas e operadores', h('span', {}, `descontam da ${rotuloAlvo(cfg.desconto_operador)} · `, h('a', { href: '#/gratificacao/operadores' }, 'configurar'))],
+        ['Componente do desconto não pago', cfg.desconto_redireciona ? 'desconta do outro componente pago' : 'desconto fica sem efeito']]
         .map(([t, v]) => dado(t, v)))),
     secao('Critérios por tipo de rescisão', botao('Novo tipo', () => editarCriterio(null), { tom: 'sec', pequeno: true, icone: 'mais' }), tabela([
       { t: 'Tipo de rescisão', f: (x) => [x.tipo_rescisao, x.ativo ? '' : h('small', { class: 'muted' }, ' (inativo)')] },
@@ -471,8 +475,10 @@ async function paginaOperadores({ recarregarPagina }) {
   const operadores = f.itens.filter((x) => x.grupo === 'operador');
 
   const editarAplicacao = () => dialogo({
-    titulo: 'Palavras-chave das funções — motoristas e operadores',
+    titulo: 'Aplicação dos descontos — motoristas e operadores',
     campos: [
+      { nome: 'desconto_operador', rotulo: 'As ocorrências descontam da', tipo: 'select', opcoes: ALVOS, valor: cfg.desconto_operador, obrigatorio: true, cheio: true },
+      { nome: 'bpp_cartao', rotulo: 'BPP depositado no Cartão Gold (não sai no relatório) para', tipo: 'select', opcoes: MODOS_CARTAO, valor: cfg.bpp_cartao, obrigatorio: true, cheio: true },
       { nome: 'palavras_operador', rotulo: 'Palavras-chave das funções do grupo', valor: cfg.palavras_operador, max: 200, cheio: true, dica: 'Separadas por vírgula. Funções com uma delas no nome entram no grupo, salvo se classificadas abaixo como "demais funções".' },
     ], confirmar: 'Salvar', aoSalvar: (v) => put('/gratificacao/config', v),
   }).then((s) => { if (s) { toast('Parâmetros salvos.'); recarregarPagina(); } });
@@ -489,11 +495,11 @@ async function paginaOperadores({ recarregarPagina }) {
     }),
     h('div', { class: 'kpis compactos' },
       kpi('Funções no grupo', fmt(operadores.length), { icone: 'usuarios', sub: ((n) => `${fmt(n)} funcionário${n === 1 ? '' : 's'} ativo${n === 1 ? '' : 's'}`)(operadores.reduce((t, x) => t + x.ativos, 0)) }),
-      kpi('Desconto das ocorrências', 'Produtividade', { icone: 'proibido' }),
-      kpi('BPP', 'Cartão Gold', { icone: 'carteira', sub: 'não aparece no relatório' })),
-    secao('Aplicação', botao('Editar palavras-chave', editarAplicacao, { tom: 'sec', pequeno: true, icone: 'editar' }), h('dl', { class: 'dados' },
-      dado('Motoristas e operadores', REGRA.operador),
-      dado('Demais funções', REGRA.auxiliar),
+      kpi('Desconto das ocorrências', rotuloAlvo(cfg.desconto_operador), { icone: 'proibido' }),
+      kpi('BPP no Cartão Gold', MODOS_CARTAO.find((m) => m.valor === cfg.bpp_cartao)?.rotulo || cfg.bpp_cartao, { icone: 'carteira' })),
+    secao('Aplicação', botao('Editar', editarAplicacao, { tom: 'sec', pequeno: true, icone: 'editar' }), h('dl', { class: 'dados' },
+      dado('Ocorrências descontam da', rotuloAlvo(cfg.desconto_operador)),
+      dado('BPP depositado no Cartão Gold', MODOS_CARTAO.find((m) => m.valor === cfg.bpp_cartao)?.rotulo || cfg.bpp_cartao),
       dado('Palavras-chave das funções', cfg.palavras_operador || '—'))),
     tabelaDescontos(p, 'operador', recarregarPagina, { titulo: 'Pontos de desconto e percentuais', texto: 'Percentual descontado da produtividade por ocorrência no período (somados, até 100%) e dias trabalhados que cada ocorrência tira.' }),
     secao('Funções do cadastro', null,
