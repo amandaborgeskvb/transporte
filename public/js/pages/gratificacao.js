@@ -729,14 +729,14 @@ async function paginaDemonstrativo({ query, ir }) {
   const linhaDados = (r) => { const c = r.calculo; return h('tr', {},
     h('td', {}, r.funcionario_setor || '—'), h('td', { class: 'c' }, r.funcionario_matricula), h('td', {}, r.funcionario_nome),
     tripla(c.bpp), tripla(c.gold), tripla(c.prod),
-    h('td', { class: 'n' }, n2(c.total)), h('td', { class: 'c' }, c.dias_pagar), h('td', { class: 'c' }, c.dias_descontados),
+    h('td', { class: 'c' }, c.dias_pagar), h('td', { class: 'c' }, c.dias_descontados),
     h('td', {}, r.tipo_rescisao), h('td', { class: 'c' }, dataBR(r.funcionario_admissao)), h('td', {}, c.criterio_texto), h('td', { class: 'c' }, dataBR(r.dt_rescisao)),
     h('td', { class: 'n forte' }, n2(c.total))); };
   const subtotal = (lista, k) => [h('td', {}), h('td', {}), h('td', { class: 'n' }, n2(soma(lista, (c) => c[k].receber)))];
   const linhaTotal = (rotulo, lista, classe) => h('tr', { class: classe },
     h('td', { colspan: 3 }, `${rotulo} - ${lista.length}`),
     subtotal(lista, 'bpp'), subtotal(lista, 'gold'), subtotal(lista, 'prod'),
-    h('td', { class: 'n' }, n2(soma(lista, (c) => c.total))), h('td', { class: 'c' }, soma(lista, (c) => c.dias_pagar)), h('td', { class: 'c' }, soma(lista, (c) => c.dias_descontados)),
+    h('td', { class: 'c' }, soma(lista, (c) => c.dias_pagar)), h('td', { class: 'c' }, soma(lista, (c) => c.dias_descontados)),
     h('td', { colspan: 4 }), h('td', { class: 'n forte' }, n2(soma(lista, (c) => c.total))));
 
   const corpo = [];
@@ -753,7 +753,7 @@ async function paginaDemonstrativo({ query, ir }) {
       h('img', { src: '/img/crv-industrial-azul.png?v=2', alt: 'CRV Industrial', class: 'demo-logo' })),
     itens.length ? h('table', { class: 'demo-tab' },
       h('thead', {}, h('tr', {}, ['Descrição do Departamento', 'Matrícula', 'Nome Colaborador', 'Média-BPP (R$)', 'Ating. BPP (%)', '(R$) Receber BPP',
-        'Cartão Gold (R$)', 'Ating. Cartão Gold (%)', '(R$) Receber Cartão Gold', 'Média-Prod (R$)', 'Ating. Prod (%)', '(R$) Receber Produtivid', '$ BPP + Cartão Gold + Produtivid', 'Qtde Dias trab.', 'Qtde. faltas', 'Tipo de Rescisão', 'Dt - Admissão', 'Critérios da Rescisão', 'Dt. Rescisão', '(R$) Total Gratif Receber']
+        'Cartão Gold (R$)', 'Ating. Cartão Gold (%)', '(R$) Receber Cartão Gold', 'Média-Prod (R$)', 'Ating. Prod (%)', '(R$) Receber Produtivid', 'Qtde Dias trab.', 'Qtde. faltas', 'Tipo de Rescisão', 'Dt - Admissão', 'Critérios da Rescisão', 'Dt. Rescisão', '(R$) Total Gratif Receber']
         .map((t) => h('th', {}, t)))),
       h('tbody', {}, corpo, linhaTotal('Total / VALORES', itens, 'total'))) : h('p', { class: 'demo-vazio' }, 'Nenhuma apuração para o filtro selecionado.'),
     itens.some((r) => r.calculo.cartao_gold > 0) ? h('p', { class: 'demo-nota' }, `Cartão Gold: depósito no cartão (lista à parte) — R$ ${n2(soma(itens, (c) => c.cartao_gold))}.`) : null,
