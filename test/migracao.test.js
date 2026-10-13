@@ -97,20 +97,26 @@ test('gratificação: instalação anterior ganha dias por ocorrência, valores 
   assert.equal((await q('SELECT descontar_bpp FROM grat_config')).rows[0].descontar_bpp, true);
 });
 
-test('gratificação: sem Zelo, as opções de desconto antigas viram o equivalente; Cartão Gold e funções do grupo', async () => {
+test('gratificação: sem Zelo, opções de desconto antigas viram o equivalente; Cartão Gold vira valor por função', async () => {
   const { migrate } = require('../src/db');
   const q = (sql, p) => t.pool.query(sql, p);
-  // estado da versão anterior: opções com Zelo, sem as colunas novas e sem a tabela de funções
+  // estado de versões anteriores: opções com Zelo, "BPP no Cartão Gold", tabela de funções antiga e critérios sem Cartão Gold
   await q('ALTER TABLE grat_config DROP CONSTRAINT grat_config_desconto_check');
-  await q('ALTER TABLE grat_config DROP COLUMN desconto_redireciona, DROP COLUMN bpp_cartao');
+  await q('ALTER TABLE grat_config DROP COLUMN desconto_redireciona');
+  await q(`ALTER TABLE grat_config ADD COLUMN bpp_cartao TEXT NOT NULL DEFAULT 'operador'`);
   await q('DROP TABLE grat_funcoes');
+  await q(`CREATE TABLE grat_funcoes (funcao TEXT PRIMARY KEY, grupo TEXT NOT NULL, bpp_destino TEXT, atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now())`);
+  await q(`INSERT INTO grat_funcoes (funcao, grupo, bpp_destino) VALUES ('OP. COLHEDORA', 'operador', 'cartao')`);
+  await q('ALTER TABLE grat_criterios DROP COLUMN pagar_gold');
   await q(`UPDATE grat_config SET desconto_auxiliar = 'todos', desconto_operador = 'zelo'`);
   await migrate(t.pool);
-  const cfg = (await q('SELECT desconto_auxiliar, desconto_operador, desconto_redireciona, bpp_cartao FROM grat_config')).rows[0];
-  assert.deepEqual(cfg, { desconto_auxiliar: 'bpp_prod', desconto_operador: 'prod', desconto_redireciona: true, bpp_cartao: 'operador' });
+  const cfg = (await q('SELECT * FROM grat_config')).rows[0];
+  assert.deepEqual([cfg.desconto_auxiliar, cfg.desconto_operador, cfg.desconto_redireciona, 'bpp_cartao' in cfg], ['bpp_prod', 'prod', true, false]);
   await assert.rejects(q(`UPDATE grat_config SET desconto_auxiliar = 'zelo'`));
-  await assert.rejects(q(`UPDATE grat_config SET bpp_cartao = 'x'`));
-  await q(`INSERT INTO grat_funcoes (funcao, grupo) VALUES ('OP. COLHEDORA', 'operador')`);
+  const fn = (await q('SELECT * FROM grat_funcoes')).rows[0];
+  assert.deepEqual([fn.funcao, fn.grupo, 'bpp_destino' in fn, fn.valor_gold, fn.cadastrada], ['OP. COLHEDORA', 'operador', false, null, false]);
+  const gold = Object.fromEntries((await q('SELECT tipo_rescisao, pagar_gold FROM grat_criterios')).rows.map((r) => [r.tipo_rescisao, r.pagar_gold]));
+  assert.deepEqual([gold['DEMISSÃO C/ J. CAUSA'], gold['PEDIDO DE DEMISSÃO']], [false, true]); // igual à produtividade
   await migrate(t.pool); // idempotente
   assert.equal((await q('SELECT count(*)::int AS n FROM grat_funcoes')).rows[0].n, 1);
 });

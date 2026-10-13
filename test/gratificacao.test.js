@@ -4,7 +4,7 @@ const { iniciar } = require('./setup');
 const { criarXlsx } = require('./xlsx-util');
 const { calcular, lerMes, lerNumero, periodoDe, grupoDaFuncao, classificarFuncao, regraDaFuncao, sugerirColunas, lerValores, diasTrabalhados, letraDoDia } = require('../src/gratificacao');
 
-const CONFIG = { base_dias: 25, meses_media: 3, dia_corte: 16, palavras_operador: 'MOTORISTA, OPERADOR', desconto_auxiliar: 'bpp', desconto_operador: 'prod', desconto_redireciona: true, bpp_cartao: 'operador' };
+const CONFIG = { base_dias: 25, meses_media: 3, dia_corte: 16, palavras_operador: 'MOTORISTA, OPERADOR', desconto_auxiliar: 'bpp', desconto_operador: 'prod', desconto_redireciona: true };
 const PEN = [
   { grupo: 'operador', abrev: 'FF', descricao: 'FALTA INJUSTIFICADA', percentual: 0.05, desconta_dia: true },
   { grupo: 'operador', abrev: 'ADV', descricao: 'ADVERTÊNCIA', percentual: 0.05, desconta_dia: false },
@@ -47,7 +47,7 @@ test('cálculo: média dos 3 últimos meses, proporcional a 25 dias, dia descont
   });
   assert.equal(r.grupo, 'operador');
   assert.equal(r.zelo, undefined);
-  assert.deepEqual(r.medias, { bpp: 700, prod: 600 });
+  assert.deepEqual(r.medias, { bpp: 700, gold: 0, prod: 600 }); // sem valor de Cartão Gold na função
   assert.equal(r.desconto_pct, 0.1);
   assert.equal(r.dias_descontados, 1);
   assert.equal(r.dias_pagar, 19);
@@ -56,8 +56,8 @@ test('cálculo: média dos 3 últimos meses, proporcional a 25 dias, dia descont
   assert.deepEqual(r.desconto_em, ['prod']);
   assert.equal(r.desconto, 45.6); // motorista: 10% só na produtividade
   assert.equal(r.total, 942.4);
-  // motorista: o BPP vai para o Cartão Gold; a folha (relatório) é a produtividade
-  assert.deepEqual([r.bpp_no_cartao, r.cartao_gold, r.folha], [true, 532, 410.4]);
+  // BPP e produtividade na folha; Cartão Gold só com valor da função
+  assert.deepEqual([r.cartao_gold, r.folha], [0, 942.4]);
   assert.deepEqual(r.ocorrencias_fora.map((o) => o.abrev), ['NC']);
   assert.equal(r.avisos.length, 1);
   assert.match(r.avisos[0], /fora do período.*NC em 10\/04\/2026/);
@@ -80,7 +80,7 @@ test('cálculo: critério da rescisão define o que é pago; auxiliar usa a tabe
   assert.equal(sem.total, 250);
   assert.ok(sem.avisos.some((a) => a.includes('2 mês')));
   assert.ok(sem.avisos.some((a) => a.includes('foi aplicado sobre a produtividade')));
-  assert.deepEqual([sem.bpp_no_cartao, sem.cartao_gold, sem.folha], [false, 0, 250]);
+  assert.deepEqual([sem.cartao_gold, sem.folha], [0, 250]);
 
   const justa = calcular({
     config: CONFIG, criterio: { tipo_rescisao: 'DEMISSÃO C/ J. CAUSA', pagar_bpp: false, pagar_prod: false },
@@ -127,7 +127,7 @@ test('fórmulas da planilha: média ignora célula vazia, janela de 3 meses do c
     ],
   });
   assert.deepEqual(r.meses, ['2026-09-01', '2026-07-01']);
-  assert.deepEqual(r.medias, { bpp: 400, prod: 100 });
+  assert.deepEqual(r.medias, { bpp: 400, gold: 0, prod: 100 });
   assert.equal(r.dias_trabalhados, 12); // escala F, 16 a 29/09
   assert.equal(r.dias_descontados, 2); // SS = 2, ADV = 0
   assert.equal(r.dias_pagar, 10);
@@ -135,8 +135,8 @@ test('fórmulas da planilha: média ignora célula vazia, janela de 3 meses do c
   assert.equal(r.bpp.receber, 160); // 400 ÷ 25 × 10, sem desconto
   assert.equal(r.prod.proporcional, 40);
   assert.equal(r.prod.receber, 34); // 40 − 15%
-  assert.equal(r.folha, 34);
-  assert.equal(r.cartao_gold, 160);
+  assert.equal(r.folha, 194);
+  assert.equal(r.cartao_gold, 0);
   assert.equal(r.total, 194);
 });
 
@@ -177,7 +177,8 @@ test('acesso: só administrador e financeiro', async () => {
   assert.equal(p.corpo.penalidades.filter((x) => x.grupo === 'operador' && x.abrev === 'DISP_MEC')[0].percentual, 0.1);
   const pen = (g, a) => p.corpo.penalidades.find((x) => x.grupo === g && x.abrev === a);
   assert.deepEqual([pen('auxiliar', 'SS').dias_desconto, pen('auxiliar', 'ADV').dias_desconto, pen('operador', 'NC').dias_desconto], [2, 0, 1]);
-  assert.deepEqual([p.corpo.config.desconto_auxiliar, p.corpo.config.desconto_operador, p.corpo.config.desconto_redireciona, p.corpo.config.bpp_cartao], ['bpp', 'prod', true, 'operador']);
+  assert.deepEqual([p.corpo.config.desconto_auxiliar, p.corpo.config.desconto_operador, p.corpo.config.desconto_redireciona, p.corpo.config.bpp_cartao], ['bpp', 'prod', true, undefined]);
+  assert.deepEqual(p.corpo.criterios.map((c) => [c.tipo_rescisao, c.pagar_gold]).filter(([, g]) => !g), [['DEMISSÃO C/ J. CAUSA', false]]);
 });
 
 test('valores mensais: importa o arquivo (prévia → aplicar) e reimportar não duplica', async () => {
@@ -242,13 +243,13 @@ test('apuração: operador (Ana) e auxiliar (Carlos) com os valores do arquivo e
 
   const da = (await davi.get(`/api/gratificacao/rescisoes/${ids.apuracaoAna}`)).corpo.calculo;
   assert.equal(da.grupo, 'operador');
-  assert.deepEqual(da.medias, { bpp: 700, prod: 600 });
+  assert.deepEqual(da.medias, { bpp: 700, gold: 0, prod: 600 });
   assert.equal(da.dias_pagar, 19);
   assert.equal(da.bruto, 988);
   assert.equal(da.desconto, 45.6); // motorista: desconto só na produtividade (456 × 10%)
   assert.equal(da.total, 942.4);
-  assert.equal(da.folha, 410.4);
-  assert.equal(da.cartao_gold, 532); // BPP do motorista: Cartão Gold
+  assert.equal(da.folha, 942.4);
+  assert.equal(da.cartao_gold, 0); // função sem valor de Cartão Gold
   assert.deepEqual(da.ocorrencias.map((o) => o.abrev), ['FF', 'ADV']); // a NC é de outro ciclo
   assert.deepEqual(da.ocorrencias_fora.map((o) => o.abrev), ['NC']);
   const dc = (await davi.get(`/api/gratificacao/rescisoes/${c}`)).corpo.calculo;
@@ -289,27 +290,30 @@ test('pagar trava a apuração; relatório com totais e CSV', async () => {
   assert.equal((await davi.post(`/api/gratificacao/rescisoes/${ids.apuracaoAna}/acao`, { acao: 'pagar', data: '2026-05-05' })).status, 200);
   assert.equal((await davi.put(`/api/gratificacao/rescisoes/${ids.apuracaoAna}`, { funcionario_id: ids.ana, criterio_id: 1, dt_rescisao: '2026-04-20', dias_trabalhados: 10 })).status, 409);
   assert.equal((await davi.del(`/api/gratificacao/rescisoes/${ids.apuracaoAna}`)).status, 409);
+  // Cartão Gold da função Motorista (Gratificação Funções): R$ 250 ÷ 25 × 19 dias = R$ 190
+  assert.equal((await davi.put('/api/gratificacao/funcoes', { funcao: 'Motorista', valor_gold: 250 })).status, 200);
   const rel = (await davi.get('/api/gratificacao/relatorio?situacao=paga')).corpo;
   assert.equal(rel.itens.length, 1);
-  assert.deepEqual([rel.totais.total, rel.totais.folha, rel.totais.cartao_gold, rel.totais.bpp], [942.4, 410.4, 532, 0]);
+  assert.deepEqual([rel.totais.total, rel.totais.folha, rel.totais.gold, rel.totais.bpp, rel.totais.prod], [1132.4, 942.4, 190, 532, 410.4]);
   const todos = (await davi.get('/api/gratificacao/relatorio')).corpo;
-  assert.equal(todos.totais.total, 1192.4); // 942,40 + 250,00
-  assert.equal(todos.totais.folha, 660.4); // sem o BPP da motorista (Cartão Gold)
+  assert.equal(todos.totais.total, 1382.4); // 1.132,40 + 250,00
+  assert.equal(todos.totais.folha, 1192.4); // BPP + produtividade
   const csv = await davi.get('/api/gratificacao/relatorio.csv');
   assert.equal(csv.status, 200);
   assert.match(csv.corpo, /Departamento;Matrícula;Nome/);
   assert.match(csv.corpo, /;Escala;Turno;/);
   assert.match(csv.corpo, /;Situação;Por que zerou/);
   assert.doesNotMatch(csv.corpo, /Zelo/);
-  assert.match(csv.corpo, /410,40/);
-  assert.doesNotMatch(csv.corpo, /700,00|532,00/); // BPP da motorista não aparece no relatório
+  assert.match(csv.corpo, /Receber BPP \(R\$\);Cartão Gold - valor da função \(R\$\);Receber Cartão Gold \(R\$\);/);
+  assert.match(csv.corpo, /700,00;532,00;250,00;190,00;600,00;410,40/); // BPP, Cartão Gold e produtividade da motorista
   // Cartão Gold (layout da aba LISTA BPP)
   const gold = (await davi.get('/api/gratificacao/cartao-gold?parte=3')).corpo;
-  assert.deepEqual(gold.itens.map((i) => [i.matricula, i.valor, i.centro_custo]), [['001', 532, 'CC1']]);
-  assert.deepEqual([gold.total, gold.parte], [532, 3]);
+  assert.deepEqual(gold.itens.map((i) => [i.matricula, i.valor, i.centro_custo]), [['001', 190, 'CC1']]);
+  assert.deepEqual([gold.total, gold.parte], [190, 3]);
   const gcsv = (await davi.get('/api/gratificacao/cartao-gold.csv?parte=3')).corpo;
-  assert.match(gcsv, /Matrícula;Nome Colaborador;\(R\$\) Receber BPP;Data Rescisão;Centro de Custo;Descrição;PARTE/);
-  assert.match(gcsv, /001;Ana Souza;532,00;20\/04\/2026;CC1;Transporte;3/);
+  assert.match(gcsv, /Matrícula;Nome Colaborador;\(R\$\) Receber Cartão Gold;Data Rescisão;Centro de Custo;Descrição;PARTE/);
+  assert.match(gcsv, /001;Ana Souza;190,00;20\/04\/2026;CC1;Transporte;3/);
+  await davi.put('/api/gratificacao/funcoes', { funcao: 'Motorista', remover: true });
   assert.equal((await ana.get('/api/gratificacao/cartao-gold')).status, 403);
   assert.equal((await davi.post(`/api/gratificacao/rescisoes/${ids.apuracaoAna}/acao`, { acao: 'reabrir' })).status, 200);
   assert.equal((await davi.del(`/api/gratificacao/rescisoes/${ids.apuracaoAna}`)).status, 204);
@@ -452,13 +456,24 @@ test('suspensão: desconta no componente do grupo; sem valor nele, vai para o ou
   // relatório zerado: o motivo vem junto
   assert.deepEqual(b.motivos_zero, ['BPP: não é pago em DEMISSÃO S/ J. CAUSA', 'Produtividade: descontado 100% pelas ocorrências (SS 100%; desconto transferido do BPP, porque BPP não é pago em DEMISSÃO S/ J. CAUSA)']);
   assert.deepEqual(a.motivos_zero, []); // pedido de demissão: a produtividade sai no relatório
-  const soCartao = calcular({ ...base, criterio: semJusta, funcao: 'MOTORISTA', valores: [{ mes: '2026-09-01', bpp: 500, prod: null }] });
-  assert.equal(soCartao.folha, 0);
-  assert.deepEqual(soCartao.motivos_zero, ['BPP: não é pago em DEMISSÃO S/ J. CAUSA', 'Produtividade: sem valor na média dos meses']);
+  const soBpp = calcular({ ...base, criterio: semJusta, funcao: 'MOTORISTA', valores: [{ mes: '2026-09-01', bpp: 500, prod: null }] });
+  assert.equal(soBpp.total, 0);
+  assert.deepEqual(soBpp.motivos_zero, ['BPP: não é pago em DEMISSÃO S/ J. CAUSA', 'Cartão Gold: sem valor em Gratificação Funções', 'Produtividade: sem valor (nem na média dos meses, nem em Gratificação Funções)']);
   const semValores = calcular({ ...base, criterio: pedido, funcao: 'MOTORISTA', valores: [] });
   assert.match(semValores.motivos_zero[0], /sem valores mensais/);
-  const goldOnly = calcular({ ...base, criterio: pedido, funcao: 'MOTORISTA', ocorrencias: [], valores: [{ mes: '2026-09-01', bpp: 500, prod: null }] });
-  assert.deepEqual(goldOnly.motivos_zero, ['BPP: R$ 440,00 vai para o Cartão Gold (não aparece no relatório)', 'Produtividade: sem valor na média dos meses']);
+  // Cartão Gold pelo valor da função (Gratificação Funções); BPP e produtividade pela média
+  const tab = new Map([['MOTORISTA', { valor_bpp: 999, valor_gold: 250, valor_prod: 999 }]]);
+  const comGold = calcular({ ...base, criterio: pedido, funcao: 'MOTORISTA', ocorrencias: [], funcoes: tab });
+  assert.deepEqual([comGold.bpp.origem, comGold.gold.origem, comGold.prod.origem], ['media', 'tabela', 'media']);
+  assert.deepEqual([comGold.bpp.receber, comGold.gold.receber, comGold.prod.receber, comGold.folha, comGold.cartao_gold, comGold.total], [440, 220, 660, 1100, 220, 1320]);
+  assert.equal(calcular({ ...base, criterio: { ...pedido, pagar_gold: false }, funcao: 'MOTORISTA', ocorrencias: [], funcoes: tab }).cartao_gold, 0);
+  // sem média dos meses: BPP e produtividade pelo valor da função
+  const semMedia = calcular({ ...base, criterio: pedido, funcao: 'MOTORISTA', ocorrencias: [], valores: [], funcoes: new Map([['MOTORISTA', { valor_bpp: 300, valor_gold: 200, valor_prod: 600 }]]) });
+  assert.deepEqual([semMedia.bpp.origem, semMedia.bpp.receber, semMedia.gold.receber, semMedia.prod.receber], ['tabela', 264, 176, 528]);
+  assert.ok(semMedia.avisos.some((x) => x.includes('usado o valor da função para BPP e produtividade')));
+  // a SS do motorista (10%) desconta só da produtividade; o Cartão Gold não sofre desconto
+  const ss = calcular({ ...base, criterio: pedido, funcao: 'MOTORISTA', funcoes: tab });
+  assert.deepEqual([ss.bpp.desconto, ss.gold.desconto, ss.prod.desconto], [0, 0, 60]);
   // com o redirecionamento desligado, o desconto fica sem efeito e o aviso explica o motivo
   const c = calcular({ ...base, criterio: semJusta, funcao: 'AUXILIAR AGRICOLA', config: { ...CONFIG, desconto_redireciona: false } });
   assert.equal(c.total, 600);
@@ -474,11 +489,7 @@ test('suspensão: desconta no componente do grupo; sem valor nele, vai para o ou
   // função sem a palavra-chave e só com produtividade: aviso para classificar a função
   const f = calcular({ ...base, criterio: pedido, funcao: 'OP. COLHEDORA', valores: [{ mes: '2026-09-01', bpp: null, prod: 750 }] });
   assert.equal(f.grupo, 'auxiliar');
-  assert.ok(f.avisos.some((x) => x.includes('tabela de funções em Parâmetros')));
-  // BPP no Cartão Gold para todos / para ninguém
-  assert.equal(calcular({ ...base, criterio: pedido, funcao: 'AUXILIAR', config: { ...CONFIG, bpp_cartao: 'todos' } }).cartao_gold, 0); // BPP zerado pela SS
-  const g = calcular({ ...base, criterio: pedido, funcao: 'MOTORISTA', config: { ...CONFIG, bpp_cartao: 'nenhum' } });
-  assert.deepEqual([g.cartao_gold, g.folha], [0, g.total]);
+  assert.ok(f.avisos.some((x) => x.includes('Gratificação Funções')));
 });
 
 test('funções de motoristas e operadores: lista do cadastro e classificação manual muda o grupo da apuração', async () => {
@@ -497,37 +508,37 @@ test('funções de motoristas e operadores: lista do cadastro e classificação 
   assert.equal((await ana.put('/api/gratificacao/funcoes', { funcao: 'X', grupo: 'operador' })).status, 403);
 });
 
-test('tabela de funções: por função, desconto no BPP ou na produtividade e BPP no relatório ou no Cartão Gold', async () => {
-  const cfg = { palavras_operador: 'MOTORISTA, OPERADOR', desconto_auxiliar: 'bpp', desconto_operador: 'prod', bpp_cartao: 'operador' };
-  assert.deepEqual(regraDaFuncao('MOTORISTA III', cfg, new Map()), { grupo: 'operador', origem: 'palavra', desconto: 'prod', desconto_origem: 'grupo', bpp_cartao: true, bpp_origem: 'grupo' });
-  const tab = new Map([['FISCAL AGRICOLA', { grupo: null, desconto: 'prod', bpp_destino: 'cartao' }]]);
-  assert.deepEqual(regraDaFuncao('Fiscal Agrícola', cfg, tab), { grupo: 'auxiliar', origem: 'padrao', desconto: 'prod', desconto_origem: 'funcao', bpp_cartao: true, bpp_origem: 'funcao' });
-  // no cálculo: auxiliar com a regra da função (desconto na produtividade, BPP no Cartão Gold)
-  const r = calcular({
-    config: CONFIG, criterio: { tipo_rescisao: 'PEDIDO DE DEMISSÃO', pagar_bpp: true, pagar_prod: true },
-    rescisao: { dt_rescisao: '2026-04-20', dias_trabalhados: 25 }, funcao: 'FISCAL AGRICOLA', funcoes: tab,
-    valores: [{ mes: '2026-04-01', bpp: 400, prod: 600 }], ocorrencias: [{ data: '2026-04-18', abrev: 'ADV' }], penalidades: PEN,
-  });
-  assert.deepEqual([r.grupo, r.bpp.desconto, r.prod.desconto, r.cartao_gold, r.folha], ['auxiliar', 0, 300, 400, 300]); // ADV auxiliar 50% sobre a produtividade
+test('Gratificação Funções: valores de BPP, Cartão Gold e Produtividade por função, grupo e desconto', async () => {
+  const cfg = { palavras_operador: 'MOTORISTA, OPERADOR', desconto_auxiliar: 'bpp', desconto_operador: 'prod' };
+  assert.deepEqual(regraDaFuncao('MOTORISTA III', cfg, new Map()), { grupo: 'operador', origem: 'palavra', desconto: 'prod', desconto_origem: 'grupo', valores: { bpp: null, gold: null, prod: null } });
+  const tab = new Map([['FISCAL AGRICOLA', { grupo: null, desconto: 'prod', valor_bpp: '1000.00', valor_gold: null, valor_prod: 0 }]]);
+  assert.deepEqual(regraDaFuncao('Fiscal Agrícola', cfg, tab), { grupo: 'auxiliar', origem: 'padrao', desconto: 'prod', desconto_origem: 'funcao', valores: { bpp: 1000, gold: null, prod: 0 } });
 
-  // API: escolher por função muda a apuração; só os campos enviados mudam
+  // API: valores e escolhas por função; só os campos enviados mudam
+  assert.equal((await davi.put('/api/gratificacao/funcoes', { funcao: 'AUXILIAR AGRICOLA', valor_bpp: '300,50', valor_gold: 120, valor_prod: 250 })).status, 200);
   assert.equal((await davi.put('/api/gratificacao/funcoes', { funcao: 'AUXILIAR AGRICOLA', desconto: 'prod' })).status, 200);
-  assert.equal((await davi.put('/api/gratificacao/funcoes', { funcao: 'AUXILIAR AGRICOLA', bpp_destino: 'cartao' })).status, 200);
   let f = (await davi.get('/api/gratificacao/funcoes')).corpo.itens.find((x) => x.chave === 'AUXILIAR AGRICOLA');
-  assert.deepEqual(f.escolha, { grupo: null, desconto: 'prod', bpp_destino: 'cartao' });
-  assert.deepEqual([f.grupo, f.desconto, f.bpp_cartao], ['auxiliar', 'prod', true]);
-  const prev = (await davi.post('/api/gratificacao/rescisoes/previa', { funcionario_id: ids.carlos, dt_rescisao: '2026-04-10', dias_trabalhados: 20 })).corpo;
-  assert.deepEqual([prev.grupo, prev.desconto_configurado, prev.bpp_no_cartao, prev.desconto_origem, prev.bpp_origem], ['auxiliar', ['prod'], true, 'funcao', 'funcao']);
-  assert.equal((await davi.put('/api/gratificacao/funcoes', { funcao: 'AUXILIAR AGRICOLA', desconto: 'zelo' })).status, 400);
-  assert.equal((await davi.put('/api/gratificacao/funcoes', { funcao: 'AUXILIAR AGRICOLA', bpp_destino: 'folha' })).status, 400);
-  // limpar volta ao padrão do grupo
+  assert.deepEqual([f.escolha, f.valores, f.grupo, f.desconto], [{ grupo: null, desconto: 'prod' }, { bpp: 300.5, gold: 120, prod: 250 }, 'auxiliar', 'prod']);
+  // Carlos (auxiliar): BPP e produtividade pela média dos meses; Cartão Gold pelo valor da função
+  const prev = (await davi.post('/api/gratificacao/rescisoes/previa', { funcionario_id: ids.carlos, dt_rescisao: '2026-04-10', dias_trabalhados: 25, criterio_id: 1 })).corpo;
+  assert.deepEqual([prev.desconto_configurado, prev.desconto_origem, prev.gold.origem, prev.gold.media, prev.bpp.origem], [['prod'], 'funcao', 'tabela', 120, 'media']);
+  assert.equal(prev.cartao_gold, prev.gold.receber);
+  for (const [campo, v] of [['valor_bpp', -1], ['valor_gold', 'abc'], ['desconto', 'zelo'], ['grupo', 'x']]) {
+    assert.equal((await davi.put('/api/gratificacao/funcoes', { funcao: 'AUXILIAR AGRICOLA', [campo]: v })).status, 400, campo);
+  }
+  // limpar volta ao padrão do grupo e sem valores
   assert.equal((await davi.put('/api/gratificacao/funcoes', { funcao: 'AUXILIAR AGRICOLA', remover: true })).status, 200);
   f = (await davi.get('/api/gratificacao/funcoes')).corpo.itens.find((x) => x.chave === 'AUXILIAR AGRICOLA');
-  assert.deepEqual([f.desconto, f.bpp_cartao, f.desconto_origem], ['bpp', false, 'grupo']);
-  // cadastrar uma função que ainda não tem funcionário
-  assert.equal((await davi.put('/api/gratificacao/funcoes', { funcao: 'Operador de Colhedora  II', cadastrar: true, bpp_destino: 'relatorio' })).status, 200);
+  assert.deepEqual([f.desconto, f.desconto_origem, f.valores], ['bpp', 'grupo', { bpp: null, gold: null, prod: null }]);
+  // cadastrar uma função que ainda não tem funcionário, com código e valores
+  assert.equal((await davi.put('/api/gratificacao/funcoes', { funcao: 'Operador de Colhedora  II', codigo: '617-OC', cadastrar: true, valor_bpp: 240, valor_gold: 160, valor_prod: 400 })).status, 200);
   const nova = (await davi.get('/api/gratificacao/funcoes')).corpo.itens.find((x) => x.chave === 'OPERADOR DE COLHEDORA II');
-  assert.deepEqual([nova.no_cadastro, nova.cadastrada, nova.grupo, nova.desconto, nova.bpp_cartao], [false, true, 'operador', 'prod', false]);
+  assert.deepEqual([nova.no_cadastro, nova.cadastrada, nova.codigo, nova.grupo, nova.desconto, nova.valores.gold], [false, true, '617-OC', 'operador', 'prod', 160]);
   await davi.put('/api/gratificacao/funcoes', { funcao: 'OPERADOR DE COLHEDORA II', remover: true });
   assert.equal((await davi.get('/api/gratificacao/funcoes')).corpo.itens.some((x) => x.chave === 'OPERADOR DE COLHEDORA II'), false);
+  // critério: paga Cartão Gold?
+  const crit = (await davi.get('/api/gratificacao/parametros')).corpo.criterios.find((c) => c.tipo_rescisao === 'COMUM ACORDO');
+  const r = await davi.put(`/api/gratificacao/criterios/${crit.id}`, { ...crit, pagar_gold: false });
+  assert.equal(r.corpo.pagar_gold, false);
+  await davi.put(`/api/gratificacao/criterios/${crit.id}`, { ...crit, pagar_gold: true });
 });

@@ -73,6 +73,7 @@ const MENU = [
       { href: '#/gratificacao/relatorio', titulo: 'Relatório de pagamento', prefixo: true },
       { href: '#/gratificacao/demonstrativo', titulo: 'Demonstrativo (assinaturas)', prefixo: true },
       { href: '#/gratificacao/cartao-gold', titulo: 'Cartão Gold (Lista BPP)', prefixo: true },
+      { href: '#/gratificacao/funcoes', titulo: 'Gratificação Funções', prefixo: true },
       { href: '#/gratificacao/parametros', titulo: 'Parâmetros', prefixo: true },
       { href: '#/gratificacao/operadores', titulo: 'Motoristas e operadores', prefixo: true },
     ],

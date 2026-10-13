@@ -355,22 +355,32 @@ ALTER TABLE grat_config ADD CONSTRAINT grat_config_desconto_check
   CHECK (desconto_auxiliar IN ('bpp','prod','bpp_prod','nenhum') AND desconto_operador IN ('bpp','prod','bpp_prod','nenhum'));
 -- Se o componente do desconto não for pago na rescisão, o desconto vai para o outro componente pago
 ALTER TABLE grat_config ADD COLUMN IF NOT EXISTS desconto_redireciona BOOLEAN NOT NULL DEFAULT true;
--- Quem recebe o BPP no Cartão Gold (aba LISTA BPP) em vez do relatório: motoristas e operadores, todos ou ninguém
-ALTER TABLE grat_config ADD COLUMN IF NOT EXISTS bpp_cartao TEXT NOT NULL DEFAULT 'operador';
-ALTER TABLE grat_config DROP CONSTRAINT IF EXISTS grat_config_bpp_cartao_check;
-ALTER TABLE grat_config ADD CONSTRAINT grat_config_bpp_cartao_check CHECK (bpp_cartao IN ('operador','todos','nenhum'));
+-- O Cartão Gold passou a ser um componente com valor próprio (Gratificação Funções): sai a opção "BPP no Cartão Gold"
+ALTER TABLE grat_config DROP COLUMN IF EXISTS bpp_cartao;
 -- Classificação manual das funções (Parâmetros → Motoristas e operadores); chave = nome da função sem acentos
 CREATE TABLE IF NOT EXISTS grat_funcoes (
   funcao        TEXT PRIMARY KEY,
   grupo         TEXT NOT NULL CHECK (grupo IN ('auxiliar','operador')),
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- Tabela de funções em Parâmetros: por função, onde as ocorrências descontam (BPP/produtividade) e onde o BPP é pago
--- (relatório/Cartão Gold). Vazio = padrão do grupo; o grupo também pode ficar em branco (automático).
+-- Menu Gratificação Funções: por função, grupo, onde as ocorrências descontam (BPP/produtividade) e os valores de BPP,
+-- Cartão Gold e Produtividade usados no cálculo. Vazio = padrão do grupo / automático / sem valor.
 ALTER TABLE grat_funcoes ALTER COLUMN grupo DROP NOT NULL;
 ALTER TABLE grat_funcoes ADD COLUMN IF NOT EXISTS desconto TEXT CHECK (desconto IS NULL OR desconto IN ('bpp','prod'));
-ALTER TABLE grat_funcoes ADD COLUMN IF NOT EXISTS bpp_destino TEXT CHECK (bpp_destino IS NULL OR bpp_destino IN ('relatorio','cartao'));
+ALTER TABLE grat_funcoes DROP COLUMN IF EXISTS bpp_destino;
 ALTER TABLE grat_funcoes ADD COLUMN IF NOT EXISTS cadastrada BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE grat_funcoes ADD COLUMN IF NOT EXISTS valor_bpp  NUMERIC(12,2) CHECK (valor_bpp IS NULL OR valor_bpp >= 0);
+ALTER TABLE grat_funcoes ADD COLUMN IF NOT EXISTS valor_gold NUMERIC(12,2) CHECK (valor_gold IS NULL OR valor_gold >= 0);
+ALTER TABLE grat_funcoes ADD COLUMN IF NOT EXISTS valor_prod NUMERIC(12,2) CHECK (valor_prod IS NULL OR valor_prod >= 0);
+ALTER TABLE grat_funcoes ADD COLUMN IF NOT EXISTS codigo TEXT NOT NULL DEFAULT '';
+-- Critério por tipo de rescisão: paga o Cartão Gold? (na criação, igual ao que já estava para a produtividade)
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'grat_criterios' AND column_name = 'pagar_gold') THEN
+    ALTER TABLE grat_criterios ADD COLUMN pagar_gold BOOLEAN NOT NULL DEFAULT true;
+    UPDATE grat_criterios SET pagar_gold = pagar_prod;
+  END IF;
+END $$;
 
 -- Assinaturas do demonstrativo de pagamento (modelo da aba Diversos)
 CREATE TABLE IF NOT EXISTS grat_signatarios (
@@ -454,14 +464,14 @@ FROM (VALUES ('COORDENADOR AGRÍCOLA', '29117 - AURENIO DE OLIVEIRA LIMA'), ('GE
              ('SUPERINTENDENTE AGRÍCOLA', 'CLOVES RODRIGUES DE OLIVEIRA JUNIOR'), ('GERENTE EXECUTIVO', 'LEONARDO DIAS ALMEIDA')) AS v(cargo, nome)
 WHERE s.cargo = v.cargo AND s.nome = '';
 
-INSERT INTO grat_criterios (tipo_rescisao, pagar_bpp, pagar_zelo, pagar_prod) VALUES
-  ('PEDIDO DE DEMISSÃO',             true,  true,  true),
-  ('DEMISSÃO S/ J. CAUSA',           false, true,  true),
-  ('TERMINO CONTRATO - FIM DE SAFRA', true,  true,  true),
-  ('FALECIMENTO',                    true,  true,  true),
-  ('DEMISSÃO C/ J. CAUSA',           false, false, false),
-  ('COMUM ACORDO',                   true,  true,  true),
-  ('TERMINO CONTRATO',               true,  true,  true)
+INSERT INTO grat_criterios (tipo_rescisao, pagar_bpp, pagar_zelo, pagar_prod, pagar_gold) VALUES
+  ('PEDIDO DE DEMISSÃO',             true,  true,  true,  true),
+  ('DEMISSÃO S/ J. CAUSA',           false, true,  true,  true),
+  ('TERMINO CONTRATO - FIM DE SAFRA', true,  true,  true,  true),
+  ('FALECIMENTO',                    true,  true,  true,  true),
+  ('DEMISSÃO C/ J. CAUSA',           false, false, false, false),
+  ('COMUM ACORDO',                   true,  true,  true,  true),
+  ('TERMINO CONTRATO',               true,  true,  true,  true)
 ON CONFLICT (tipo_rescisao) DO NOTHING;
 
 INSERT INTO grat_penalidades (grupo, abrev, descricao, percentual, desconta_dia, dias_desconto) VALUES

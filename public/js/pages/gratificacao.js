@@ -18,8 +18,8 @@ const BASE = [['Gratificação rescisória'], ['Apuração']];
 const TURNOS = ['A', 'B', 'C'].map((t) => ({ valor: t, rotulo: `Turno ${t}` }));
 const ESCALAS = [['A', 'Letra A (escala 5×1)'], ['B', 'Letra B (escala 5×1)'], ['C', 'Letra C (escala 5×1)'], ['D', 'Letra D (escala 5×1)'], ['E', 'Letra E (escala 5×1)'], ['F', 'Letra F (escala 5×1)'], ['DOM', 'Folga aos domingos'], ['5X2', 'Folga sábado e domingo (5×2 / ADM)']];
 const ALVOS = [['bpp', 'BPP'], ['prod', 'Produtividade'], ['bpp_prod', 'BPP e Produtividade'], ['nenhum', 'Nenhum (não descontar)']].map(([valor, rotulo]) => ({ valor, rotulo }));
-const MODOS_CARTAO = [['operador', 'Motoristas e operadores'], ['todos', 'Todas as funções'], ['nenhum', 'Ninguém (BPP no relatório)']].map(([valor, rotulo]) => ({ valor, rotulo }));
-const NOME_COMP = { bpp: 'BPP', prod: 'Produtividade' };
+const NOME_COMP = { bpp: 'BPP', gold: 'Cartão Gold', prod: 'Produtividade' };
+const ORIGEM_BASE = { media: 'média dos meses', tabela: 'valor da função', sem: 'sem valor' };
 const nomesComp = (lista) => (lista.length ? lista.map((k) => NOME_COMP[k]).join(' e ') : '—');
 const rotuloAlvo = (k) => ALVOS.find((a) => a.valor === k)?.rotulo || k;
 const valorOuTraco = (v) => (v === null || v === undefined ? '—' : brl(v));
@@ -114,7 +114,7 @@ function ligarPreviaPeriodo(dlg) {
         linha('Ocorrências no período', oc.length ? `${oc.length}: ${oc.map((o) => o.abrev).join(', ')} (−${c.dias_descontados} dia${c.dias_descontados === 1 ? '' : 's'}, ${pct(c.desconto_pct)} sobre ${nomesComp(c.desconto_em)})` : 'nenhuma'),
         linha('Dias a pagar', `${c.dias_pagar} de ${c.base_dias}`),
         linha('Meses da média', c.meses.length ? c.meses.map(mesRotulo).join(', ') : 'sem valores mensais'),
-        linha(corpo.criterio_id ? 'Previsão a receber' : 'Previsão (escolha o tipo de rescisão)', `${brl(c.total)} · folha ${brl(c.folha)}${c.cartao_gold ? ` · Cartão Gold ${brl(c.cartao_gold)}` : ''}`)),
+        linha(corpo.criterio_id ? 'Previsão a receber' : 'Previsão (escolha o tipo de rescisão)', `${brl(c.total)} · BPP ${brl(c.bpp.receber)} · Cartão Gold ${brl(c.gold.receber)} · Produtividade ${brl(c.prod.receber)}`)),
         c.avisos.length ? h('ul', { class: 'avisos-previa' }, c.avisos.map((a) => h('li', {}, a))) : null));
     } catch (e) { if (minha === seq) caixa.replaceChildren(h('p', { class: 'erro pequeno' }, e.message)); }
   }
@@ -145,7 +145,8 @@ async function detalheApuracao({ params, ir, recarregarPagina }) {
     rotulo, brl(comp.media), comp.paga ? 'Sim' : h('span', { class: 'muted' }, 'Não (critério da rescisão)'), brl(comp.proporcional),
     comp.desconto ? `− ${brl(comp.desconto)}` : '—', h('strong', {}, brl(comp.receber)),
   ];
-  const componentes = [linha(c.bpp_no_cartao ? ['BPP', h('div', { class: 'muted pequeno' }, 'depósito no Cartão Gold')] : 'BPP', c.bpp), linha('Produtividade', c.prod)];
+  const nomeComp = (t, comp) => [t, h('div', { class: 'muted pequeno' }, ORIGEM_BASE[comp.origem])];
+  const componentes = [linha(nomeComp('BPP', c.bpp), c.bpp), linha(nomeComp('Cartão Gold', c.gold), c.gold), linha(nomeComp('Produtividade', c.prod), c.prod)];
   const dado = (t, v) => h('div', {}, h('dt', {}, t), h('dd', {}, v));
 
   return [
@@ -163,10 +164,10 @@ async function detalheApuracao({ params, ir, recarregarPagina }) {
       kpi('Desconto', brl(c.desconto), { sub: `${pct(c.desconto_pct)} das ocorrências`, tom: c.desconto ? 'alerta' : 'neutro', icone: 'proibido' }),
       kpi('Dias a pagar', `${c.dias_pagar} de ${c.base_dias}`, { sub: `${pct(c.proporcao)} da média`, icone: 'calendario' })),
     h('div', { class: 'kpis compactos' },
-      kpi('Gratificação em folha', brl(c.folha), { sub: c.bpp_no_cartao ? 'Produtividade líquida (relatório)' : 'BPP + produtividade líquidos (relatório)', icone: 'carteira' }),
-      kpi('Cartão Gold', brl(c.cartao_gold), { sub: c.bpp_no_cartao ? 'BPP líquido (lista LISTA BPP)' : 'BPP desta função sai no relatório', icone: 'carteira' })),
+      kpi('Gratificação em folha', brl(c.folha), { sub: 'BPP + produtividade líquidos', icone: 'carteira' }),
+      kpi('Cartão Gold', brl(c.cartao_gold), { sub: c.gold.origem === 'tabela' ? 'valor da função (Gratificação Funções)' : 'função sem valor de Cartão Gold', icone: 'carteira' })),
     secao('Composição', null, h('div', { class: 'scroll' }, h('table', {},
-      h('thead', {}, h('tr', {}, ['Componente', `Média (${c.meses.length} mês${c.meses.length === 1 ? '' : 'es'})`, 'Pago nesta rescisão?', 'Proporcional', 'Desconto', 'A receber'].map((t, i) => h('th', { class: i > 0 && i !== 2 ? 'num' : '' }, t)))),
+      h('thead', {}, h('tr', {}, ['Componente', `Base (média de ${c.meses.length} mês${c.meses.length === 1 ? '' : 'es'} ou valor da função)`, 'Pago nesta rescisão?', 'Proporcional', 'Desconto', 'A receber'].map((t, i) => h('th', { class: i > 0 && i !== 2 ? 'num' : '' }, t)))),
       h('tbody', {}, componentes.map((l) => h('tr', {}, l.map((v, i) => h('td', { class: i > 0 && i !== 2 ? 'num' : '' }, v))))),
       h('tfoot', {}, h('tr', {}, h('th', {}, 'Total'), h('td', {}), h('td', {}), h('th', { class: 'num' }, brl(c.bruto)), h('th', { class: 'num' }, c.desconto ? `− ${brl(c.desconto)}` : '—'), h('th', { class: 'num' }, brl(c.total))))))),
     h('div', { class: 'grade-2' },
@@ -174,7 +175,6 @@ async function detalheApuracao({ params, ir, recarregarPagina }) {
         dado('Tipo de rescisão', `${r.tipo_rescisao} · ${dataBR(r.dt_rescisao)}`),
         dado('Grupo da função', `${GRUPOS[c.grupo]} (${ORIGEM_GRUPO[c.grupo_origem]})`),
         dado('Desconto das ocorrências', `${c.desconto_pct ? `${pct(c.desconto_pct)} sobre ${nomesComp(c.desconto_em)}${c.desconto_redirecionado ? ` (a regra é ${nomesComp(c.desconto_redirecionado.de)})` : ''}` : `nenhum (desconta sobre ${nomesComp(c.desconto_configurado)})`}${c.desconto_origem === 'funcao' ? ' · regra escolhida para a função' : ''}`),
-        dado('BPP pago no', `${c.bpp_no_cartao ? 'Cartão Gold' : 'Relatório'} (${c.bpp_origem === 'funcao' ? 'escolhido para a função' : 'padrão do grupo'})`),
         dado('Meses da média', c.meses.length ? c.meses.map(mesRotulo).join(', ') : 'nenhum mês informado'),
         dado('Dias', `${c.dias_trabalhados} trabalhados − ${c.dias_descontados} das ocorrências = ${c.dias_pagar} a pagar (base ${c.base_dias})`),
         dado('Turno e letra de folga', `${r.turno ? `Turno ${r.turno}` : 'turno não informado'} · ${c.escala ? `folga ${ESCALAS.find(([k]) => k === c.escala)?.[1] || c.escala}` : 'sem escala'}`),
@@ -402,51 +402,89 @@ function tabelaDescontos(p, grupo, recarregarPagina, { titulo = GRUPOS[grupo], t
     ], p.penalidades.filter((x) => x.grupo === grupo), { vazioMsg: 'Nenhum ponto de desconto cadastrado.' }));
 }
 
-// Tabela de funções: por função, grupo (tabela de percentuais), onde as ocorrências descontam (BPP ou Produtividade) e
-// onde o BPP é pago (relatório ou Cartão Gold). Em branco = padrão do grupo. Cada escolha é salva na hora.
-function tabelaFuncoes(cfg, inicial) {
-  let itens = inicial;
+// ======================================================================
+// Gratificação Funções: por função, grupo, onde as ocorrências descontam e os valores de BPP, Cartão Gold e
+// Produtividade (base do cálculo: Cartão Gold sempre; BPP e Produtividade quando não há média dos meses)
+// ======================================================================
+async function paginaFuncoes() {
+  const [p, f] = await Promise.all([get('/gratificacao/parametros'), get('/gratificacao/funcoes')]);
+  const cfg = p.config;
+  let itens = f.itens;
   let filtro = '';
-  const corpo = h('div');
+  let soComValor = false;
+  const corpo = h('div', { class: 'tab-funcoes' });
+  const resumo = h('div', { class: 'kpis compactos' });
   const padraoDesconto = (g) => (g === 'operador' ? cfg.desconto_operador : cfg.desconto_auxiliar);
-  const padraoCartao = (g) => cfg.bpp_cartao === 'todos' || (cfg.bpp_cartao === 'operador' && g === 'operador');
+  const temValor = (x) => [x.valores.bpp, x.valores.gold, x.valores.prod].some((v) => v !== null);
   const recarregar = async () => { itens = (await get('/gratificacao/funcoes')).itens; desenhar(); };
   const salvar = async (x, campos, msg) => {
-    try { await put('/gratificacao/funcoes', { funcao: x.funcao, ...campos }); toast(msg || `${x.funcao}: salvo.`); await recarregar(); } catch (e) { toast(e.message, 'erro'); }
+    try { await put('/gratificacao/funcoes', { funcao: x.funcao, ...campos }); toast(msg || `${x.funcao}: salvo.`); await recarregar(); } catch (e) { toast(e.message, 'erro'); await recarregar(); }
   };
   const sel = (x, campo, opcoes, vazio) => h('select', { class: x.escolha[campo] ? 'escolhido' : '', 'aria-label': `${campo} de ${x.funcao}`, onchange: (e) => salvar(x, { [campo]: e.target.value || null }) },
     h('option', { value: '' }, vazio), opcoes.map(([v, r]) => h('option', { value: v, selected: x.escolha[campo] === v }, r)));
+  const valor = (x, campo, chave) => h('input', {
+    type: 'number', min: '0', step: '0.01', class: 'valor-funcao', placeholder: '—', 'aria-label': `${campo} de ${x.funcao}`,
+    value: x.valores[chave] === null ? '' : x.valores[chave], onchange: (e) => salvar(x, { [campo]: e.target.value === '' ? null : e.target.value }),
+  });
   function desenhar() {
-    const f = filtro.trim().toUpperCase();
-    const lista = f ? itens.filter((x) => x.chave.includes(f.normalize('NFD').replace(/[\u0300-\u036f]/g, ''))) : itens;
+    const f2 = filtro.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    let lista = f2 ? itens.filter((x) => x.chave.includes(f2) || (x.codigo || '').toUpperCase().includes(f2)) : itens;
+    if (soComValor) lista = lista.filter(temValor);
+    const comValor = itens.filter(temValor);
+    resumo.replaceChildren(
+      kpi('Funções', fmt(itens.length), { icone: 'usuarios', sub: `${fmt(itens.filter((x) => x.grupo === 'operador').length)} de motoristas e operadores` }),
+      kpi('Com valores', fmt(comValor.length), { icone: 'carteira', tom: comValor.length ? 'ok' : 'neutro' }),
+      kpi('Com Cartão Gold', fmt(itens.filter((x) => x.valores.gold !== null).length), { icone: 'carteira' }));
     corpo.replaceChildren(tabela([
-      { t: 'Função', f: (x) => [x.funcao, h('div', { class: 'muted pequeno' }, x.no_cadastro ? `${fmt(x.qtd)} funcionário${x.qtd === 1 ? '' : 's'} · ${fmt(x.ativos)} ativo${x.ativos === 1 ? '' : 's'}` : 'cadastrada aqui (sem funcionário)')] },
+      { t: 'Função', f: (x) => [x.funcao, h('div', { class: 'muted pequeno' }, x.no_cadastro ? `${fmt(x.qtd)} funcionário${x.qtd === 1 ? '' : 's'} · ${fmt(x.ativos)} ativo${x.ativos === 1 ? '' : 's'}${x.codigo ? ` · cód. ${x.codigo}` : ''}` : `cadastrada aqui${x.codigo ? ` · cód. ${x.codigo}` : ''}`)] },
       { t: 'Grupo', f: (x) => sel(x, 'grupo', [['operador', GRUPOS.operador], ['auxiliar', GRUPOS.auxiliar]], x.escolha.grupo ? 'Automático' : `Auto: ${x.grupo === 'operador' ? 'Motoristas/oper.' : 'Demais funções'}`) },
       { t: 'Ocorrências descontam do', f: (x) => sel(x, 'desconto', [['bpp', 'BPP'], ['prod', 'Produtividade']], `Padrão: ${rotuloAlvo(padraoDesconto(x.grupo))}`) },
-      { t: 'BPP pago no', f: (x) => sel(x, 'bpp_destino', [['relatorio', 'Relatório'], ['cartao', 'Cartão Gold']], `Padrão: ${padraoCartao(x.grupo) ? 'Cartão Gold' : 'Relatório'}`) },
-      { t: '', f: (x) => (x.escolha.grupo || x.escolha.desconto || x.escolha.bpp_destino || x.cadastrada
-        ? botao(x.no_cadastro ? 'Limpar' : 'Remover', () => salvar(x, { remover: true }, x.no_cadastro ? `${x.funcao}: volta ao padrão.` : `${x.funcao}: removida.`), { tom: 'sec', pequeno: true }) : '') },
-    ], lista, { vazioMsg: f ? 'Nenhuma função com esse nome.' : 'Nenhuma função. Use "Cadastrar função".' }));
+      { t: 'BPP (R$)', num: true, f: (x) => valor(x, 'valor_bpp', 'bpp') },
+      { t: 'Cartão Gold (R$)', num: true, f: (x) => valor(x, 'valor_gold', 'gold') },
+      { t: 'Produtividade (R$)', num: true, f: (x) => valor(x, 'valor_prod', 'prod') },
+      { t: 'Total (R$)', num: true, f: (x) => (temValor(x) ? brl((x.valores.bpp || 0) + (x.valores.gold || 0) + (x.valores.prod || 0)) : '—') },
+      { t: '', f: (x) => (x.escolha.grupo || x.escolha.desconto || temValor(x) || x.cadastrada || x.codigo
+        ? botao(x.no_cadastro ? 'Limpar' : 'Remover', async () => {
+          if (await confirmar(x.no_cadastro ? 'Limpar função' : 'Remover função', `${x.funcao}: ${x.no_cadastro ? 'apagar os valores e voltar ao padrão do grupo' : 'remover da tabela'}.`, { rotulo: x.no_cadastro ? 'Limpar' : 'Remover', perigo: true })) salvar(x, { remover: true }, `${x.funcao}: ${x.no_cadastro ? 'valores apagados' : 'removida'}.`);
+        }, { tom: 'sec', pequeno: true }) : '') },
+    ], lista, { vazioMsg: f2 || soComValor ? 'Nenhuma função para o filtro.' : 'Nenhuma função. Use "Cadastrar função".' }));
   }
+  const opc = (pares) => pares.map(([valor, rotulo]) => ({ valor, rotulo }));
   const cadastrar = () => dialogo({
     titulo: 'Cadastrar função',
-    descricao: 'Inclua uma função (mesmo sem funcionário cadastrado com ela) e escolha como ela é tratada. Em branco = padrão do grupo.',
+    descricao: 'Inclua a função (mesmo sem funcionário cadastrado com ela) e os valores mensais de cada gratificação. Em branco = sem valor / padrão do grupo.',
     campos: [
-      { nome: 'funcao', rotulo: 'Nome da função', obrigatorio: true, max: 120, cheio: true, dica: 'Como vem no cadastro de funcionários (maiúsculas e acentos não importam).' },
-      { nome: 'grupo', rotulo: 'Grupo (tabela de percentuais)', tipo: 'select', opcoes: [{ valor: 'operador', rotulo: GRUPOS.operador }, { valor: 'auxiliar', rotulo: GRUPOS.auxiliar }], vazio: 'Automático (pela palavra-chave)', cheio: true },
-      { nome: 'desconto', rotulo: 'Ocorrências descontam do', tipo: 'select', opcoes: [{ valor: 'bpp', rotulo: 'BPP' }, { valor: 'prod', rotulo: 'Produtividade' }], vazio: 'Padrão do grupo' },
-      { nome: 'bpp_destino', rotulo: 'BPP pago no', tipo: 'select', opcoes: [{ valor: 'relatorio', rotulo: 'Relatório' }, { valor: 'cartao', rotulo: 'Cartão Gold' }], vazio: 'Padrão do grupo' },
-    ], confirmar: 'Cadastrar', aoSalvar: (v) => put('/gratificacao/funcoes', { ...v, cadastrar: true }),
-  }).then(async (ok) => { if (ok) { toast('Função cadastrada.'); await recarregar(); } });
+      { nome: 'funcao', rotulo: 'Função', obrigatorio: true, max: 120, cheio: true, dica: 'Como vem no cadastro de funcionários (maiúsculas, acentos e espaços não importam).' },
+      { nome: 'codigo', rotulo: 'Código da função (opcional)', max: 30 },
+      { nome: 'grupo', rotulo: 'Grupo', tipo: 'select', opcoes: opc([['operador', GRUPOS.operador], ['auxiliar', GRUPOS.auxiliar]]), vazio: 'Automático (pela palavra-chave)' },
+      { nome: 'valor_bpp', rotulo: 'BPP (R$)', tipo: 'number', passo: '0.01', min: '0' },
+      { nome: 'valor_gold', rotulo: 'Cartão Gold (R$)', tipo: 'number', passo: '0.01', min: '0' },
+      { nome: 'valor_prod', rotulo: 'Produtividade (R$)', tipo: 'number', passo: '0.01', min: '0' },
+      { nome: 'desconto', rotulo: 'Ocorrências descontam do', tipo: 'select', opcoes: opc([['bpp', 'BPP'], ['prod', 'Produtividade']]), vazio: 'Padrão do grupo' },
+    ], confirmar: 'Salvar', aoSalvar: (v) => put('/gratificacao/funcoes', { ...v, cadastrar: true }),
+  }).then(async (ok) => { if (ok) { toast('Função salva.'); await recarregar(); } });
   desenhar();
-  return secao('Funções: BPP, Produtividade e Cartão Gold', botao('Cadastrar função', cadastrar, { tom: 'sec', pequeno: true, icone: 'mais' }),
-    h('p', { class: 'muted pequeno' }, 'Para cada função: o grupo (define a tabela de percentuais), de onde as ocorrências descontam (BPP ou Produtividade) e onde o BPP é pago (no relatório ou no Cartão Gold). O que ficar em "Padrão"/"Auto" segue as regras gerais acima; o que foi escolhido para a função aparece em negrito. Cada escolha é salva na hora.'),
-    h('div', { class: 'form-grid tres' }, h('label', {}, 'Buscar função', h('input', { type: 'search', placeholder: 'ex.: MOTORISTA', oninput: (e) => { filtro = e.target.value; desenhar(); } }))),
-    corpo);
+  return [
+    cabecalhoPagina({
+      migalhas: [['Gratificação rescisória'], ['Gratificação Funções']], titulo: 'Gratificação Funções',
+      sub: 'Valor de BPP, Cartão Gold e Produtividade de cada função: base do cálculo da gratificação rescisória',
+      acoes: [botao('Cadastrar função', cadastrar, { icone: 'mais' })],
+    }),
+    resumo,
+    h('div', { class: 'perfil-caixa' }, h('strong', {}, 'Como entra no cálculo: '),
+      'o Cartão Gold é sempre o valor da função (÷ ', String(cfg.base_dias), ' × dias a pagar). BPP e Produtividade usam a média dos últimos ', String(cfg.meses_media),
+      ' meses da carga mensal (GRAT); quando o funcionário não tem média, vale o valor da função. As ocorrências descontam do BPP ou da Produtividade, conforme a coluna "Ocorrências descontam do".'),
+    h('div', { class: 'card' },
+      h('div', { class: 'form-grid tres' },
+        h('label', {}, 'Buscar função ou código', h('input', { type: 'search', placeholder: 'ex.: MOTORISTA', oninput: (e) => { filtro = e.target.value; desenhar(); } })),
+        h('label', { class: 'check' }, h('input', { type: 'checkbox', onchange: (e) => { soComValor = e.target.checked; desenhar(); } }), ' Só funções com valores')),
+      h('p', { class: 'muted pequeno' }, 'Digite o valor e saia do campo para salvar. O que foi escolhido para a função aparece em destaque.'),
+      corpo),
+  ];
 }
 
 async function paginaParametros({ recarregarPagina }) {
-  const [p, funcoes] = await Promise.all([get('/gratificacao/parametros'), get('/gratificacao/funcoes')]);
+  const p = await get('/gratificacao/parametros');
   const cfg = p.config;
 
   const editarConfig = () => dialogo({
@@ -476,6 +514,7 @@ async function paginaParametros({ recarregarPagina }) {
     campos: [
       { nome: 'tipo_rescisao', rotulo: 'Tipo de rescisão', valor: x?.tipo_rescisao, obrigatorio: true, max: 80, cheio: true },
       { nome: 'pagar_bpp', rotulo: 'Paga BPP', tipo: 'checkbox', valor: x?.pagar_bpp ?? true, cheio: true },
+      { nome: 'pagar_gold', rotulo: 'Paga Cartão Gold', tipo: 'checkbox', valor: x?.pagar_gold ?? true, cheio: true },
       { nome: 'pagar_prod', rotulo: 'Paga Produtividade', tipo: 'checkbox', valor: x?.pagar_prod ?? true, cheio: true },
       { nome: 'ativo', rotulo: 'Disponível para novas apurações', tipo: 'checkbox', valor: x?.ativo ?? true, cheio: true },
     ], confirmar: 'Salvar', aoSalvar: (v) => (x ? put(`/gratificacao/criterios/${x.id}`, v) : post('/gratificacao/criterios', v)),
@@ -495,11 +534,12 @@ async function paginaParametros({ recarregarPagina }) {
         .map(([t, v]) => dado(t, v)))),
     secao('Critérios por tipo de rescisão', botao('Novo tipo', () => editarCriterio(null), { tom: 'sec', pequeno: true, icone: 'mais' }), tabela([
       { t: 'Tipo de rescisão', f: (x) => [x.tipo_rescisao, x.ativo ? '' : h('small', { class: 'muted' }, ' (inativo)')] },
-      { t: 'BPP', f: (x) => sim(x.pagar_bpp) }, { t: 'Produtividade', f: (x) => sim(x.pagar_prod) },
+      { t: 'BPP', f: (x) => sim(x.pagar_bpp) }, { t: 'Cartão Gold', f: (x) => sim(x.pagar_gold) }, { t: 'Produtividade', f: (x) => sim(x.pagar_prod) },
       { t: '', f: (x) => h('span', { class: 'acoes' }, botao('Editar', () => editarCriterio(x), { tom: 'sec', pequeno: true }),
         botao('Excluir', async () => { if (await confirmar('Excluir critério', x.tipo_rescisao, { rotulo: 'Excluir', perigo: true })) { try { await del(`/gratificacao/criterios/${x.id}`); recarregarPagina(); } catch (e) { toast(e.message, 'erro'); } } }, { tom: 'perigo sec', pequeno: true })) },
     ], p.criterios)),
-    tabelaFuncoes(cfg, funcoes.itens),
+    h('div', { class: 'perfil-caixa' }, 'Os valores de BPP, Cartão Gold e Produtividade de cada função, o grupo e onde as ocorrências descontam ficam em ',
+      h('a', { href: '#/gratificacao/funcoes' }, 'Gratificação Funções'), '.'),
     tabelaDescontos(p, 'auxiliar', recarregarPagina, { titulo: 'Pontos de desconto — demais funções', texto: 'Percentual descontado do BPP por ocorrência no período (somados, até 100%). Os de motoristas e operadores ficam em Motoristas e operadores.' }),
     secao('Assinaturas do demonstrativo', botao('Nova assinatura', () => editarSignatario(null), { tom: 'sec', pequeno: true, icone: 'mais' }),
       h('p', { class: 'muted pequeno' }, 'Quem assina o demonstrativo de pagamento (modelo da aba Diversos). Os nomes aparecem acima do cargo, abaixo da linha de assinatura.'),
@@ -524,12 +564,11 @@ async function paginaOperadores({ recarregarPagina }) {
     titulo: 'Aplicação dos descontos — motoristas e operadores',
     campos: [
       { nome: 'desconto_operador', rotulo: 'As ocorrências descontam da', tipo: 'select', opcoes: ALVOS, valor: cfg.desconto_operador, obrigatorio: true, cheio: true },
-      { nome: 'bpp_cartao', rotulo: 'BPP depositado no Cartão Gold (não sai no relatório) para', tipo: 'select', opcoes: MODOS_CARTAO, valor: cfg.bpp_cartao, obrigatorio: true, cheio: true },
-      { nome: 'palavras_operador', rotulo: 'Palavras-chave das funções do grupo', valor: cfg.palavras_operador, max: 200, cheio: true, dica: 'Separadas por vírgula. Funções com uma delas no nome entram no grupo, salvo se classificadas abaixo como "demais funções".' },
+      { nome: 'palavras_operador', rotulo: 'Palavras-chave das funções do grupo', valor: cfg.palavras_operador, max: 200, cheio: true, dica: 'Separadas por vírgula. Funções com uma delas no nome entram no grupo, salvo se classificadas como "demais funções" em Gratificação Funções.' },
     ], confirmar: 'Salvar', aoSalvar: (v) => put('/gratificacao/config', v),
   }).then((s) => { if (s) { toast('Parâmetros salvos.'); recarregarPagina(); } });
 
-  const origem = (x) => ({ funcao: 'escolhido na tabela de funções', palavra: 'pela palavra-chave', padrao: 'automático' }[x.origem]);
+  const origem = (x) => ({ funcao: 'escolhido em Gratificação Funções', palavra: 'pela palavra-chave', padrao: 'automático' }[x.origem]);
 
   return [
     cabecalhoPagina({
@@ -539,19 +578,18 @@ async function paginaOperadores({ recarregarPagina }) {
     h('div', { class: 'kpis compactos' },
       kpi('Funções no grupo', fmt(operadores.length), { icone: 'usuarios', sub: ((n) => `${fmt(n)} funcionário${n === 1 ? '' : 's'} ativo${n === 1 ? '' : 's'}`)(operadores.reduce((t, x) => t + x.ativos, 0)) }),
       kpi('Desconto das ocorrências', rotuloAlvo(cfg.desconto_operador), { icone: 'proibido' }),
-      kpi('BPP no Cartão Gold', MODOS_CARTAO.find((m) => m.valor === cfg.bpp_cartao)?.rotulo || cfg.bpp_cartao, { icone: 'carteira' })),
+      kpi('Com Cartão Gold', fmt(operadores.filter((x) => x.valores.gold !== null).length), { icone: 'carteira', sub: 'funções com valor em Gratificação Funções' })),
     secao('Aplicação', botao('Editar', editarAplicacao, { tom: 'sec', pequeno: true, icone: 'editar' }), h('dl', { class: 'dados' },
       dado('Ocorrências descontam da', rotuloAlvo(cfg.desconto_operador)),
-      dado('BPP depositado no Cartão Gold', MODOS_CARTAO.find((m) => m.valor === cfg.bpp_cartao)?.rotulo || cfg.bpp_cartao),
       dado('Palavras-chave das funções', cfg.palavras_operador || '—'))),
     tabelaDescontos(p, 'operador', recarregarPagina, { titulo: 'Pontos de desconto e percentuais', texto: 'Percentual descontado da produtividade por ocorrência no período (somados, até 100%) e dias trabalhados que cada ocorrência tira.' }),
-    secao('Funções do grupo', h('a', { class: 'btn sec pequeno', href: '#/gratificacao/parametros' }, icone('editar'), 'Editar na tabela de funções'),
-      h('p', { class: 'muted pequeno' }, 'Funções que estão em "Motoristas e operadores". Para incluir, retirar ou mudar onde descontam e onde o BPP é pago, use a tabela de funções em Parâmetros.'),
+    secao('Funções do grupo', h('a', { class: 'btn sec pequeno', href: '#/gratificacao/funcoes' }, icone('editar'), 'Editar em Gratificação Funções'),
+      h('p', { class: 'muted pequeno' }, 'Funções que estão em "Motoristas e operadores", com os valores de BPP, Cartão Gold e Produtividade. Para incluir, retirar ou mudar valores, use Gratificação Funções.'),
       tabela([
         { t: 'Função', f: (x) => [x.funcao, h('div', { class: 'muted pequeno' }, `${fmt(x.qtd)} funcionário${x.qtd === 1 ? '' : 's'} · ${fmt(x.ativos)} ativo${x.ativos === 1 ? '' : 's'}`)] },
         { t: 'Grupo', f: (x) => [badgeTom(GRUPOS[x.grupo], 'info'), h('div', { class: 'muted pequeno' }, origem(x))] },
         { t: 'Ocorrências descontam do', f: (x) => [rotuloAlvo(x.desconto), h('div', { class: 'muted pequeno' }, x.desconto_origem === 'funcao' ? 'escolhido para a função' : 'padrão do grupo')] },
-        { t: 'BPP pago no', f: (x) => [x.bpp_cartao ? 'Cartão Gold' : 'Relatório', h('div', { class: 'muted pequeno' }, x.bpp_origem === 'funcao' ? 'escolhido para a função' : 'padrão do grupo')] },
+        { t: 'BPP', num: true, f: (x) => valorOuTraco(x.valores.bpp) }, { t: 'Cartão Gold', num: true, f: (x) => valorOuTraco(x.valores.gold) }, { t: 'Produtividade', num: true, f: (x) => valorOuTraco(x.valores.prod) },
       ], operadores, { vazioMsg: 'Nenhuma função no grupo.' })),
   ];
 }
@@ -560,8 +598,6 @@ const dado = (t, v) => h('div', {}, h('dt', {}, t), h('dd', {}, v));
 // ======================================================================
 // Relatório de pagamento
 // ======================================================================
-// BPP de motoristas e operadores vai para o Cartão Gold: não aparece no relatório (o total da linha é a gratificação em folha)
-const bppVisivel = (c, v) => (c.bpp_no_cartao ? h('span', { class: 'muted pequeno', title: 'Depósito no Cartão Gold' }, '—') : brl(v));
 
 async function paginaRelatorio({ query, ir }) {
   const qs = new URLSearchParams(query).toString();
@@ -569,7 +605,7 @@ async function paginaRelatorio({ query, ir }) {
   return [
     cabecalhoPagina({
       migalhas: [['Gratificação rescisória'], ['Relatório de pagamento']], titulo: 'Relatório de pagamento',
-      sub: 'Gratificação rescisória por departamento. O BPP de motoristas e operadores não aparece aqui: vai para o Cartão Gold.',
+      sub: 'Gratificação rescisória por departamento: BPP, Cartão Gold e Produtividade de cada colaborador e os totais',
       acoes: [h('a', { class: 'btn sec', href: `/api/gratificacao/relatorio.csv${qs ? `?${qs}` : ''}`, download: '' }, icone('baixar'), 'Exportar CSV'),
         h('a', { class: 'btn sec', href: `#/gratificacao/cartao-gold${qs ? `?${qs}` : ''}` }, icone('carteira'), 'Cartão Gold'),
         h('a', { class: 'btn', href: `#/gratificacao/demonstrativo${qs ? `?${qs}` : ''}` }, icone('impressora'), 'Demonstrativo para assinatura')],
@@ -579,29 +615,30 @@ async function paginaRelatorio({ query, ir }) {
       { nome: 'de', rotulo: 'Rescisão de', tipo: 'date' }, { nome: 'ate', rotulo: 'até', tipo: 'date' },
     ], query, (v) => ir('#/gratificacao/relatorio', v)),
     h('div', { class: 'kpis compactos' },
-      kpi('Colaboradores', fmt(totais.qtd), { icone: 'usuarios' }), kpi('BPP (relatório)', brl(totais.bpp), { icone: 'carteira' }),
+      kpi('Colaboradores', fmt(totais.qtd), { icone: 'usuarios' }), kpi('BPP', brl(totais.bpp), { icone: 'carteira' }),
+      kpi('Cartão Gold', brl(totais.gold), { icone: 'carteira', sub: `${fmt(totais.qtd_cartao)} colaborador${totais.qtd_cartao === 1 ? '' : 'es'}` }),
       kpi('Produtividade', brl(totais.prod), { icone: 'carteira' }), kpi('Descontos', brl(totais.desconto), { tom: totais.desconto ? 'alerta' : 'neutro', icone: 'proibido' }),
-      kpi('Total do relatório', brl(totais.folha), { tom: 'ok', icone: 'ok', sub: 'gratificação em folha' }),
-      ((n) => (n ? kpi('Zerados no relatório', fmt(n), { tom: 'alerta', icone: 'proibido', sub: 'o motivo aparece na linha' }) : null))(itens.filter((r) => r.calculo.motivos_zero.length).length),
-      kpi('Cartão Gold', brl(totais.cartao_gold), { icone: 'carteira', sub: `${fmt(totais.qtd_cartao)} depósito${totais.qtd_cartao === 1 ? '' : 's'} de BPP` })),
+      kpi('Total a receber', brl(totais.total), { tom: 'ok', icone: 'ok', sub: `em folha (BPP + Prod.) ${brl(totais.folha)}` }),
+      ((n) => (n ? kpi('Zerados', fmt(n), { tom: 'alerta', icone: 'proibido', sub: 'o motivo aparece na linha' }) : null))(itens.filter((r) => r.calculo.motivos_zero.length).length)),
     h('div', { class: 'card' }, tabela([
       { t: 'Departamento', f: (r) => r.funcionario_setor || '—' },
       { t: 'Matrícula', cls: 'nowrap', f: (r) => r.funcionario_matricula },
       { t: 'Nome', f: (r) => [h('a', { href: `#/gratificacao/apuracao/${r.id}`, title: `${r.funcionario_funcao || 'função não informada'} · ${GRUPOS[r.calculo.grupo]}` }, r.funcionario_nome),
         r.calculo.motivos_zero.length ? h('div', { class: 'motivo-zero' }, h('strong', {}, 'Zerado: '), r.calculo.motivos_zero.join(' · ')) : null] },
-      { t: 'Média BPP', num: true, f: (r) => bppVisivel(r.calculo, r.calculo.bpp.media) }, { t: 'Receber BPP', num: true, f: (r) => bppVisivel(r.calculo, r.calculo.bpp.receber) },
+      { t: 'Média BPP', num: true, f: (r) => brl(r.calculo.bpp.media) }, { t: 'Receber BPP', num: true, f: (r) => brl(r.calculo.bpp.receber) },
+      { t: 'Cartão Gold', num: true, f: (r) => (r.calculo.gold.media || r.calculo.gold.receber ? brl(r.calculo.gold.receber) : '—') },
       { t: 'Média Prod.', num: true, f: (r) => brl(r.calculo.prod.media) }, { t: 'Receber Prod.', num: true, f: (r) => brl(r.calculo.prod.receber) },
       { t: 'Dias', num: true, f: (r) => `${r.calculo.dias_pagar}/${r.calculo.base_dias}` },
       { t: 'Desconto', num: true, f: (r) => (r.calculo.desconto ? [`${brl(r.calculo.desconto)}`, h('div', { class: 'muted pequeno' }, `${pct(r.calculo.desconto_pct)} · ${nomesComp(r.calculo.desconto_em)}`)] : '—') },
       { t: 'Tipo de rescisão', f: (r) => r.tipo_rescisao }, { t: 'Rescisão', cls: 'nowrap', f: (r) => dataBR(r.dt_rescisao) },
-      { t: 'Total a receber', num: true, f: (r) => h('strong', {}, brl(r.calculo.folha)) },
+      { t: 'Total a receber', num: true, f: (r) => h('strong', {}, brl(r.calculo.total)) },
       { t: 'Situação', f: (r) => badgeSit(r.situacao) },
     ], itens, { vazioMsg: 'Nenhuma apuração para o filtro selecionado.' })),
   ];
 }
 
 // ======================================================================
-// Cartão Gold: depósito rescisório do BPP (layout da aba LISTA BPP)
+// Cartão Gold: depósito rescisório no cartão (layout da aba LISTA BPP)
 // ======================================================================
 async function paginaCartaoGold({ query, ir }) {
   const qs = new URLSearchParams(query).toString();
@@ -615,17 +652,17 @@ async function paginaCartaoGold({ query, ir }) {
         h('h1', {}, `CONTROLE DE DEPÓSITO RESCISÓRIO - CARTÃO GOLD${parte ? ` - PARTE - ${parte}` : ''}`)),
       h('img', { src: '/img/crv-industrial-azul.png?v=2', alt: 'CRV Industrial', class: 'demo-logo' })),
     itens.length ? h('table', { class: 'demo-tab' },
-      h('thead', {}, h('tr', {}, ['', 'Matrícula', 'Nome Colaborador', '(R$) Receber BPP', 'Data Rescisão', 'Centro de Custo', 'Descrição', 'PARTE'].map((t) => h('th', {}, t)))),
+      h('thead', {}, h('tr', {}, ['', 'Matrícula', 'Nome Colaborador', '(R$) Receber Cartão Gold', 'Data Rescisão', 'Centro de Custo', 'Descrição', 'PARTE'].map((t) => h('th', {}, t)))),
       h('tbody', {}, itens.map((i, k) => h('tr', {},
         h('td', { class: 'c' }, k + 1), h('td', { class: 'c' }, i.matricula), h('td', {}, i.nome), h('td', { class: 'n' }, n2(i.valor)), h('td', { class: 'c' }, dataBR(i.dt_rescisao)),
         h('td', { class: 'c' }, i.centro_custo || ''), h('td', {}, i.descricao || ''), h('td', { class: 'c' }, parte ?? ''))),
-      h('tr', { class: 'total' }, h('td', { colspan: 3 }, `Total - ${itens.length}`), h('td', { class: 'n forte' }, n2(total)), h('td', { colspan: 4 })))) : h('p', { class: 'demo-vazio' }, 'Nenhum BPP a depositar no Cartão Gold para o filtro selecionado.'),
+      h('tr', { class: 'total' }, h('td', { colspan: 3 }, `Total - ${itens.length}`), h('td', { class: 'n forte' }, n2(total)), h('td', { colspan: 4 })))) : h('p', { class: 'demo-vazio' }, 'Nenhum valor de Cartão Gold a depositar para o filtro selecionado.'),
     h('footer', { class: 'demo-rodape' }, `Emitido em ${new Date().toLocaleString('pt-BR')}`));
   return [
     h('div', { class: 'nao-imprime' },
       cabecalhoPagina({
-        migalhas: [['Gratificação rescisória'], ['Cartão Gold']], titulo: 'Cartão Gold — depósito do BPP',
-        sub: 'Lista no layout da aba LISTA BPP: BPP líquido das rescisões de motoristas e operadores (que não aparece no relatório)',
+        migalhas: [['Gratificação rescisória'], ['Cartão Gold']], titulo: 'Cartão Gold — depósito rescisório',
+        sub: 'Lista no layout da aba LISTA BPP: valor do Cartão Gold de cada rescisão (valor da função em Gratificação Funções, proporcional aos dias)',
         acoes: [h('a', { class: 'btn sec', href: `/api/gratificacao/cartao-gold.csv${qs ? `?${qs}` : ''}`, download: '' }, icone('baixar'), 'Exportar para importação (CSV)'),
           botao('Imprimir', () => window.print(), { icone: 'impressora' })],
       }),
@@ -687,22 +724,20 @@ async function paginaDemonstrativo({ query, ir }) {
   const grupos = new Map();
   for (const r of itens) { const k = r.funcionario_setor || 'SEM DEPARTAMENTO'; if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(r); }
   const soma = (lista, f) => lista.reduce((t, r) => t + f(r.calculo), 0);
-  // Motoristas e operadores: o BPP vai para o Cartão Gold e não aparece aqui (o total da linha é a gratificação em folha)
-  const bppDemo = (c, v) => (c.bpp_no_cartao ? '' : v);
+  // Colunas da aba Diversos: BPP, Cartão Gold (onde ficava o Zelo/Equip.) e Produtividade
+  const tripla = (comp) => [h('td', { class: 'n' }, n2(comp.media)), h('td', { class: 'n' }, ating(comp)), h('td', { class: 'n' }, n2(comp.receber))];
   const linhaDados = (r) => { const c = r.calculo; return h('tr', {},
     h('td', {}, r.funcionario_setor || '—'), h('td', { class: 'c' }, r.funcionario_matricula), h('td', {}, r.funcionario_nome),
-    h('td', { class: 'n' }, bppDemo(c, n2(c.bpp.media))), h('td', { class: 'n' }, bppDemo(c, ating(c.bpp))), h('td', { class: 'n' }, bppDemo(c, n2(c.bpp.receber))),
-    h('td', { class: 'n' }, n2(c.prod.media)), h('td', { class: 'n' }, ating(c.prod)), h('td', { class: 'n' }, n2(c.prod.receber)),
-    h('td', { class: 'n' }, n2(c.folha)), h('td', { class: 'c' }, c.dias_pagar), h('td', { class: 'c' }, c.dias_descontados),
+    tripla(c.bpp), tripla(c.gold), tripla(c.prod),
+    h('td', { class: 'n' }, n2(c.total)), h('td', { class: 'c' }, c.dias_pagar), h('td', { class: 'c' }, c.dias_descontados),
     h('td', {}, r.tipo_rescisao), h('td', { class: 'c' }, dataBR(r.funcionario_admissao)), h('td', {}, c.criterio_texto), h('td', { class: 'c' }, dataBR(r.dt_rescisao)),
-    h('td', { class: 'n forte' }, n2(c.folha))); };
+    h('td', { class: 'n forte' }, n2(c.total))); };
+  const subtotal = (lista, k) => [h('td', {}), h('td', {}), h('td', { class: 'n' }, n2(soma(lista, (c) => c[k].receber)))];
   const linhaTotal = (rotulo, lista, classe) => h('tr', { class: classe },
     h('td', { colspan: 3 }, `${rotulo} - ${lista.length}`),
-    h('td', {}), h('td', {}), h('td', { class: 'n' }, n2(soma(lista, (c) => (c.bpp_no_cartao ? 0 : c.bpp.receber)))),
-    h('td', {}), h('td', {}), h('td', { class: 'n' }, n2(soma(lista, (c) => c.prod.receber))),
-    h('td', { class: 'n' }, n2(soma(lista, (c) => c.folha))), h('td', { class: 'c' }, soma(lista, (c) => c.dias_pagar)), h('td', { class: 'c' }, soma(lista, (c) => c.dias_descontados)),
-    h('td', { colspan: 4 }), h('td', { class: 'n forte' }, n2(soma(lista, (c) => c.folha))));
-  const noCartao = itens.filter((r) => r.calculo.cartao_gold > 0);
+    subtotal(lista, 'bpp'), subtotal(lista, 'gold'), subtotal(lista, 'prod'),
+    h('td', { class: 'n' }, n2(soma(lista, (c) => c.total))), h('td', { class: 'c' }, soma(lista, (c) => c.dias_pagar)), h('td', { class: 'c' }, soma(lista, (c) => c.dias_descontados)),
+    h('td', { colspan: 4 }), h('td', { class: 'n forte' }, n2(soma(lista, (c) => c.total))));
 
   const corpo = [];
   for (const [dep, lista] of grupos) { corpo.push(...lista.map(linhaDados), linhaTotal(`${dep} - Total`, lista, 'subtotal')); }
@@ -718,10 +753,10 @@ async function paginaDemonstrativo({ query, ir }) {
       h('img', { src: '/img/crv-industrial-azul.png?v=2', alt: 'CRV Industrial', class: 'demo-logo' })),
     itens.length ? h('table', { class: 'demo-tab' },
       h('thead', {}, h('tr', {}, ['Descrição do Departamento', 'Matrícula', 'Nome Colaborador', 'Média-BPP (R$)', 'Ating. BPP (%)', '(R$) Receber BPP',
-        'Média-Prod (R$)', 'Ating. Prod (%)', '(R$) Receber Produtivid', '$ BPP + Produtivid', 'Qtde Dias trab.', 'Qtde. faltas', 'Tipo de Rescisão', 'Dt - Admissão', 'Critérios da Rescisão', 'Dt. Rescisão', '(R$) Total Gratif Receber']
+        'Cartão Gold (R$)', 'Ating. Cartão Gold (%)', '(R$) Receber Cartão Gold', 'Média-Prod (R$)', 'Ating. Prod (%)', '(R$) Receber Produtivid', '$ BPP + Cartão Gold + Produtivid', 'Qtde Dias trab.', 'Qtde. faltas', 'Tipo de Rescisão', 'Dt - Admissão', 'Critérios da Rescisão', 'Dt. Rescisão', '(R$) Total Gratif Receber']
         .map((t) => h('th', {}, t)))),
       h('tbody', {}, corpo, linhaTotal('Total / VALORES', itens, 'total'))) : h('p', { class: 'demo-vazio' }, 'Nenhuma apuração para o filtro selecionado.'),
-    noCartao.length ? h('p', { class: 'demo-nota' }, `BPP de motoristas e operadores: depósito no Cartão Gold (lista à parte) — ${noCartao.length} colaborador${noCartao.length === 1 ? '' : 'es'}, R$ ${n2(soma(noCartao, (c) => c.cartao_gold))}.`) : null,
+    itens.some((r) => r.calculo.cartao_gold > 0) ? h('p', { class: 'demo-nota' }, `Cartão Gold: depósito no cartão (lista à parte) — R$ ${n2(soma(itens, (c) => c.cartao_gold))}.`) : null,
     h('div', { class: 'demo-assin' }, assinaturas.map((x) => h('div', {}, h('span', { class: 'linha' }), h('span', { class: 'nome' }, x.nome || ' '), h('span', { class: 'cargo' }, x.cargo)))),
     h('footer', { class: 'demo-rodape' }, `Emitido em ${new Date().toLocaleString('pt-BR')}`));
 
@@ -753,6 +788,7 @@ export default async function gratificacao(ctx) {
     case 'ocorrencias': return paginaOcorrencias(c);
     case 'parametros': return paginaParametros(c);
     case 'operadores': return paginaOperadores(c);
+    case 'funcoes': return paginaFuncoes(c);
     case 'cartao-gold': return paginaCartaoGold(c);
     case 'relatorio': return paginaRelatorio(c);
     case 'medias': return paginaMedias(c);

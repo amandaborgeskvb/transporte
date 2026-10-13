@@ -4,6 +4,7 @@
 // BD_Letras, Digitar_Notif e Diversos):
 //  1. Médias (Digit_Gratif J:L = MÉDIA_GRAT): média de BPP e Produtividade dos 3 meses de calendário que
 //     terminam no último mês com valores do funcionário. Célula vazia não entra na média (como na tabela dinâmica).
+//     Sem média, vale o valor da função (menu Gratificação Funções). O Cartão Gold é sempre o valor da função.
 //  2. Dias trabalhados (BD!AT): dias "TRAB" do calendário entre o início do ciclo (dia 16) — ou a admissão, se posterior —
 //     e a rescisão. O dia da admissão ("INÍCIO") e as folgas da escala (letra A–F do BD_Letras, ou DOM) não contam.
 //  3. Dias a pagar (Diversos!N = AT − O): menos 1 dia por ocorrência que não seja ADV (a suspensão desconta 2).
@@ -11,8 +12,8 @@
 //     rescisão definem o que é pago).
 //  5. Desconto (Diversos!X/Y): soma dos percentuais das ocorrências (tabela por grupo de função), limitada a 100%:
 //     motoristas e operadores descontam na produtividade; as demais funções, no BPP.
-//  6. Total = BPP + Produtividade líquidos. O BPP de motoristas e operadores vai para o depósito do Cartão Gold (aba
-//     LISTA BPP) e não aparece no relatório; o restante é a gratificação em folha.
+//  6. Total = BPP + Cartão Gold + Produtividade líquidos. BPP e produtividade são a gratificação em folha; o Cartão
+//     Gold é depositado no cartão (lista no layout da aba LISTA BPP).
 //  O Zelo/Equipamento deixou de ser pago e não entra mais no cálculo (a coluna antiga do banco é ignorada).
 
 const { round2 } = require('./util');
@@ -63,7 +64,8 @@ function lerNumero(valor) {
 // ---------- Grupo e regra da função ----------
 // "Motoristas e operadores" ou "demais funções" (auxiliares). Ordem: grupo escolhido na tabela de funções (Parâmetros);
 // senão, palavra-chave no nome da função (MOTORISTA, OPERADOR…); senão, demais funções.
-// funcoes: Map(nome sem acento → { grupo, desconto, bpp_destino }) ou lista [{ funcao, grupo, desconto, bpp_destino }]
+// funcoes: Map(nome sem acento → { grupo, desconto, valor_bpp, valor_gold, valor_prod }) ou lista [{ funcao, … }]
+// (menu Gratificação Funções)
 const normFuncao = (s) => semAcento(s).replace(/\s+/g, ' ');
 function definidaNaTabela(funcao, funcoes) {
   const f = normFuncao(funcao);
@@ -80,18 +82,18 @@ function classificarFuncao(funcao, palavrasOperador, funcoes) {
 }
 const grupoDaFuncao = (funcao, palavrasOperador, funcoes) => classificarFuncao(funcao, palavrasOperador, funcoes).grupo;
 
-// Regra efetiva da função: grupo, onde as ocorrências descontam (BPP ou produtividade) e onde o BPP é pago (relatório ou
-// Cartão Gold). O que foi escolhido na tabela de funções vale; o que ficou em branco segue o padrão do grupo.
+// Regra efetiva da função (menu Gratificação Funções): grupo, onde as ocorrências descontam (BPP ou produtividade; em
+// branco = padrão do grupo) e os valores de BPP, Cartão Gold e Produtividade da função (null = não informado).
 function regraDaFuncao(funcao, config, funcoes, grupoInformado = null) {
   const tabela = definidaNaTabela(funcao, funcoes);
   const c = grupoInformado ? { grupo: grupoInformado, origem: 'informado' } : classificarFuncao(funcao, config.palavras_operador, funcoes);
-  const padraoDesconto = ALVOS_DESCONTO[c.grupo === 'operador' ? config.desconto_operador : config.desconto_auxiliar] ? (c.grupo === 'operador' ? config.desconto_operador : config.desconto_auxiliar) : PADRAO_ALVO[c.grupo];
-  const modo = config.bpp_cartao || 'operador';
-  const padraoCartao = modo === 'todos' || (modo === 'operador' && c.grupo === 'operador');
+  const doGrupo = c.grupo === 'operador' ? config.desconto_operador : config.desconto_auxiliar;
+  const padraoDesconto = ALVOS_DESCONTO[doGrupo] ? doGrupo : PADRAO_ALVO[c.grupo];
+  const valor = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
   return {
     grupo: c.grupo, origem: c.origem,
     desconto: tabela.desconto || padraoDesconto, desconto_origem: tabela.desconto ? 'funcao' : 'grupo',
-    bpp_cartao: tabela.bpp_destino ? tabela.bpp_destino === 'cartao' : padraoCartao, bpp_origem: tabela.bpp_destino ? 'funcao' : 'grupo',
+    valores: { bpp: valor(tabela.valor_bpp), gold: valor(tabela.valor_gold), prod: valor(tabela.valor_prod) },
   };
 }
 
@@ -106,7 +108,7 @@ function periodoDe(dtRescisao, diaCorte) {
 // Componentes que recebem o desconto das ocorrências, conforme a opção do grupo de função
 const ALVOS_DESCONTO = { bpp: ['bpp'], prod: ['prod'], bpp_prod: ['bpp', 'prod'], nenhum: [] };
 const PADRAO_ALVO = { auxiliar: 'bpp', operador: 'prod' };
-const NOME_COMP = { bpp: 'BPP', prod: 'produtividade' };
+const NOME_COMP = { bpp: 'BPP', gold: 'Cartão Gold', prod: 'produtividade' };
 const ARTIGO = { bpp: 'o BPP', prod: 'a produtividade' };
 const nomes = (lista) => lista.map((k) => ARTIGO[k]).join(' e ');
 
@@ -147,11 +149,12 @@ function diasTrabalhados({ inicio, fim, admissao, escala }) {
 
 // ---------- Cálculo ----------
 // entrada: {
-//   config: { base_dias, meses_media, dia_corte, palavras_operador, desconto_auxiliar, desconto_operador, desconto_redireciona, bpp_cartao },
-//   criterio: { tipo_rescisao, pagar_bpp, pagar_prod },
+//   config: { base_dias, meses_media, dia_corte, palavras_operador, desconto_auxiliar, desconto_operador, desconto_redireciona },
+//   criterio: { tipo_rescisao, pagar_bpp, pagar_gold, pagar_prod },
 //   rescisao: { dt_rescisao, dias_trabalhados (opcional: informado), escala (A–F, DOM, 5X2), grupo (opcional) },
 //   funcao, admissao, valores: [{ mes, bpp, prod }] (null = célula vazia), ocorrencias: [{ data, abrev }],
-//   penalidades: [{ grupo, abrev, descricao, percentual, dias_desconto }], funcoes: [{ funcao, grupo }] (classificação manual)
+//   penalidades: [{ grupo, abrev, descricao, percentual, dias_desconto }],
+//   funcoes: [{ funcao, grupo, desconto, valor_bpp, valor_gold, valor_prod }] (menu Gratificação Funções)
 // }
 const br = (isoTxt) => isoTxt.split('-').reverse().join('/');
 const num = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
@@ -175,11 +178,21 @@ function calcular({ config, criterio, rescisao, funcao, admissao, valores, ocorr
     const primeiro = iso(new Date(Date.UTC(a, m - config.meses_media, 1)));
     meses = lidos.filter((v) => v.mes >= primeiro);
   }
-  const media = (campo) => {
+  const mediaGrat = (campo) => {
     const vals = meses.map((v) => v[campo]).filter((x) => x !== null && Number.isFinite(x));
-    return vals.length ? round2(vals.reduce((t, x) => t + x, 0) / vals.length) : 0;
+    return vals.length ? round2(vals.reduce((t, x) => t + x, 0) / vals.length) : null;
   };
-  const medias = { bpp: media('bpp'), prod: media('prod') };
+  // Base de cada componente: BPP e Produtividade pela média dos meses (GRAT); sem média, pelo valor da função
+  // (menu Gratificação Funções). Cartão Gold: sempre o valor da função.
+  const tab = regra.valores;
+  const baseDe = (campo) => {
+    const m = campo === 'gold' ? null : mediaGrat(campo);
+    if (m !== null) return { valor: m, origem: 'media' };
+    if (tab[campo] !== null) return { valor: tab[campo], origem: 'tabela' };
+    return { valor: 0, origem: 'sem' };
+  };
+  const bases = { bpp: baseDe('bpp'), gold: baseDe('gold'), prod: baseDe('prod') };
+  const medias = { bpp: bases.bpp.valor, gold: bases.gold.valor, prod: bases.prod.valor };
 
   // 2. Ocorrências do período, com o percentual e os dias do grupo da função
   const tabela = new Map(penalidades.filter((p) => p.grupo === grupo).map((p) => [semAcento(p.abrev), p]));
@@ -209,8 +222,8 @@ function calcular({ config, criterio, rescisao, funcao, admissao, valores, ocorr
   // 4. Proporcional e desconto. Onde as ocorrências descontam: por grupo (demais funções → BPP; motoristas e
   // operadores → produtividade). Se o componente do desconto não tem valor nesta rescisão (não é pago pelo tipo de
   // rescisão ou está sem média), o desconto vai para o outro componente pago — salvo se desligado em Parâmetros.
-  const pagos = { bpp: !!criterio.pagar_bpp, prod: !!criterio.pagar_prod };
-  const proporcional = { bpp: pagos.bpp ? round2(medias.bpp * fator) : 0, prod: pagos.prod ? round2(medias.prod * fator) : 0 };
+  const pagos = { bpp: !!criterio.pagar_bpp, gold: !!(criterio.pagar_gold ?? criterio.pagar_prod), prod: !!criterio.pagar_prod };
+  const proporcional = Object.fromEntries(['bpp', 'gold', 'prod'].map((k) => [k, pagos[k] ? round2(medias[k] * fator) : 0]));
   const alvoConfig = ALVOS_DESCONTO[regra.desconto];
   let alvo = alvoConfig;
   let redirecionado = null;
@@ -228,18 +241,20 @@ function calcular({ config, criterio, rescisao, funcao, admissao, valores, ocorr
   }
   const componente = (chave) => {
     const desconto = alvo.includes(chave) ? round2(proporcional[chave] * descontoPct) : 0;
-    return { media: medias[chave], paga: pagos[chave], proporcional: proporcional[chave], desconto, receber: round2(proporcional[chave] - desconto) };
+    return { media: medias[chave], origem: bases[chave].origem, paga: pagos[chave], proporcional: proporcional[chave], desconto, receber: round2(proporcional[chave] - desconto) };
   };
   const bpp = componente('bpp');
+  const gold = componente('gold');
   const prod = componente('prod');
 
-  // 5. Forma de pagamento: o BPP de motoristas e operadores vai para o depósito do Cartão Gold (aba LISTA BPP) e não
-  //    aparece no relatório; a gratificação em folha é o restante.
-  const bppNoCartao = regra.bpp_cartao;
-  const cartaoGold = bppNoCartao ? bpp.receber : 0;
+  // 5. Pagamento: BPP e produtividade na gratificação em folha; Cartão Gold depositado no cartão (lista LISTA BPP)
+  const folha = round2(bpp.receber + prod.receber);
+  const total = round2(folha + gold.receber);
 
-  if (!meses.length) avisos.push('Sem valores mensais (BPP/produtividade) até o mês da rescisão.');
-  else if (meses.length < config.meses_media) avisos.push(`Média calculada com ${meses.length} mês(es) com valores dentro da janela de ${config.meses_media} meses.`);
+  const usouTabela = ['bpp', 'prod'].filter((k) => bases[k].origem === 'tabela').map((k) => NOME_COMP[k]);
+  if (!meses.length) avisos.push(`Sem valores mensais (BPP/produtividade) até o mês da rescisão${usouTabela.length ? `: usado o valor da função para ${usouTabela.join(' e ')}` : ''}.`);
+  else if (usouTabela.length) avisos.push(`Sem média de ${usouTabela.join(' e ')} nos meses: usado o valor da função (Gratificação Funções).`);
+  if (meses.length && meses.length < config.meses_media) avisos.push(`Média calculada com ${meses.length} mês(es) com valores dentro da janela de ${config.meses_media} meses.`);
   if (!informado && !escala) avisos.push('Informe a escala de folga ou os dias trabalhados.');
   const semParam = [...new Set(doPeriodo.filter((o) => o.sem_parametro).map((o) => o.abrev))];
   if (semParam.length) avisos.push(`Ocorrência sem percentual cadastrado para o grupo ${grupo === 'operador' ? 'motoristas e operadores' : 'demais funções'}: ${semParam.join(', ')} (considerada 0%).`);
@@ -248,49 +263,46 @@ function calcular({ config, criterio, rescisao, funcao, admissao, valores, ocorr
     avisos.push(`${foraDoPeriodo.length} ocorrência(s) do funcionário fora do período de gratificação (${br(periodo.inicio)} a ${br(periodo.fim)}) não descontam: ${foraDoPeriodo.map((o) => `${o.abrev} em ${br(o.data)}`).join(', ')}.`);
   }
   if (grupoOrigem === 'padrao' && regra.desconto_origem === 'grupo' && medias.bpp === 0 && medias.prod > 0) {
-    avisos.push(`A função "${funcao || 'não informada'}" está em "demais funções" (desconto no BPP), mas o funcionário só tem produtividade. Se for motorista ou operador, defina a função na tabela de funções em Parâmetros.`);
+    avisos.push(`A função "${funcao || 'não informada'}" está em "demais funções" (desconto no BPP), mas o funcionário só tem produtividade. Se for motorista ou operador, defina o grupo da função em Gratificação Funções.`);
   }
   if (diasPagar > config.base_dias) avisos.push(`Dias a pagar (${diasPagar}) acima da base de ${config.base_dias}: o valor passa da média, como na planilha.`);
 
-  // Por que o valor do relatório (gratificação em folha) ficou zerado: motivo de cada componente
+  // Por que o valor a receber ficou zerado: motivo de cada componente
   const motivosZero = [];
-  const folha = round2(bpp.receber + prod.receber - cartaoGold);
-  if (folha === 0) {
-    const brl = (n) => `R$ ${n.toFixed(2).replace('.', ',')}`;
-    if (!meses.length) motivosZero.push('sem valores mensais (BPP/produtividade) até o mês da rescisão: confira a carga da GRAT e a matrícula');
-    else if (!pagos.bpp && !pagos.prod) motivosZero.push(`${criterio.tipo_rescisao || 'o tipo de rescisão'} não paga gratificação`);
+  if (total === 0) {
+    const temGold = bases.gold.origem === 'tabela' || grupo === 'operador';
+    if (!meses.length && bases.bpp.origem === 'sem' && bases.prod.origem === 'sem' && bases.gold.origem === 'sem') motivosZero.push('sem valores mensais (GRAT) até o mês da rescisão e sem valores da função em Gratificação Funções: confira a carga e a matrícula');
+    else if (!pagos.bpp && !pagos.prod && !pagos.gold) motivosZero.push(`${criterio.tipo_rescisao || 'o tipo de rescisão'} não paga gratificação`);
     else if (diasPagar === 0) motivosZero.push(`0 dias a pagar (${diasTrab} trabalhados − ${diasDescontados} das ocorrências)${!informado && escala && diasTrab === 0 ? ': confira a data de admissão e a escala' : ''}`);
     else {
       const explica = (k, nome) => {
-        const c = k === 'bpp' ? bpp : prod;
-        if (k === 'bpp' && bppNoCartao && c.receber > 0) return `${nome}: ${brl(c.receber)} vai para o Cartão Gold (não aparece no relatório)`;
+        const c = { bpp, gold, prod }[k];
         if (!c.paga) return `${nome}: não é pago em ${criterio.tipo_rescisao}`;
-        if (!c.media) return `${nome}: sem valor na média dos meses`;
+        if (!c.media) return k === 'gold' ? `${nome}: sem valor em Gratificação Funções` : `${nome}: sem valor (nem na média dos meses, nem em Gratificação Funções)`;
         if (c.desconto >= c.proporcional) {
           const transferido = redirecionado?.para.includes(k) ? `; desconto transferido ${k === 'prod' ? 'do BPP' : 'da produtividade'}, porque ${redirecionado.motivo}` : '';
           return `${nome}: descontado 100% pelas ocorrências (${doPeriodo.map((o) => `${o.abrev} ${Math.round(o.percentual * 100)}%`).join(' + ')}${transferido})`;
         }
         return null;
       };
-      for (const m of [explica('bpp', 'BPP'), explica('prod', 'Produtividade')]) if (m) motivosZero.push(m);
+      for (const m of [explica('bpp', 'BPP'), temGold ? explica('gold', 'Cartão Gold') : null, explica('prod', 'Produtividade')]) if (m) motivosZero.push(m);
     }
   }
 
   return {
     grupo, grupo_origem: grupoOrigem, periodo, motivos_zero: motivosZero, criterio: criterio.tipo_rescisao, criterio_texto: textoCriterio(criterio),
     desconto_em: descontoPct > 0 ? alvo.filter((k) => proporcional[k] > 0) : [...alvoConfig], desconto_configurado: [...alvoConfig], desconto_redirecionado: redirecionado,
-    desconto_origem: regra.desconto_origem, bpp_origem: regra.bpp_origem,
+    desconto_origem: regra.desconto_origem, valores_funcao: tab,
     meses: meses.map((v) => v.mes), medias,
     ocorrencias: doPeriodo, ocorrencias_fora: foraDoPeriodo, desconto_pct: descontoPct, dias_descontados: diasDescontados,
     escala: escala || null, dias_informados: informado,
     dias_trabalhados: diasTrab, dias_pagar: diasPagar, base_dias: config.base_dias, proporcao: Math.round(fator * 10000) / 10000,
-    bpp, prod,
-    bruto: round2(bpp.proporcional + prod.proporcional),
-    desconto: round2(bpp.desconto + prod.desconto),
-    total: round2(bpp.receber + prod.receber),
-    bpp_no_cartao: bppNoCartao,
-    folha, // gratificação paga pelo relatório (Diversos)
-    cartao_gold: cartaoGold, // depósito do Cartão Gold (LISTA BPP)
+    bpp, gold, prod,
+    bruto: round2(bpp.proporcional + gold.proporcional + prod.proporcional),
+    desconto: round2(bpp.desconto + gold.desconto + prod.desconto),
+    total, // BPP + Cartão Gold + Produtividade líquidos (valor do relatório)
+    folha, // gratificação em folha: BPP + Produtividade
+    cartao_gold: gold.receber, // depósito no Cartão Gold (lista LISTA BPP)
     avisos,
   };
 }

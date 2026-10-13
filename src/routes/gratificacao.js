@@ -30,7 +30,6 @@ function obterPendente(chave) {
 const dataLocal = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : d);
 const numOuNulo = (v) => (v === null || v === undefined ? null : Number(v));
 const mesmoValor = (a, b) => (a === null || a === undefined ? b === null : b !== null && Number(a) === b);
-const MODOS_CARTAO = ['operador', 'todos', 'nenhum'];
 const TURNOS = ['A', 'B', 'C'];
 
 function criarGratificacao({ pool }) {
@@ -61,12 +60,11 @@ function criarGratificacao({ pool }) {
       desconto_auxiliar: opcaoDe(b.desconto_auxiliar ?? 'bpp', Object.keys(ALVOS_DESCONTO), 'Desconto das demais funções'),
       desconto_operador: opcaoDe(b.desconto_operador ?? 'prod', Object.keys(ALVOS_DESCONTO), 'Desconto de motoristas e operadores'),
       desconto_redireciona: bool(b.desconto_redireciona),
-      bpp_cartao: opcaoDe(b.bpp_cartao ?? 'operador', MODOS_CARTAO, 'BPP no Cartão Gold'),
     };
     await pool.query(
       `UPDATE grat_config SET base_dias=$1, meses_media=$2, dia_corte=$3, palavras_operador=$4, desconto_auxiliar=$5, desconto_operador=$6,
-         desconto_redireciona=$7, bpp_cartao=$8 WHERE id = 1`,
-      [novo.base_dias, novo.meses_media, novo.dia_corte, novo.palavras_operador, novo.desconto_auxiliar, novo.desconto_operador, novo.desconto_redireciona, novo.bpp_cartao]);
+         desconto_redireciona=$7 WHERE id = 1`,
+      [novo.base_dias, novo.meses_media, novo.dia_corte, novo.palavras_operador, novo.desconto_auxiliar, novo.desconto_operador, novo.desconto_redireciona]);
     await auditar(pool, req.usuario, 'editar', 'grat_config', 1, diff(antes, novo, Object.keys(novo)));
     res.json(await lerConfig(pool));
   }));
@@ -74,14 +72,14 @@ function criarGratificacao({ pool }) {
   // Critérios por tipo de rescisão
   const lerCriterio = (b) => ({
     tipo_rescisao: texto(b.tipo_rescisao, 80, { obrigatorio: true, rotulo: 'Tipo de rescisão' }).toUpperCase(),
-    pagar_bpp: bool(b.pagar_bpp), pagar_prod: bool(b.pagar_prod),
+    pagar_bpp: bool(b.pagar_bpp), pagar_gold: bool(b.pagar_gold), pagar_prod: bool(b.pagar_prod),
     ativo: b.ativo === undefined ? true : bool(b.ativo),
   });
   router.post('/gratificacao/criterios', wrap(async (req, res) => {
     const c = lerCriterio(req.body);
     const { rows } = await pool.query(
-      'INSERT INTO grat_criterios (tipo_rescisao, pagar_bpp, pagar_prod, ativo) VALUES ($1,$2,$3,$4) RETURNING *',
-      [c.tipo_rescisao, c.pagar_bpp, c.pagar_prod, c.ativo]);
+      'INSERT INTO grat_criterios (tipo_rescisao, pagar_bpp, pagar_gold, pagar_prod, ativo) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+      [c.tipo_rescisao, c.pagar_bpp, c.pagar_gold, c.pagar_prod, c.ativo]);
     await auditar(pool, req.usuario, 'criar', 'grat_criterio', rows[0].id, c);
     res.status(201).json(rows[0]);
   }));
@@ -91,8 +89,8 @@ function criarGratificacao({ pool }) {
     const antes = (await pool.query('SELECT * FROM grat_criterios WHERE id=$1', [id])).rows[0];
     if (!antes) throw erro404('Critério não encontrado.');
     const { rows } = await pool.query(
-      'UPDATE grat_criterios SET tipo_rescisao=$1, pagar_bpp=$2, pagar_prod=$3, ativo=$4 WHERE id=$5 RETURNING *',
-      [c.tipo_rescisao, c.pagar_bpp, c.pagar_prod, c.ativo, id]);
+      'UPDATE grat_criterios SET tipo_rescisao=$1, pagar_bpp=$2, pagar_gold=$3, pagar_prod=$4, ativo=$5 WHERE id=$6 RETURNING *',
+      [c.tipo_rescisao, c.pagar_bpp, c.pagar_gold, c.pagar_prod, c.ativo, id]);
     await auditar(pool, req.usuario, 'editar', 'grat_criterio', id, diff(antes, rows[0], Object.keys(c)));
     res.json(rows[0]);
   }));
@@ -477,7 +475,7 @@ function criarGratificacao({ pool }) {
     return rows.map((r) => {
       const mat = normMatricula(r.funcionario_matricula);
       const calculo = calcular({
-        config, criterio: criterios.get(r.criterio_id) || { tipo_rescisao: '', pagar_bpp: true, pagar_prod: true }, rescisao: { dt_rescisao: r.dt_rescisao, dias_trabalhados: r.dias_trabalhados, escala: r.escala, grupo: r.grupo },
+        config, criterio: criterios.get(r.criterio_id) || { tipo_rescisao: '', pagar_bpp: true, pagar_gold: true, pagar_prod: true }, rescisao: { dt_rescisao: r.dt_rescisao, dias_trabalhados: r.dias_trabalhados, escala: r.escala, grupo: r.grupo },
         funcao: r.funcionario_funcao, admissao: dataLocal(r.funcionario_admissao), valores: vm.get(mat) || [], ocorrencias: om.get(mat) || [], penalidades: penalidades.map((p) => ({ ...p, percentual: Number(p.percentual) })), funcoes,
       });
       return { ...r, dt_rescisao: dataLocal(r.dt_rescisao), paga_em: dataLocal(r.paga_em), funcionario_admissao: dataLocal(r.funcionario_admissao), calculo };
@@ -612,7 +610,7 @@ function criarGratificacao({ pool }) {
     res.json({
       itens,
       totais: {
-        qtd: itens.length, bpp: soma((c) => (c.bpp_no_cartao ? 0 : c.bpp.receber)), prod: soma((c) => c.prod.receber), bruto: soma((c) => c.bruto),
+        qtd: itens.length, bpp: soma((c) => c.bpp.receber), gold: soma((c) => c.gold.receber), prod: soma((c) => c.prod.receber), bruto: soma((c) => c.bruto),
         desconto: soma((c) => c.desconto), folha: soma((c) => c.folha), cartao_gold: soma((c) => c.cartao_gold), total: soma((c) => c.total),
         qtd_cartao: itens.filter((r) => r.calculo.cartao_gold > 0).length,
       },
@@ -621,16 +619,15 @@ function criarGratificacao({ pool }) {
   router.get('/gratificacao/relatorio.csv', wrap(async (req, res) => {
     const itens = await dadosRelatorio(req);
     const pct = (n) => `${(n * 100).toFixed(2).replace('.', ',')}%`;
-    const oculto = (c, v) => (c.bpp_no_cartao ? '' : moedaCsv(v));
     enviarCsv(res, 'gratificacao_rescisoria.csv', [
-      ['Departamento', 'Matrícula', 'Nome', 'Função', 'Grupo', 'Média BPP (R$)', 'Receber BPP (R$)', 'Média Prod. (R$)', 'Receber Prod. (R$)',
-        'Escala', 'Turno', 'Dias trabalhados', 'Dias descontados', 'Dias a pagar', 'Desconto (%)', 'Desconto (R$)', 'Desconto sobre', 'Tipo de rescisão', 'Admissão', 'Rescisão',
-        'Total a receber (R$)', 'Situação', 'Por que zerou'],
+      ['Departamento', 'Matrícula', 'Nome', 'Função', 'Grupo', 'Média BPP (R$)', 'Receber BPP (R$)', 'Cartão Gold - valor da função (R$)', 'Receber Cartão Gold (R$)',
+        'Média Prod. (R$)', 'Receber Prod. (R$)', 'Escala', 'Turno', 'Dias trabalhados', 'Dias descontados', 'Dias a pagar', 'Desconto (%)', 'Desconto (R$)', 'Desconto sobre',
+        'Tipo de rescisão', 'Admissão', 'Rescisão', 'Em folha - BPP + Prod. (R$)', 'Total a receber (R$)', 'Situação', 'Por que zerou'],
       ...itens.map((r) => { const c = r.calculo; return [
         r.funcionario_setor, r.funcionario_matricula, r.funcionario_nome, r.funcionario_funcao, c.grupo === 'operador' ? 'Motoristas e operadores' : 'Demais funções',
-        oculto(c, c.bpp.media), oculto(c, c.bpp.receber), moedaCsv(c.prod.media), moedaCsv(c.prod.receber),
+        moedaCsv(c.bpp.media), moedaCsv(c.bpp.receber), moedaCsv(c.gold.media), moedaCsv(c.gold.receber), moedaCsv(c.prod.media), moedaCsv(c.prod.receber),
         c.escala || 'informado', r.turno || '', c.dias_trabalhados, c.dias_descontados, c.dias_pagar, pct(c.desconto_pct), moedaCsv(c.desconto), c.desconto_em.map((k) => (k === 'bpp' ? 'BPP' : 'Produtividade')).join(' e '),
-        r.tipo_rescisao, r.funcionario_admissao || '', r.dt_rescisao, moedaCsv(c.folha), r.situacao, c.motivos_zero.join('; ')]; }),
+        r.tipo_rescisao, r.funcionario_admissao || '', r.dt_rescisao, moedaCsv(c.folha), moedaCsv(c.total), r.situacao, c.motivos_zero.join('; ')]; }),
     ]);
   }));
 
@@ -648,7 +645,7 @@ function criarGratificacao({ pool }) {
   router.get('/gratificacao/cartao-gold.csv', wrap(async (req, res) => {
     const { itens, parte } = await dadosCartao(req);
     enviarCsv(res, `cartao_gold${parte ? `_parte_${parte}` : ''}.csv`, [
-      ['Matrícula', 'Nome Colaborador', '(R$) Receber BPP', 'Data Rescisão', 'Centro de Custo', 'Descrição', 'PARTE'],
+      ['Matrícula', 'Nome Colaborador', '(R$) Receber Cartão Gold', 'Data Rescisão', 'Centro de Custo', 'Descrição', 'PARTE'],
       ...itens.map((i) => [i.matricula, i.nome, moedaCsv(i.valor), i.dt_rescisao.split('-').reverse().join('/'), i.centro_custo, i.descricao, parte ?? '']),
     ]);
   }));
@@ -657,7 +654,7 @@ function criarGratificacao({ pool }) {
   // Funções do cadastro de funcionários + as cadastradas à mão, com o grupo, onde as ocorrências descontam e onde o BPP é
   // pago. O que não foi escolhido segue o padrão do grupo.
   async function lerFuncoes(db) {
-    return new Map((await db.query('SELECT funcao, grupo, desconto, bpp_destino, cadastrada FROM grat_funcoes')).rows.map((r) => [r.funcao, r]));
+    return new Map((await db.query('SELECT funcao, grupo, desconto, cadastrada, codigo, valor_bpp, valor_gold, valor_prod FROM grat_funcoes')).rows.map((r) => [r.funcao, r]));
   }
   router.get('/gratificacao/funcoes', wrap(async (_req, res) => {
     const [cfg, manuais, cad] = await Promise.all([
@@ -676,36 +673,48 @@ function criarGratificacao({ pool }) {
       const t = manuais.get(x.chave) || {};
       return {
         ...x, ...regraDaFuncao(x.funcao, cfg, manuais), no_cadastro: x.qtd > 0, cadastrada: !!t.cadastrada,
-        escolha: { grupo: t.grupo || null, desconto: t.desconto || null, bpp_destino: t.bpp_destino || null },
+        codigo: t.codigo || '', escolha: { grupo: t.grupo || null, desconto: t.desconto || null },
       };
     }).sort((a, b) => (a.grupo === b.grupo ? a.funcao.localeCompare(b.funcao, 'pt-BR') : a.grupo === 'operador' ? -1 : 1));
     res.json({ itens, palavras_operador: cfg.palavras_operador });
   }));
-  // Salva as escolhas de uma função. Só os campos enviados mudam; vazio/null = padrão do grupo (ou automático, no grupo).
-  // cadastrar: true inclui a função na tabela mesmo sem funcionário com ela; remover: true apaga as escolhas.
+  // Salva uma função (menu Gratificação Funções). Só os campos enviados mudam; vazio/null = padrão do grupo, automático
+  // (grupo) ou sem valor. cadastrar: true inclui a função mesmo sem funcionário com ela; remover: true apaga tudo dela.
+  const CAMPOS_FUNCAO = ['grupo', 'desconto', 'valor_bpp', 'valor_gold', 'valor_prod', 'codigo'];
   router.put('/gratificacao/funcoes', wrap(async (req, res) => {
     const b = req.body;
     const funcao = normFuncao(texto(b.funcao, 120, { obrigatorio: true, rotulo: 'Função' }));
     const vazio = (v) => v === null || v === '' || v === undefined;
-    const antes = (await pool.query('SELECT grupo, desconto, bpp_destino, cadastrada FROM grat_funcoes WHERE funcao = $1', [funcao])).rows[0]
-      || { grupo: null, desconto: null, bpp_destino: null, cadastrada: false };
+    const antes = (await pool.query(`SELECT ${CAMPOS_FUNCAO.join(', ')}, cadastrada FROM grat_funcoes WHERE funcao = $1`, [funcao])).rows[0]
+      || { grupo: null, desconto: null, valor_bpp: null, valor_gold: null, valor_prod: null, codigo: '', cadastrada: false };
     const novo = { ...antes };
+    const valor = (v, rotulo) => {
+      if (vazio(v)) return null;
+      const n = Number(String(v).replace(',', '.'));
+      if (!Number.isFinite(n) || n < 0 || n > 1e7) throw erro400(`${rotulo}: informe um valor maior ou igual a zero.`);
+      return round2(n);
+    };
     if ('grupo' in b) novo.grupo = vazio(b.grupo) ? null : opcaoDe(b.grupo, ['auxiliar', 'operador'], 'Grupo');
     if ('desconto' in b) novo.desconto = vazio(b.desconto) ? null : opcaoDe(b.desconto, ['bpp', 'prod'], 'Desconto das ocorrências');
-    if ('bpp_destino' in b) novo.bpp_destino = vazio(b.bpp_destino) ? null : opcaoDe(b.bpp_destino, ['relatorio', 'cartao'], 'BPP pago no');
+    if ('valor_bpp' in b) novo.valor_bpp = valor(b.valor_bpp, 'Valor do BPP');
+    if ('valor_gold' in b) novo.valor_gold = valor(b.valor_gold, 'Valor do Cartão Gold');
+    if ('valor_prod' in b) novo.valor_prod = valor(b.valor_prod, 'Valor da Produtividade');
+    if ('codigo' in b) novo.codigo = texto(b.codigo, 30);
     if (b.cadastrar) novo.cadastrada = true;
-    if (b.remover) Object.assign(novo, { grupo: null, desconto: null, bpp_destino: null, cadastrada: false });
-    if (!novo.grupo && !novo.desconto && !novo.bpp_destino && !novo.cadastrada) {
+    if (b.remover) Object.assign(novo, { grupo: null, desconto: null, valor_bpp: null, valor_gold: null, valor_prod: null, codigo: '', cadastrada: false });
+    const algo = novo.grupo || novo.desconto || novo.codigo || novo.cadastrada || [novo.valor_bpp, novo.valor_gold, novo.valor_prod].some((v) => v !== null && v !== undefined);
+    if (!algo) {
       await pool.query('DELETE FROM grat_funcoes WHERE funcao = $1', [funcao]);
     } else {
       await pool.query(
-        `INSERT INTO grat_funcoes (funcao, grupo, desconto, bpp_destino, cadastrada) VALUES ($1,$2,$3,$4,$5)
-         ON CONFLICT (funcao) DO UPDATE SET grupo = EXCLUDED.grupo, desconto = EXCLUDED.desconto, bpp_destino = EXCLUDED.bpp_destino,
-           cadastrada = EXCLUDED.cadastrada, atualizado_em = now()`,
-        [funcao, novo.grupo, novo.desconto, novo.bpp_destino, novo.cadastrada]);
+        `INSERT INTO grat_funcoes (funcao, grupo, desconto, valor_bpp, valor_gold, valor_prod, codigo, cadastrada) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (funcao) DO UPDATE SET grupo = EXCLUDED.grupo, desconto = EXCLUDED.desconto, valor_bpp = EXCLUDED.valor_bpp, valor_gold = EXCLUDED.valor_gold,
+           valor_prod = EXCLUDED.valor_prod, codigo = EXCLUDED.codigo, cadastrada = EXCLUDED.cadastrada, atualizado_em = now()`,
+        [funcao, novo.grupo, novo.desconto, novo.valor_bpp, novo.valor_gold, novo.valor_prod, novo.codigo || '', novo.cadastrada]);
     }
-    await auditar(pool, req.usuario, 'editar', 'grat_funcao', null, {
-      funcao, grupo: novo.grupo || 'automático', desconto: novo.desconto || 'padrão do grupo', bpp_pago_no: novo.bpp_destino || 'padrão do grupo',
+    await auditar(pool, req.usuario, b.remover ? 'excluir' : 'editar', 'grat_funcao', null, {
+      funcao, grupo: novo.grupo || 'automático', desconto: novo.desconto || 'padrão do grupo',
+      bpp: novo.valor_bpp ?? '—', cartao_gold: novo.valor_gold ?? '—', produtividade: novo.valor_prod ?? '—',
     });
     res.json({ funcao, ...novo });
   }));
