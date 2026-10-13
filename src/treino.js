@@ -128,7 +128,7 @@ function lerRegistros({ abas, lerAba }) {
     cursoSim: col('Possui Curso SIM'), cursoNao: col('Possui Curso NÃO'), cursos: col('Quais os cursos:'), ate: col('Periodo de vigência até:'),
     remetente: col('Remetente / Departamento'), gestorMat: col('Matrícula Gestor'), gestorNome: col('Nome Gestor Responsável'), gestorFuncao: col('Função do Gestor'),
     contato: col('Contato'), situacao2: col('Situação2'), cracha: col('Data de Confecção do Crachá'), doc: col('Nº DOC'), situacaoFuncao: col('Situação-Função'),
-    escala: col('ESCALA'), cidade: col('CIDADE'),
+    escala: col('ESCALA'), cidade: col('CIDADE'), seq: col('Seq.'), ano: col('ano'),
   };
   const v = (l, i) => (i >= 0 ? limpa(l[i]) : '');
   const registros = [];
@@ -142,7 +142,8 @@ function lerRegistros({ abas, lerAba }) {
     if (!de) { erros.push({ linha, matricula, motivo: 'Sem início da vigência.' }); return; }
     const sit = semAcento(v(l, k.situacao2));
     const sitF = semAcento(v(l, k.situacaoFuncao));
-    const doc = v(l, k.doc).match(/^(\d+)\/(\d{4})$/);
+    // Nº DOC = Seq./ano (a fórmula da planilha só mostra o número quando há data do crachá; a Seq. e o ano existem sempre)
+    const doc = v(l, k.doc).match(/^(\d+)\/(\d{4})$/) || `${v(l, k.seq)}/${v(l, k.ano)}`.match(/^(\d+)\/(\d{4})$/);
     registros.push({
       linha, matricula, nome: v(l, k.nome).toUpperCase(), funcao: v(l, k.funcao).toUpperCase(), setor: v(l, k.setor).toUpperCase(), data_admissao: lerData(v(l, k.admissao)),
       situacao_colab: SITUACOES_COLAB.includes(semAcento(v(l, k.situacaoColab))) ? semAcento(v(l, k.situacaoColab)) : '',

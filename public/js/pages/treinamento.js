@@ -76,9 +76,10 @@ const TOPICOS = [
   {
     titulo: 'Treinamento prático e C.I. do crachá (RE. 0940.02D)', perfis: ['administrador', 'financeiro'], corpo: () => [
       lista('Primeiro, em **Treinamento → Parâmetros**, importe a planilha RE.1005.04 (.xlsx): a aba APFO vira a base (CNH, contato, cidade), a ESCALA e os gestores também. Marque a opção para trazer os treinamentos já lançados (aba Digitar).',
-        'Em **Novo treinamento (C.I.)**, digite a matrícula: nome, função, setor, admissão, situação, CNH, contato e cidade são puxados. Preencha a **nova função** e o **setor da nova função**, o início da vigência (o fim vem com +3 meses) e escolha o **gestor responsável** (nome e função vêm da matrícula).',
+        'Em **Planilha (Digitar)**, preencha como na planilha: digite a matrícula na última linha e as colunas cinza são puxadas; preencha a função de treinamento, o setor da nova função, a vigência e o gestor. Ao sair da linha ela é salva e recebe o **Nº DOC**, o mesmo número da C.I. Marque as linhas e clique em **Imprimir no formulário**.',
+        'Se preferir um formulário com a prévia ao lado, use **Novo treinamento (C.I.)**: digite a matrícula: nome, função, setor, admissão, situação, CNH, contato e cidade são puxados. Preencha a **nova função** e o **setor da nova função**, o início da vigência (o fim vem com +3 meses) e escolha o **gestor responsável** (nome e função vêm da matrícula).',
         'Acompanhe em **Treinamentos práticos**: filtre por Situação (treinando, treinado, não classificado), Situação da função (classificado, não classificado, renovado) e Situação 2 (treinando ou treinado). Os que vencem no mês e os vencidos ainda "treinando" aparecem nos indicadores.',
-        'Para imprimir, abra o treinamento ou use **Imprimir C.I.** (todas do filtro). Ao informar a data de confecção do crachá, a C.I. ganha o Nº DOC do ano.'),
+        'Para imprimir, marque as linhas na Planilha, abra o treinamento ou use **Imprimir C.I.** (todas do filtro). O Nº DOC (n/ano) é dado ao lançar e é o mesmo impresso em C.I. DEST.'),
       dica('As **assinaturas** da C.I. ficam em Parâmetros: a primeira é sempre a do gestor escolhido no treinamento; as demais (coordenador de treinamento, gerentes, RH) são cadastradas lá, com ordem e opção de tirar da C.I. *Exportar (mala direta)* gera o CSV com as colunas da aba Digitar.'),
     ],
   },

@@ -92,6 +92,7 @@ const MENU = [
   {
     rota: 'treino', titulo: 'Treinamento', icone: 'ajuda',
     filhos: [
+      { href: '#/treino/planilha', titulo: 'Planilha (Digitar)', prefixo: true, perfis: ['administrador', 'financeiro'] },
       { href: '#/treino/registros', titulo: 'Treinamentos práticos', prefixo: true, perfis: ['administrador', 'financeiro'] },
       { href: '#/treino/novo', titulo: 'Novo treinamento (C.I.)', prefixo: true, perfis: ['administrador', 'financeiro'] },
       { href: '#/treino/parametros', titulo: 'Parâmetros', prefixo: true, perfis: ['administrador', 'financeiro'] },
@@ -125,7 +126,8 @@ function marcarMenu(rota) {
   if (atual === '#/cadastros') atual = '#/cadastros/funcionarios'; // tela padrão dos cadastros
   if (atual === '#/gratificacao') atual = '#/gratificacao/apuracao';
   if (atual === '#/contratacao' || atual === '#/contratacao/imprimir') atual = '#/contratacao/fichas';
-  if (atual === '#/treino' || atual === '#/treino/imprimir') atual = '#/treino/registros';
+  if (atual === '#/treino') atual = '#/treino/planilha';
+  if (atual === '#/treino/imprimir') atual = '#/treino/registros';
   app.querySelectorAll('.nav a').forEach((a) => {
     // sub-itens com rota própria acendem em qualquer tela da rota (lista e detalhe); os demais, só no endereço exato
     const pref = a.dataset.prefixo;

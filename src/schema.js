@@ -3,6 +3,14 @@
 
 const PERFIS = ['administrador', 'solicitante', 'aprovador', 'financeiro'];
 
+// Numera, na ordem de lançamento, os treinamentos ainda sem Nº DOC (ano da data do crachá ou, sem ela, do início da vigência)
+const SQL_NUMERAR_TREINO = `
+WITH x AS (
+  SELECT id, extract(year FROM COALESCE(data_cracha, vigencia_de))::int AS ano FROM trein_registros WHERE doc_numero IS NULL
+), y AS (SELECT id, ano, row_number() OVER (PARTITION BY ano ORDER BY id) AS rn FROM x)
+UPDATE trein_registros r SET doc_ano = y.ano, doc_numero = COALESCE((SELECT max(t.doc_numero) FROM trein_registros t WHERE t.doc_ano = y.ano), 0) + y.rn
+FROM y WHERE r.id = y.id`;
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS funcionarios (
   id           SERIAL PRIMARY KEY,
@@ -547,6 +555,8 @@ CREATE TABLE IF NOT EXISTS trein_registros (
 CREATE INDEX IF NOT EXISTS trein_registros_mat_idx ON trein_registros (matricula, vigencia_de);
 CREATE INDEX IF NOT EXISTS trein_registros_ate_idx ON trein_registros (vigencia_ate);
 CREATE UNIQUE INDEX IF NOT EXISTS trein_registros_doc_idx ON trein_registros (doc_ano, doc_numero) WHERE doc_numero IS NOT NULL;
+-- Nº DOC (Seq./ano) para todo treinamento, como na planilha: numera os que ficaram sem número
+${SQL_NUMERAR_TREINO};
 
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,
@@ -662,4 +672,4 @@ INSERT INTO grat_penalidades (grupo, abrev, descricao, percentual, desconta_dia,
 ON CONFLICT (grupo, abrev) DO NOTHING;
 `;
 
-module.exports = { SCHEMA, SEEDS, PERFIS };
+module.exports = { SCHEMA, SEEDS, PERFIS, SQL_NUMERAR_TREINO };

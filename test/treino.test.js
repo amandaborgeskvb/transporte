@@ -9,7 +9,7 @@ const { lerXlsx } = require('../src/planilha');
 const DIGITAR = ['Matrícula', 'Nome do Colaborador', 'Função', 'Setor-Função-Atual', 'Data de Admissão', 'Situação', '*Possui CNH SIM', '*Possui CNH NÃO', 'Observação',
   'Cat-CNH', 'Venc-CNH', 'Possui Curso SIM', 'Possui Curso NÃO', 'Quais os cursos:', 'Função de Treinamento', 'Setor-Função-Nova', 'Periodo de vigência de:',
   'Periodo de vigência até:', 'Status', 'Mês Vencimento', 'Função para Treinamento', 'Remetente / Departamento', 'Matrícula Gestor', 'Nome Gestor Responsável',
-  'Função do Gestor', 'Contato', 'Situação2', 'Data de Confecção do Crachá', 'Nº DOC', 'Função Atual', 'Situação-Função', 'ESCALA', 'Mat - Nome', 'CIDADE'];
+  'Função do Gestor', 'Contato', 'Situação2', 'Data de Confecção do Crachá', 'Nº DOC', 'Função Atual', 'Situação-Função', 'ESCALA', 'Seq.', 'ano', 'Mat - Nome', 'CIDADE'];
 const linhaDigitar = (o) => DIGITAR.map((c) => o[c] ?? '');
 const planilha = () => criarXlsx([
   { nome: 'APFO_TESTE', linhas: [
@@ -25,7 +25,8 @@ const planilha = () => criarXlsx([
       'Setor-Função-Nova': 'TRATOR TRANSBORDO', 'Periodo de vigência de:': 45813, 'Periodo de vigência até:': 45905, 'Matrícula Gestor': 9001, 'Nome Gestor Responsável': 'Gestor Teste',
       'Função do Gestor': 'Coordenador Agrícola', 'Situação2': 'TREINADO', 'Data de Confecção do Crachá': 45813, 'Nº DOC': '5/2025', 'Situação-Função': 'CLASSIFICADO' }),
     linhaDigitar({ 'Matrícula': 7001, 'Função de Treinamento': 'OPERADOR MAQ. AGR. II', 'Setor-Função-Nova': 'TRATOR TRANSBORDO', 'Periodo de vigência de:': 45813 }), // repetida
-    linhaDigitar({ 'Matrícula': 1, 'Função de Treinamento': 'MOTORISTA CARRETA', 'Setor-Função-Nova': 'TRANSPORTE', 'Periodo de vigência de:': '01/09/2025', 'Nº DOC': '5/2025' }),
+    linhaDigitar({ 'Matrícula': 1, 'Função de Treinamento': 'MOTORISTA CARRETA', 'Setor-Função-Nova': 'TRANSPORTE', 'Periodo de vigência de:': '01/09/2025', 'Seq.': 7, 'ano': 2025 }), // sem data do crachá: Seq./ano
+    linhaDigitar({ 'Matrícula': 9001, 'Função de Treinamento': 'LIDER', 'Setor-Função-Nova': 'IRRIGAÇÃO', 'Periodo de vigência de:': '01/10/2025', 'Nº DOC': '5/2025' }), // número repetido
     linhaDigitar({ 'Matrícula': 7001, 'Função de Treinamento': 'OPERADOR', 'Setor-Função-Nova': 'IRRIGAÇÃO LOCALIZADA' }), // sem início da vigência
   ] },
 ]);
@@ -48,7 +49,7 @@ test('regras: vigência +3 meses, status, mês de vencimento, situação 2 e lei
   assert.deepEqual([base[1].possui_cnh, base[1].cnh_categoria, base[1].situacao, base[1].data_admissao], [false, '', 'AFASTADO', '2025-02-10']);
   assert.equal(lerEscala(x).get('7001'), '5X1 - TURMA A');
   const { registros, erros } = lerRegistros(x);
-  assert.equal(registros.length, 3);
+  assert.equal(registros.length, 4);
   assert.deepEqual(erros.map((e) => e.motivo), ['Sem início da vigência.']);
   assert.deepEqual([registros[0].vigencia_de, registros[0].vigencia_ate, registros[0].possui_cnh, registros[0].situacao, registros[0].situacao_funcao, registros[0].doc_numero, registros[0].doc_ano],
     ['2025-06-05', '2025-09-05', false, 'TREINADO', 'CLASSIFICADO', 5, 2025]);
@@ -90,22 +91,27 @@ test('importação da planilha: prévia, aplicação sem repetir e números de C
   assert.equal(previa.status, 200);
   assert.deepEqual(previa.corpo.base, { lidos: 3, criar: 3, atualizar: 0, com_escala: 1 });
   assert.deepEqual(previa.corpo.gestores, { lidos: 1, criar: 1 });
-  assert.deepEqual([previa.corpo.registros.lidos, previa.corpo.registros.criar, previa.corpo.registros.erros], [3, 2, 1]);
+  assert.deepEqual([previa.corpo.registros.lidos, previa.corpo.registros.criar, previa.corpo.registros.erros], [4, 3, 1]);
   assert.equal((await davi.get('/api/treino/parametros')).corpo.base.n, 0); // a prévia não grava
 
   const ok = await importar(davi, 'registros=1&aplicar=1');
   assert.equal(ok.status, 201);
+  // carga anterior com outro número: reimportar volta ao Nº DOC da planilha
+  await t.pool.query("UPDATE trein_registros SET doc_numero = doc_numero + 50 WHERE matricula = '1'");
   const de2 = await importar(davi, 'registros=1&aplicar=1');
   assert.equal(de2.corpo.registros.criar, 0);
+  assert.equal(de2.corpo.registros.renumerar, 1);
   assert.equal(de2.corpo.base.atualizar, 3);
 
   const { itens } = (await davi.get('/api/treino/registros')).corpo;
-  assert.equal(itens.length, 2);
+  assert.equal(itens.length, 3);
   const sem = itens.find((r) => r.matricula === '7001');
   assert.deepEqual([sem.numero_doc, sem.status, sem.mes_vencimento, sem.situacao2, sem.funcao_para_treinamento, sem.situacao_atual],
     ['5/2025', '2025-09-06', 'SET', 'TREINADO', 'OPERADOR MAQ. AGR. II(TRATOR TRANSBORDO)', 'AFASTADO']);
   const ana1 = itens.find((r) => r.matricula === '1');
-  assert.equal(ana1.numero_doc, ''); // número 5/2025 já usado na mesma planilha
+  assert.equal(ana1.numero_doc, '7/2025'); // sem Nº DOC na planilha: Seq./ano
+  // número repetido (5/2025): recebe o próximo do ano; a ordem da planilha é a do Nº DOC
+  assert.deepEqual((await davi.get('/api/treino/registros?ordem=doc&doc_ano=2025')).corpo.itens.map((r) => [r.matricula, r.numero_doc]), [['7001', '5/2025'], ['1', '7/2025'], ['9001', '8/2025']]);
   assert.equal(ana1.vigencia_ate, '2025-12-01'); // sem fim na planilha: início + 3 meses
   const p = (await davi.get('/api/treino/parametros')).corpo;
   assert.deepEqual(p.gestores.map((g) => [g.matricula, g.nome, g.cargo]), [['9001', 'Gestor Teste', 'COORDENADOR AGRÍCOLA']]);
@@ -132,11 +138,11 @@ test('lançamento: a matrícula puxa os dados, vigência automática, gestor, N�
     ['PESSOA SEM CNH', 'TRABALHADOR RURAL', 'OPERADOR - TRATOR TRANSBORDO', '2025-02-10', false, 'CASO NÃO TIRE A CNH NO PERÍODO PROBATÓRIO, NÃO SERÁ CLASSIFICADO', '(34) 90000-0002', 'CAPINÓPOLIS', '5X1 - TURMA A']);
   assert.deepEqual([d.vigencia_ate, d.status, d.mes_vencimento, d.funcao_para_treinamento, d.situacao, d.situacao_funcao],
     ['2027-01-13', '2027-01-14', 'JAN', 'OPERADOR(IRRIGAÇÃO LOCALIZADA)', 'TREINANDO', 'NÃO CLASSIFICADO']);
-  assert.deepEqual([d.gestor_nome, d.gestor_funcao, d.remetente, d.numero_doc], ['Gestor Teste', 'COORDENADOR AGRÍCOLA', 'AGRÍCOLA/DEPTO. CTT', '']);
+  assert.deepEqual([d.gestor_nome, d.gestor_funcao, d.remetente, d.numero_doc], ['Gestor Teste', 'COORDENADOR AGRÍCOLA', 'AGRÍCOLA/DEPTO. CTT', '1/2026']); // Nº DOC já ao lançar
   assert.equal(d.ci.signatarios.length, 4);
   assert.equal(d.ci.documento.codigo, 'RE. 0940.02D');
 
-  // data do crachá → Nº DOC sequencial do ano
+  // o Nº DOC não muda ao editar; o próximo lançamento do ano recebe o número seguinte
   const corpo = { ...d, data_cracha: '2026-10-13', situacao: 'TREINADO', possui_curso: 'sim', cursos: 'nr-31' };
   assert.equal((await davi.put(`/api/treino/registros/${d.id}`, corpo)).status, 200);
   const d2 = (await davi.get(`/api/treino/registros/${d.id}`)).corpo;
@@ -149,10 +155,10 @@ test('lançamento: a matrícula puxa os dados, vigência automática, gestor, N�
   assert.deepEqual(await lista('situacao=TREINADO&ano=2026'), [d.id]);
   assert.deepEqual(await lista('situacao_funcao=NÃO CLASSIFICADO'), [d.id]);
   assert.deepEqual(await lista('mes=JAN&ano=2026'), [d.id, outro.corpo.id]);
-  assert.equal((await lista('situacao2=TREINADO')).length, 2);
+  assert.equal((await lista('situacao2=TREINADO')).length, 3);
   assert.deepEqual(await lista('gestor=9001&ano=2026'), [d.id]);
   assert.equal((await lista('colab=AFASTADO')).length, 2);
-  assert.deepEqual(await lista('q=irrigação'), [d.id]);
+  assert.deepEqual(await lista('q=localizada'), [d.id]);
 
   // mala direta (CSV com as colunas da aba Digitar)
   const csv = await davi.req('GET', '/api/treino/registros.csv?ano=2026');

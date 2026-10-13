@@ -1,5 +1,5 @@
 // Treinamento prático operacional (planilha RE.1005.04) e C.I. do crachá de treinamento (RE. 0940.02D).
-// Rotas: #/treino/registros | novo | registros/:id | registros/:id/editar | imprimir | parametros
+// Rotas: #/treino/planilha | registros | novo | registros/:id | registros/:id/editar | imprimir | parametros
 import { get, post, put, del, enviarArquivo } from '../api.js';
 import {
   h, dataBR, hojeISO, tabela, botao, cabecalhoPagina, barraComandos, barraFiltros, secao, kpi, vazio, toast, confirmar, dialogo, icone, badgeTom,
@@ -115,6 +115,235 @@ async function lista({ query, ir }) {
 }
 
 // ======================================================================
+// Planilha (como a aba Digitar): digita-se linha a linha; as colunas cinza são puxadas/calculadas. Cada linha salva
+// sozinha ao sair dela e recebe o Nº DOC (Seq./ano), o mesmo impresso em "C.I. DEST". Marque as linhas e imprima no formulário.
+// ======================================================================
+async function planilha({ query, ir }) {
+  const filtro = { ...query, ordem: 'doc' };
+  const [{ itens }, p] = await Promise.all([get(`/treino/registros?${new URLSearchParams(filtro)}`), get('/treino/parametros')]);
+  const cfg = p.config;
+  const anoAtual = new Date().getFullYear();
+  const selecionados = new Set();
+  const corpo = h('tbody');
+  const btnImprimir = botao('Imprimir no formulário (0)', () => ir('#/treino/imprimir', { ids: [...selecionados].join(',') }), { icone: 'impressora' });
+  btnImprimir.disabled = true;
+  const marcarTodos = h('input', { type: 'checkbox', 'aria-label': 'Marcar todas as linhas' });
+  const atualizarSelecao = () => {
+    btnImprimir.disabled = !selecionados.size;
+    btnImprimir.lastChild.textContent = `Imprimir no formulário (${selecionados.size})`;
+    const caixas = corpo.querySelectorAll('input.pl-sel');
+    marcarTodos.checked = !!caixas.length && [...caixas].every((c) => c.checked);
+  };
+  marcarTodos.addEventListener('change', () => {
+    corpo.querySelectorAll('input.pl-sel').forEach((c) => { c.checked = marcarTodos.checked; c.dispatchEvent(new Event('change')); });
+  });
+  const gestorDe = (mat) => p.gestores.find((g) => g.matricula === mat);
+  const br = (d) => (d ? dataBR(d) : '');
+
+  // Colunas na ordem da aba Digitar. auto: puxada/calculada (cinza); ed: digitada
+  const COLS = [
+    { t: 'Nº DOC', k: 'numero_doc', auto: true, cls: 'pl-doc fixa f2' },
+    { t: 'Matrícula', k: 'matricula', ed: 'mat', cls: 'pl-mat fixa f3' },
+    { t: 'Nome do Colaborador', k: 'nome', auto: true, cls: 'pl-nome fixa f4' },
+    { t: 'Função', k: 'funcao', auto: true },
+    { t: 'Setor-Função-Atual', k: 'setor', auto: true },
+    { t: 'Data de Admissão', k: 'data_admissao', auto: true, fmt: br },
+    { t: 'Situação', k: 'situacao_atual', auto: true },
+    { t: '*Possui CNH SIM', k: 'possui_cnh', ed: 'sim' },
+    { t: '*Possui CNH NÃO', k: 'possui_cnh', ed: 'nao' },
+    { t: 'Observação', k: 'observacao', ed: 'txt', size: 34 },
+    { t: 'Cat-CNH', k: 'cnh_categoria', ed: 'txt', size: 4 },
+    { t: 'Venc-CNH', k: 'cnh_validade', ed: 'txt', size: 10 },
+    { t: 'Possui Curso SIM', k: 'possui_curso', ed: 'sim' },
+    { t: 'Possui Curso NÃO', k: 'possui_curso', ed: 'nao' },
+    { t: 'Quais os cursos:', k: 'cursos', ed: 'txt', size: 18 },
+    { t: 'Função de Treinamento', k: 'funcao_treinamento', ed: 'txt', size: 24, list: 'tr-funcoes' },
+    { t: 'Setor-Função-Nova', k: 'setor_nova', ed: 'txt', size: 24, list: 'tr-setores' },
+    { t: 'Periodo de vigência de:', k: 'vigencia_de', ed: 'data' },
+    { t: 'Periodo de vigência até:', k: 'vigencia_ate', ed: 'data' },
+    { t: 'Status', k: 'status', auto: true, fmt: br },
+    { t: 'Mês Vencimento', k: 'mes_vencimento', auto: true },
+    { t: 'Função para Treinamento', k: 'funcao_para_treinamento', auto: true },
+    { t: 'Remetente / Departamento', k: 'remetente', ed: 'txt', size: 18 },
+    { t: 'Matrícula Gestor', k: 'gestor_matricula', ed: 'gestor', size: 7, list: 'tr-gestores' },
+    { t: 'Nome Gestor Responsável', k: 'gestor_nome', auto: true },
+    { t: 'Função do Gestor', k: 'gestor_funcao', auto: true },
+    { t: 'Contato', k: 'contato', auto: true },
+    { t: 'Situação2', k: 'situacao2', auto: true },
+    { t: 'Situação do treinamento', k: 'situacao', ed: 'sel', opcoes: [...SITUACOES, 'CANCELADO'] },
+    { t: 'Data de Confecção do Crachá', k: 'data_cracha', ed: 'data' },
+    { t: 'Situação-Função', k: 'situacao_funcao', ed: 'sel', opcoes: SITUACOES_FUNCAO, vazio: true },
+    { t: 'ESCALA', k: 'escala', auto: true },
+    { t: 'CIDADE', k: 'cidade', auto: true },
+  ];
+
+  function linha(inicial) {
+    const r = inicial ? { ...inicial } : { remetente: cfg.remetente, situacao: 'TREINANDO' };
+    const tr = h('tr', { class: inicial ? '' : 'pl-nova' });
+    const celulas = {};
+    let salvando = null;
+    const sujo = () => { tr.classList.add('sujo'); tr.classList.remove('erro'); };
+    const derivar = () => {
+      const ate = r.vigencia_ate;
+      r.status = ate ? somarDia(ate) : '';
+      r.mes_vencimento = ate ? MESES[Number(ate.slice(5, 7)) - 1] : '';
+      r.funcao_para_treinamento = r.funcao_treinamento ? `${r.funcao_treinamento}(${r.setor_nova || ''})` : '';
+      r.situacao2 = ate ? (ate <= hojeISO() ? 'TREINADO' : 'TREINANDO') : '';
+    };
+    const pintar = () => {
+      for (const c of COLS) {
+        const td = celulas[`${c.k}|${c.ed || ''}`];
+        if (c.auto) td.textContent = (c.fmt ? c.fmt(r[c.k]) : r[c.k]) || '';
+        else if (c.ed === 'sim' || c.ed === 'nao') td.firstChild.checked = r[c.k] === (c.ed === 'sim');
+        else td.firstChild.value = r[c.k] ?? '';
+      }
+    };
+    async function puxarFuncionario() {
+      if (!r.matricula) return;
+      const f = await get(`/treino/funcionario/${encodeURIComponent(r.matricula)}`).catch(() => null);
+      if (!f) return;
+      if (!f.encontrado) { tr.classList.add('erro'); tr.title = `Matrícula ${r.matricula} não encontrada no cadastro nem na base da planilha.`; toast(tr.title, 'erro'); return; }
+      Object.assign(r, {
+        matricula: f.matricula, nome: f.nome, funcao: f.funcao, setor: f.setor, data_admissao: f.data_admissao, situacao_atual: f.situacao,
+        possui_cnh: f.possui_cnh, cnh_categoria: f.cnh_categoria, cnh_validade: f.cnh_validade, contato: f.contato, cidade: f.cidade, escala: f.escala,
+      });
+      if (f.possui_cnh === false && !r.observacao) r.observacao = cfg.texto_sem_cnh || '';
+      if (!r.vigencia_de) { r.vigencia_de = hojeISO(); r.vigencia_ate = somarMeses(r.vigencia_de, cfg.meses_vigencia || 3); }
+      derivar(); pintar();
+    }
+    async function puxarGestor() {
+      const g = gestorDe(r.gestor_matricula);
+      if (g) { r.gestor_nome = g.nome; r.gestor_funcao = g.cargo; }
+      else if (r.gestor_matricula) {
+        const f = await get(`/treino/funcionario/${encodeURIComponent(r.gestor_matricula)}`).catch(() => null);
+        r.gestor_nome = f?.nome || ''; r.gestor_funcao = f?.funcao || '';
+      } else { r.gestor_nome = ''; r.gestor_funcao = ''; }
+      pintar();
+    }
+    const faltando = () => [['matricula', 'Matrícula'], ['funcao_treinamento', 'Função de Treinamento'], ['setor_nova', 'Setor-Função-Nova'], ['vigencia_de', 'Vigência de']]
+      .filter(([k]) => !r[k]).map(([, t]) => t);
+    async function salvar() {
+      if (!tr.classList.contains('sujo')) return;
+      if (salvando) return salvando;
+      const falta = faltando();
+      if (falta.length) { tr.title = `Falta: ${falta.join(', ')}`; if (r.id) { tr.classList.add('erro'); toast(tr.title, 'erro'); } return; }
+      const corpoReq = {
+        matricula: r.matricula, possui_cnh: r.possui_cnh ?? '', cnh_categoria: r.cnh_categoria || '', cnh_validade: r.cnh_validade || '', observacao: r.observacao || '',
+        possui_curso: r.possui_curso ?? '', cursos: r.cursos || '', funcao_treinamento: r.funcao_treinamento, setor_nova: r.setor_nova, vigencia_de: r.vigencia_de,
+        vigencia_ate: r.vigencia_ate || '', remetente: r.remetente || '', gestor_matricula: r.gestor_matricula || '', contato: r.contato || '', cidade: r.cidade || '',
+        escala: r.escala || '', situacao: r.situacao || 'TREINANDO', situacao_funcao: r.situacao_funcao || '', data_cracha: r.data_cracha || '',
+      };
+      salvando = (async () => {
+        try {
+          const id = r.id ? (await put(`/treino/registros/${r.id}`, corpoReq), r.id) : (await post('/treino/registros', corpoReq)).id;
+          const { itens: [novo] } = await get(`/treino/registros?ids=${id}`);
+          const nova = linha(novo);
+          nova.classList.add('salvo');
+          tr.replaceWith(nova);
+          if (!r.id) { corpo.append(linha(null)); toast(`Treinamento salvo: Nº DOC ${novo.numero_doc}.`); }
+          setTimeout(() => nova.classList.remove('salvo'), 1500);
+        } catch (e) { tr.classList.add('erro'); tr.title = e.message; toast(e.message, 'erro'); } finally { salvando = null; }
+      })();
+      return salvando;
+    }
+
+    // Seleção e ações
+    const sel = h('input', { type: 'checkbox', class: 'pl-sel', disabled: !inicial, 'aria-label': 'Marcar para imprimir' });
+    sel.addEventListener('change', () => { if (sel.checked) selecionados.add(r.id); else selecionados.delete(r.id); atualizarSelecao(); });
+    if (inicial && selecionados.has(r.id)) sel.checked = true;
+    tr.append(h('td', { class: 'pl-chk fixa f1' }, sel));
+    for (const c of COLS) {
+      let td;
+      if (c.auto) td = h('td', { class: `auto ${c.cls || ''}` });
+      else {
+        let el;
+        if (c.ed === 'sim' || c.ed === 'nao') {
+          el = h('input', { type: 'checkbox', 'aria-label': c.t });
+          el.addEventListener('change', () => { r[c.k] = el.checked ? c.ed === 'sim' : null; if (c.k === 'possui_cnh' && r.possui_cnh === false && !r.observacao) r.observacao = cfg.texto_sem_cnh || ''; sujo(); pintar(); });
+        } else if (c.ed === 'sel') {
+          el = h('select', { 'aria-label': c.t }, c.vazio ? h('option', { value: '' }, '') : null, c.opcoes.map((o) => h('option', { value: o }, o)));
+          el.addEventListener('change', () => { r[c.k] = el.value || null; sujo(); });
+        } else if (c.ed === 'data') {
+          el = h('input', { type: 'date', 'aria-label': c.t });
+          el.addEventListener('change', () => {
+            r[c.k] = el.value;
+            if (c.k === 'vigencia_de' && el.value) r.vigencia_ate = somarMeses(el.value, cfg.meses_vigencia || 3);
+            derivar(); pintar(); sujo();
+          });
+        } else {
+          el = h('input', { 'aria-label': c.t, size: c.size || 8, list: c.list || null, class: c.ed === 'mat' || c.ed === 'gestor' ? '' : 'maiusc', inputmode: c.ed === 'mat' || c.ed === 'gestor' ? 'numeric' : null, autocomplete: 'off' });
+          el.addEventListener('input', sujo);
+          el.addEventListener('change', () => {
+            const v = el.value.trim();
+            r[c.k] = c.ed === 'mat' || c.ed === 'gestor' ? v.split(' - ')[0].replace(/\D/g, '') : v.toUpperCase();
+            if (c.ed === 'mat') puxarFuncionario();
+            else if (c.ed === 'gestor') puxarGestor();
+            else { derivar(); pintar(); }
+          });
+        }
+        td = h('td', { class: `${c.ed === 'sim' || c.ed === 'nao' ? 'pl-marca' : ''} ${c.cls || ''}` }, el);
+      }
+      celulas[`${c.k}|${c.ed || ''}`] = td;
+      tr.append(td);
+    }
+    tr.append(h('td', { class: 'pl-acoes' }, inicial ? [
+      h('a', { href: `#/treino/registros/${r.id}`, class: 'btn sec mini', title: 'Abrir a C.I. no formulário', 'aria-label': 'Abrir a C.I.' }, icone('impressora')),
+      h('button', { type: 'button', class: 'perigo mini', title: 'Excluir a linha', 'aria-label': 'Excluir a linha', onclick: async () => {
+        if (!(await confirmar('Excluir treinamento', `${r.numero_doc} · ${r.nome}`, { rotulo: 'Excluir', perigo: true }))) return;
+        await del(`/treino/registros/${r.id}`); selecionados.delete(r.id); tr.remove(); atualizarSelecao(); toast('Treinamento excluído.');
+      } }, icone('lixeira')),
+    ] : h('span', { class: 'muted pequeno' }, 'nova')));
+    // Salva ao sair da linha; Enter desce para a mesma coluna da linha de baixo
+    tr.addEventListener('focusout', (e) => { if (!tr.contains(e.relatedTarget)) salvar(); });
+    tr.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.target.tagName === 'BUTTON' || e.target.tagName === 'A') return;
+      e.preventDefault();
+      const idx = [...tr.children].indexOf(e.target.closest('td'));
+      e.target.dispatchEvent(new Event('change'));
+      const prox = tr.nextElementSibling || (salvar(), null);
+      prox?.children[idx]?.querySelector('input, select')?.focus();
+    });
+    pintar();
+    return tr;
+  }
+
+  for (const r of itens) corpo.append(linha(r));
+  corpo.append(linha(null));
+  const anos = [anoAtual + 1, anoAtual, anoAtual - 1, anoAtual - 2];
+  const tabelaPl = h('table', { class: 'pl' },
+    h('thead', {}, h('tr', {}, h('th', { class: 'pl-chk fixa f1' }, marcarTodos), COLS.map((c) => h('th', { class: `${c.auto ? 'auto' : ''} ${c.cls || ''}` }, c.t)), h('th', {}, ''))),
+    corpo);
+  // colunas fixas (Nº DOC, matrícula e nome): a posição de cada uma é a soma das larguras reais das anteriores
+  const fixar = () => {
+    let x = 0;
+    tabelaPl.querySelectorAll('thead th.fixa').forEach((th, i) => { tabelaPl.style.setProperty(`--l${i + 1}`, `${x}px`); x += th.getBoundingClientRect().width; });
+  };
+  new ResizeObserver(fixar).observe(tabelaPl);
+  return [
+    cabecalhoPagina({
+      migalhas: [...BASE, ['Planilha']], titulo: 'Planilha de treinamento (Digitar)',
+      sub: `Como a aba Digitar da RE.1005.04: digite a matrícula e as colunas cinza são puxadas. Cada linha salva ao sair dela e recebe o Nº DOC, o mesmo da C.I. · ${fmt(itens.length)} linha${itens.length === 1 ? '' : 's'}`,
+      acoes: [
+        h('a', { class: 'btn sec', href: `/api/treino/registros.csv?${new URLSearchParams(query)}`, download: '' }, icone('baixar'), 'Exportar (mala direta)'),
+        btnImprimir,
+      ],
+    }),
+    barraFiltros([
+      { nome: 'q', rotulo: 'Busca', placeholder: 'Nome, matrícula, função ou setor' },
+      { nome: 'doc_ano', rotulo: 'Ano do Nº DOC', tipo: 'select', opcoes: anos.map((a) => ({ valor: a, rotulo: a })) },
+      { nome: 'situacao', rotulo: 'Situação do treinamento', tipo: 'select', opcoes: [...SITUACOES, 'CANCELADO'].map((x) => ({ valor: x, rotulo: x })) },
+      { nome: 'situacao2', rotulo: 'Situação2', tipo: 'select', opcoes: ['TREINANDO', 'TREINADO'].map((x) => ({ valor: x, rotulo: x })) },
+      { nome: 'mes', rotulo: 'Mês vencimento', tipo: 'select', opcoes: MESES.map((m) => ({ valor: m, rotulo: m })) },
+    ], query, (v) => ir('#/treino/planilha', v)),
+    h('div', { class: 'pl-wrap' }, tabelaPl),
+    h('p', { class: 'muted pequeno' }, 'Colunas cinza: puxadas da matrícula ou calculadas (Status = fim da vigência + 1 dia; Situação2 = TREINADO quando a vigência terminou). A vigência até é preenchida com o início + ', String(cfg.meses_vigencia || 3), ' meses e pode ser alterada. Marque as linhas e use "Imprimir no formulário".'),
+    h('datalist', { id: 'tr-funcoes' }, p.sugestoes.funcoes.map((f) => h('option', { value: f }))),
+    h('datalist', { id: 'tr-setores' }, p.sugestoes.setores.map((f) => h('option', { value: f }))),
+    h('datalist', { id: 'tr-gestores' }, p.gestores.filter((g) => g.ativo).map((g) => h('option', { value: g.matricula }, `${g.matricula} - ${g.nome}`))),
+  ];
+}
+
+// ======================================================================
 // Detalhe (C.I.) e impressão
 // ======================================================================
 async function detalhe({ params, ir }) {
@@ -135,14 +364,13 @@ async function detalhe({ params, ir }) {
       secao('Situação', null, h('dl', { class: 'dados' },
         dado('Colaborador', badge(r.situacao_atual)), dado('Situação', badge(r.situacao)), dado('Situação da função', badge(r.situacao_funcao)), dado('Situação 2', badge(r.situacao2)),
         dado('Status (vence)', `${dataBR(r.status)}${r.vencido ? ' · vencido' : ''}`), dado('Mês de vencimento', r.mes_vencimento), dado('Contato', r.contato || '—'), dado('Cidade', r.cidade || '—'),
-        dado('Escala', r.escala || '—'), dado('Nº DOC', r.numero_doc || 'sem data do crachá')))),
+        dado('Escala', r.escala || '—'), dado('Nº DOC (C.I. DEST)', r.numero_doc || '—')))),
     mesa([[r, r.ci]]),
   ];
 }
 
 async function imprimir({ query, ir }) {
-  const qs = new URLSearchParams(query).toString();
-  const { itens } = await get(`/treino/registros${qs ? `?${qs}` : ''}`);
+  const { itens } = await get(`/treino/registros?${new URLSearchParams({ ...query, ordem: 'doc' })}`); // na ordem do Nº DOC
   const limite = itens.slice(0, 200);
   const detalhes = await Promise.all(limite.map((r) => get(`/treino/registros/${r.id}`)));
   return [
@@ -332,7 +560,7 @@ async function formulario({ params, query, ir }) {
       campo('Gerente / gestor responsável', el.gestor, { cheio: true }), blocoGestorMat,
       campo('Remetente / Departamento', el.remetente),
       campo('Situação', el.situacao), campo('Situação da função', el.situacao_funcao),
-      campo('Data de confecção do crachá', el.data_cracha, { dica: 'Ao informar, a C.I. recebe o próximo Nº DOC do ano.' })),
+      campo('Data de confecção do crachá', el.data_cracha, { dica: 'Ao salvar, o treinamento recebe o próximo Nº DOC do ano (Seq./ano), o mesmo impresso na C.I.' })),
     erro,
     h('div', { class: 'linha-botoes' },
       h('button', { type: 'button', class: 'sec', onclick: () => ir(editando ? `#/treino/registros/${editando}` : '#/treino/registros') }, 'Cancelar'),
@@ -415,7 +643,7 @@ async function parametros({ recarregarPagina }) {
             h('tbody', {},
               linha('APFO (base de funcionários: CNH, contato, cidade)', r.base.lidos, r.base.criar, `${fmt(r.base.atualizar)} atualizados · ${fmt(r.base.com_escala)} com escala`),
               linha('Gestores (da aba Digitar)', r.gestores.lidos, r.gestores.criar, 'os já cadastrados não mudam'),
-              r.registros ? linha('Digitar (treinamentos)', r.registros.lidos, r.registros.criar, `${fmt(r.registros.ja_existentes)} já existentes · ${fmt(r.registros.erros)} com erro`) : null))),
+              r.registros ? linha('Digitar (treinamentos)', r.registros.lidos, r.registros.criar, `${fmt(r.registros.ja_existentes)} já existentes${r.registros.renumerar ? ` (${fmt(r.registros.renumerar)} com o Nº DOC corrigido para o da planilha)` : ''} · ${fmt(r.registros.erros)} com erro`) : null))),
           r.registros?.erros ? h('details', { class: 'imp-motivo' }, h('summary', {}, `Linhas não importadas: ${r.registros.erros}`),
             h('ul', {}, r.registros.exemplos_erros.map((e) => h('li', {}, `Linha ${e.linha}${e.matricula ? ` (mat. ${e.matricula})` : ''}: ${e.motivo}`)))) : null,
           h('div', { class: 'linha-botoes' }, botao('Cancelar', telaImportar, { tom: 'sec' }),
@@ -466,7 +694,8 @@ async function parametros({ recarregarPagina }) {
 // Roteamento interno
 // ======================================================================
 export default async function treino(ctx) {
-  const [sub = 'registros', ...resto] = ctx.params;
+  const [sub = 'planilha', ...resto] = ctx.params;
+  if (sub === 'planilha') return planilha(ctx);
   if (sub === 'novo') return formulario({ ...ctx, params: [] });
   if (sub === 'registros' && resto[1] === 'editar') return formulario({ ...ctx, params: ['registros', resto[0]] });
   if (sub === 'registros' && resto.length) return detalhe({ ...ctx, params: resto });

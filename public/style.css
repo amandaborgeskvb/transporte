@@ -422,6 +422,33 @@ html[data-tema="escuro"] .re-mesa { background: #0a1120; }
 .ci-ass.largo { grid-column: 1 / -1; width: 50%; margin: 0 auto; }
 .ci-ass div:last-child { font-size: 8.5pt; }
 .ci-traco { border-top: 1px solid #000; margin: 0 4mm 1.2mm; }
+/* Planilha de treinamento (como a aba Digitar) */
+.pl-wrap { overflow: auto; max-height: calc(100vh - 290px); min-height: 260px; border: 1px solid var(--linha); border-radius: 10px; background: var(--card); margin-bottom: 8px; }
+.pl { border-collapse: separate; border-spacing: 0; font-size: .8rem; width: max-content; }
+.pl th { position: sticky; top: 0; z-index: 2; background: #1f5d3a; color: #fff; font-weight: 650; text-align: left; white-space: nowrap; padding: 7px 8px; border-right: 1px solid rgba(255, 255, 255, .25); }
+.pl th.auto { background: #4f6b5b; }
+.pl td { border-right: 1px solid var(--linha); border-bottom: 1px solid var(--linha); padding: 0; white-space: nowrap; height: 30px; background: var(--card); }
+.pl td.auto { background: var(--card-2); padding: 0 8px; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+.pl td input, .pl td select { width: 100%; margin: 0; border: 0; border-radius: 0; background: transparent; padding: 0 6px; height: 30px; min-width: 0; }
+.pl td input[type=date] { width: 132px; }
+.pl td input:focus, .pl td select:focus { outline: 2px solid var(--marca); outline-offset: -2px; background: var(--card); }
+.pl td.pl-marca { text-align: center; }
+.pl td.pl-marca input, .pl td.pl-chk input, .pl th.pl-chk input { width: 16px; height: 16px; }
+.pl .pl-chk { text-align: center; width: 34px; min-width: 34px; }
+.pl .fixa { position: sticky; z-index: 1; }
+.pl th.fixa { z-index: 3; }
+.pl .f1 { left: var(--l1, 0); }
+.pl .f2 { left: var(--l2, 34px); min-width: 74px; }
+.pl .f3 { left: var(--l3, 108px); width: 84px; min-width: 84px; max-width: 84px; }
+.pl .f4 { left: var(--l4, 192px); min-width: 200px; max-width: 260px; box-shadow: 2px 0 0 var(--linha); }
+.pl td.pl-doc { font-weight: 700; color: var(--txt); }
+.pl td.pl-acoes { padding: 0 6px; display: flex; gap: 4px; align-items: center; border-right: 0; }
+.pl td.pl-acoes .mini { padding: 2px 6px; }
+.pl tr.pl-nova td { background: color-mix(in srgb, var(--marca) 6%, var(--card)); }
+.pl tr.sujo td.pl-chk { box-shadow: inset 4px 0 #e0a100; }
+.pl tr.erro td.pl-chk { box-shadow: inset 4px 0 var(--bad); }
+.pl tr.salvo td { background: color-mix(in srgb, #2e9d57 14%, var(--card)); transition: background .6s; }
+.pl tbody tr:hover td.auto { background: var(--hover); }
 .tr-auto { border: 1px dashed var(--linha); border-radius: 8px; padding: 10px 12px; margin: 4px 0 12px; }
 
 @media print {
