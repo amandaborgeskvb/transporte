@@ -34,8 +34,8 @@ conceitos de ERPs e plataformas de operação agrícola:
   claro/escuro, menu do usuário (alterar senha, sair) e a logo.
 - **Menu lateral por grupos** (Operação, Configurações), recolhível, com o item ativo destacado. O menu **Viagem** reúne
   Programação de viagens, Adiantamentos, Despesas, Reembolsos, Autorização de desconto e Relatório de viagem; **Contratação** (administrador e
-  financeiro) tem a Ficha de Informe de Contratação (RE.0150.03), o resumo do dia e os parâmetros (veja abaixo). **Treinamento** tem o **Treinamento prático** (administrador e financeiro: treinamentos,
-  C.I. do crachá e parâmetros) e o **Guia do sistema** (todos os perfis), um passo a passo com os tópicos do perfil de quem está logado em destaque.
+  financeiro) tem a Ficha de Informe de Contratação (RE.0150.03), o resumo do dia e os parâmetros (veja abaixo). **Treinamento** (administrador e financeiro) tem o treinamento prático:
+  planilha, treinamentos, C.I. do crachá, relatório e parâmetros. Em **Configurações** fica o **Guia do sistema** (todos os perfis), um passo a passo com os tópicos do perfil de quem está logado em destaque.
 - **Telas lista + detalhe** em Usuários e Cadastros (busca à esquerda, formulário do item à direita).
 - **Registro da viagem** no estilo Dynamics 365: faixa de etapas (Programada → Realizada →
   Prestação de contas), barra de comandos com as ações liberadas para o perfil e abas (Resumo, Adiantamentos, Despesas,

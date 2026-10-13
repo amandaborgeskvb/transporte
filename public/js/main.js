@@ -90,21 +90,21 @@ const MENU = [
     ],
   },
   {
-    rota: 'treino', titulo: 'Treinamento', icone: 'ajuda',
+    rota: 'treino', titulo: 'Treinamento', icone: 'calendario', perfis: ['administrador', 'financeiro'],
     filhos: [
       { href: '#/treino/planilha', titulo: 'Planilha (Digitar)', prefixo: true, perfis: ['administrador', 'financeiro'] },
       { href: '#/treino/registros', titulo: 'Treinamentos práticos', prefixo: true, perfis: ['administrador', 'financeiro'] },
       { href: '#/treino/novo', titulo: 'Novo treinamento (C.I.)', prefixo: true, perfis: ['administrador', 'financeiro'] },
       { href: '#/treino/relatorio', titulo: 'Relatório', prefixo: true, perfis: ['administrador', 'financeiro'] },
       { href: '#/treino/parametros', titulo: 'Parâmetros', prefixo: true, perfis: ['administrador', 'financeiro'] },
-      { rota: 'treinamento', href: '#/treinamento', titulo: 'Guia do sistema' },
     ],
   },
-  { grupo: 'Configurações', perfis: ADMIN },
+  { grupo: 'Configurações' },
   { rota: 'cadastros', titulo: 'Cadastros', icone: 'cadastros', perfis: ADMIN, filhos: Object.entries(TIPOS_CADASTRO).map(([k, t]) => ({ href: `#/cadastros/${k}`, titulo: t.titulo })) },
   { rota: 'importacao', titulo: 'Importação', icone: 'upload', perfis: ADMIN },
   { rota: 'usuarios', titulo: 'Usuários e perfis', icone: 'usuarios', perfis: ADMIN },
   { rota: 'auditoria', titulo: 'Auditoria', icone: 'auditoria', perfis: ADMIN },
+  { rota: 'treinamento', titulo: 'Guia do sistema', icone: 'ajuda' },
 ];
 const permitido = (perfis) => !perfis || perfis.includes(usuario.perfil);
 
