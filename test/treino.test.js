@@ -154,6 +154,8 @@ test('lançamento: a matrícula puxa os dados, vigência automática, gestor, N�
 
   // virada do ano: 2027 recomeça do 1 (se o crachá sai no ano seguinte, a C.I. passa a ser numerada no ano do crachá)
   const doc = async (id) => (await davi.get(`/api/treino/registros/${id}`)).corpo.numero_doc;
+  assert.equal((await davi.get('/api/treino/proximo-doc?ano=2026')).corpo.doc, '3/2026'); // mostrado no lançamento antes de salvar
+  assert.equal((await davi.get('/api/treino/proximo-doc?ano=2027')).corpo.doc, '1/2027');
   const dez = await davi.post('/api/treino/registros', { matricula: '1', funcao_treinamento: 'MOTORISTA', setor_nova: 'TRANSPORTE', vigencia_de: '2026-12-28' });
   assert.equal(await doc(dez.corpo.id), '3/2026');
   const dezCorpo = await davi.get(`/api/treino/registros/${dez.corpo.id}`);

@@ -144,6 +144,13 @@ function criarTreino({ pool }) {
     res.status(204).end();
   }));
 
+  // Próximo Nº DOC (C.I. DEST) do ano, para mostrar no lançamento antes de salvar (o número é confirmado ao salvar)
+  router.get('/treino/proximo-doc', wrap(async (req, res) => {
+    const ano = /^\d{4}$/.test(req.query.ano || '') ? Number(req.query.ano) : Number(hoje().slice(0, 4));
+    const { n } = (await pool.query('SELECT COALESCE(max(doc_numero), 0) + 1 AS n FROM trein_registros WHERE doc_ano = $1', [ano])).rows[0];
+    res.json({ ano, numero: n, doc: `${n}/${ano}` });
+  }));
+
   // ================= Funcionário (preenchimento automático pela matrícula) =================
   router.get('/treino/funcionario/:matricula', wrap(async (req, res) => {
     const d = await dadosFuncionario(pool, req.params.matricula);

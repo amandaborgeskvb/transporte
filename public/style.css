@@ -442,6 +442,8 @@ html[data-tema="escuro"] .re-mesa { background: #0a1120; }
 .pl .f3 { left: var(--l3, 108px); width: 84px; min-width: 84px; max-width: 84px; }
 .pl .f4 { left: var(--l4, 192px); min-width: 200px; max-width: 260px; box-shadow: 2px 0 0 var(--linha); }
 .pl td.pl-doc { font-weight: 700; color: var(--txt); }
+.pl td.pl-doc.prev { font-style: italic; color: var(--marca-txt); }
+input.doc-ci { font-weight: 700; font-size: 1.05rem; background: var(--card-2); }
 .pl td.pl-acoes { padding: 0 6px; display: flex; gap: 4px; align-items: center; border-right: 0; }
 .pl td.pl-acoes .mini { padding: 2px 6px; }
 .pl tr.pl-nova td { background: color-mix(in srgb, var(--marca) 6%, var(--card)); }

@@ -104,12 +104,12 @@ async function lista({ query, ir }) {
       { nome: 'colab', rotulo: 'Colaborador', tipo: 'select', opcoes: ['ATIVO', 'AFASTADO', 'DEMITIDO'].map((s) => ({ valor: s, rotulo: s })) },
     ], query, (v) => ir('#/treino/registros', v)),
     h('div', { class: 'card' }, tabela([
+      { t: 'Nº DOC (C.I.)', cls: 'nowrap', f: (r) => h('strong', {}, r.numero_doc || '—') },
       { t: 'Colaborador', f: (r) => [h('strong', {}, r.nome), h('div', { class: 'muted pequeno' }, `Mat. ${r.matricula} · `, badge(r.situacao_atual))] },
       { t: 'Função atual → treinamento', f: (r) => [r.funcao, h('div', { class: 'muted pequeno' }, `→ ${r.funcao_para_treinamento}`)] },
       { t: 'Vigência', cls: 'nowrap', f: (r) => [`${dataBR(r.vigencia_de)} a ${dataBR(r.vigencia_ate)}`, h('div', { class: `pequeno ${r.vencido ? 'erro' : 'muted'}` }, r.vencido ? `venceu (status ${dataBR(r.status)})` : `vence em ${r.dias_para_vencer} dia${r.dias_para_vencer === 1 ? '' : 's'} · ${r.mes_vencimento}`)] },
       { t: 'Situação', f: (r) => badge(r.situacao) }, { t: 'Situação da função', f: (r) => badge(r.situacao_funcao) }, { t: 'Situação 2', f: (r) => badge(r.situacao2) },
       { t: 'Gestor', f: (r) => (r.gestor_nome ? [r.gestor_nome, h('div', { class: 'muted pequeno' }, r.gestor_matricula)] : '—') },
-      { t: 'Nº DOC', cls: 'nowrap', f: (r) => r.numero_doc || '—' },
     ], itens, { vazioMsg: 'Nenhum treinamento. Use "Novo treinamento" ou importe a planilha em Parâmetros.', aoClicar: (r) => ir(`#/treino/registros/${r.id}`) })),
   ];
 }
@@ -209,7 +209,7 @@ async function planilha({ query, ir, recarregarPagina }) {
       });
       if (f.possui_cnh === false && !r.observacao) r.observacao = cfg.texto_sem_cnh || '';
       if (!r.vigencia_de) { r.vigencia_de = hojeISO(); r.vigencia_ate = somarMeses(r.vigencia_de, cfg.meses_vigencia || 3); }
-      derivar(); pintar();
+      derivar(); pintar(); proximoDoc();
     }
     async function puxarGestor() {
       const g = gestorDe(r.gestor_matricula);
@@ -218,6 +218,18 @@ async function planilha({ query, ir, recarregarPagina }) {
         const f = await get(`/treino/funcionario/${encodeURIComponent(r.gestor_matricula)}`).catch(() => null);
         r.gestor_nome = f?.nome || ''; r.gestor_funcao = f?.funcao || '';
       } else { r.gestor_nome = ''; r.gestor_funcao = ''; }
+      pintar();
+    }
+    // linha nova: mostra o próximo Nº DOC do ano (confirmado ao salvar)
+    async function proximoDoc() {
+      if (r.id) return;
+      const ano = (r.data_cracha || r.vigencia_de || '').slice(0, 4);
+      if (!ano) return;
+      const d = await get(`/treino/proximo-doc?ano=${ano}`).catch(() => null);
+      if (!d || r.id) return;
+      r.numero_doc = d.doc;
+      const td = celulas['numero_doc|'];
+      td.classList.add('prev'); td.title = 'Próximo número do ano: confirmado ao salvar';
       pintar();
     }
     const faltando = () => [['matricula', 'Matrícula'], ['funcao_treinamento', 'Função de Treinamento'], ['setor_nova', 'Setor-Função-Nova'], ['vigencia_de', 'Vigência de']]
@@ -268,7 +280,7 @@ async function planilha({ query, ir, recarregarPagina }) {
           el.addEventListener('change', () => {
             r[c.k] = el.value;
             if (c.k === 'vigencia_de' && el.value) r.vigencia_ate = somarMeses(el.value, cfg.meses_vigencia || 3);
-            derivar(); pintar(); sujo();
+            derivar(); pintar(); sujo(); proximoDoc();
           });
         } else {
           el = h('input', { 'aria-label': c.t, size: c.size || 8, list: c.list || null, class: c.ed === 'mat' || c.ed === 'gestor' ? '' : 'maiusc', inputmode: c.ed === 'mat' || c.ed === 'gestor' ? 'numeric' : null, autocomplete: 'off' });
@@ -437,6 +449,24 @@ async function formulario({ params, query, ir }) {
     situacao_funcao: sel('situacao_funcao', SITUACOES_FUNCAO.map((s) => [s, s]), atual?.situacao_funcao, '—'),
     data_cracha: inp('data_cracha', atual?.data_cracha, { type: 'date' }),
   };
+  // Nº DOC da C.I. (Seq./ano): o próximo número do ano da data do crachá (ou do início da vigência); confirmado ao salvar
+  const elDoc = h('input', { name: 'numero_doc', readonly: true, class: 'doc-ci', value: atual?.numero_doc || '', 'aria-label': 'Nº DOC da C.I.' });
+  const dicaDoc = h('small', { class: 'dica' });
+  let anoDoc = null;
+  async function atualizarDoc() {
+    const ano = (el.data_cracha.value || el.vigencia_de.value || hojeISO()).slice(0, 4);
+    if (atual?.numero_doc && (atual.doc_ano === Number(ano) || !el.data_cracha.value)) {
+      elDoc.value = atual.numero_doc; dicaDoc.textContent = 'Número desta C.I. (sequência do ano).'; return;
+    }
+    if (ano === anoDoc) return;
+    anoDoc = ano;
+    try {
+      const d = await get(`/treino/proximo-doc?ano=${ano}`);
+      if (anoDoc !== ano) return;
+      elDoc.value = d.doc; dicaDoc.textContent = `Próximo número de ${ano}: confirmado ao salvar.`;
+      desenharPrevia();
+    } catch { /* mantém o que estava */ }
+  }
   const painel = h('div', { class: 'tr-auto' });
   const infoVig = h('small', { class: 'dica' });
   const infoGestor = h('small', { class: 'dica' });
@@ -530,7 +560,7 @@ async function formulario({ params, query, ir }) {
     const r = {
       ...x, nome: func?.nome || '', funcao: func?.funcao || '', setor: func?.setor || '', data_admissao: func?.data_admissao || '',
       possui_cnh: x.possui_cnh === 'sim' ? true : x.possui_cnh === 'nao' ? false : null, possui_curso: x.possui_curso === 'sim' ? true : x.possui_curso === 'nao' ? false : null,
-      gestor_nome: gestorInfo?.nome || '', gestor_funcao: gestorInfo?.cargo || '', numero_doc: atual?.numero_doc || '',
+      gestor_nome: gestorInfo?.nome || '', gestor_funcao: gestorInfo?.cargo || '', numero_doc: elDoc.value,
     };
     areaPrevia.replaceChildren(mesa([[r, { config: cfg, signatarios: p.signatarios.filter((s) => s.ativo), documento: p.documento, gestor: gestorInfo }]]));
   }
@@ -542,8 +572,9 @@ async function formulario({ params, query, ir }) {
     try {
       if (editando) { await put(`/treino/registros/${editando}`, x); toast('Treinamento salvo.'); ir(`#/treino/registros/${editando}`); return; }
       const r = await post('/treino/registros', x);
-      toast('Treinamento salvo.');
-      if (continuar) { el.matricula.value = ''; func = null; desenharPainel(); for (const k of ['cnh_categoria', 'cnh_validade', 'contato', 'cidade', 'observacao', 'cursos']) el[k].value = ''; el.possui_cnh.value = ''; el.possui_curso.value = ''; el.matricula.focus(); desenharPrevia(); } else ir(`#/treino/registros/${r.id}`);
+      toast(`Treinamento salvo: C.I. Nº ${(await get(`/treino/registros?ids=${r.id}`)).itens[0]?.numero_doc || ''}.`);
+      anoDoc = null;
+      if (continuar) { atualizarDoc(); el.matricula.value = ''; func = null; desenharPainel(); for (const k of ['cnh_categoria', 'cnh_validade', 'contato', 'cidade', 'observacao', 'cursos']) el[k].value = ''; el.possui_cnh.value = ''; el.possui_curso.value = ''; el.matricula.focus(); desenharPrevia(); } else ir(`#/treino/registros/${r.id}`);
     } catch (e) { erro.textContent = e.message; }
   };
 
@@ -558,23 +589,25 @@ async function formulario({ params, query, ir }) {
       campo('Possui curso', el.possui_curso), campo('Quais cursos', el.cursos)),
     h('h3', { class: 'grupo' }, 'Treinamento'),
     h('div', { class: 'form-grid' },
+      campo('Nº DOC (C.I. DEST)', elDoc, { dica: dicaDoc }),
       campo('Função de treinamento (nova função)', el.funcao_treinamento, { obrigatorio: true, cheio: true }),
       campo('Setor da nova função', el.setor_nova, { obrigatorio: true, cheio: true }),
       campo('Vigência de', el.vigencia_de, { obrigatorio: true }), campo(`Vigência até (início + ${cfg.meses_vigencia} meses)`, el.vigencia_ate, { obrigatorio: true }), h('div', { class: 'cheio' }, infoVig),
       campo('Gerente / gestor responsável', el.gestor, { cheio: true }), blocoGestorMat,
       campo('Remetente / Departamento', el.remetente),
       campo('Situação', el.situacao), campo('Situação da função', el.situacao_funcao),
-      campo('Data de confecção do crachá', el.data_cracha, { dica: 'Ao salvar, o treinamento recebe o próximo Nº DOC do ano (Seq./ano), o mesmo impresso na C.I.' })),
+      campo('Data de confecção do crachá', el.data_cracha, { dica: 'O ano do Nº DOC é o da data do crachá (sem ela, o do início da vigência).' })),
     erro,
     h('div', { class: 'linha-botoes' },
       h('button', { type: 'button', class: 'sec', onclick: () => ir(editando ? `#/treino/registros/${editando}` : '#/treino/registros') }, 'Cancelar'),
       editando ? null : h('button', { type: 'button', class: 'sec', onclick: () => salvar(true) }, 'Salvar e novo'),
       h('button', { type: 'submit' }, 'Salvar')));
   form.addEventListener('input', () => { clearTimeout(form.t); form.t = setTimeout(desenharPrevia, 200); });
-  form.addEventListener('change', () => { clearTimeout(form.t); form.t = setTimeout(desenharPrevia, 150); });
+  form.addEventListener('change', () => { clearTimeout(form.t); form.t = setTimeout(desenharPrevia, 150); atualizarDoc(); });
   aoMudarCnh(); aoMudarVigencia(false); desenharPainel(); aoMudarGestor();
   if (atual) func = { ...func, origem: 'registro' };
   desenharPrevia();
+  atualizarDoc();
   setTimeout(() => el.matricula.focus(), 50);
   return [
     cabecalhoPagina({
