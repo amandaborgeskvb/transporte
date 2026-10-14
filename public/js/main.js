@@ -99,6 +99,7 @@ const MENU = [
       { href: '#/treino/registros', titulo: 'Treinamentos práticos', prefixo: true, perfis: [...GESTAO, 'treinamento'] },
       { href: '#/treino/novo', titulo: 'Novo treinamento (C.I.)', prefixo: true, perfis: [...GESTAO, 'treinamento'] },
       { href: '#/treino/relatorio', titulo: 'Relatório', prefixo: true, perfis: [...GESTAO, 'treinamento'] },
+      { href: '#/treino/diario', titulo: 'Diário de treinamento', prefixo: true, perfis: [...GESTAO, 'treinamento'] },
       { href: '#/treino/parametros', titulo: 'Parâmetros', prefixo: true, perfis: [...GESTAO, 'treinamento'] },
     ],
   },

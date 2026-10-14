@@ -19,12 +19,13 @@ function criarApp({ pool, secret, secure = false }) {
   app.set('trust proxy', 1); // atrás do proxy do Render
   app.disable('x-powered-by');
 
-  app.use((_req, res, next) => {
+  app.use((req, res, next) => {
+    const docEmbutido = req.path.startsWith('/docs/'); // formulários em PDF mostrados dentro do próprio sistema
     res.set({
       'X-Content-Type-Options': 'nosniff',
-      'X-Frame-Options': 'DENY',
+      'X-Frame-Options': docEmbutido ? 'SAMEORIGIN' : 'DENY',
       'Referrer-Policy': 'same-origin',
-      'Content-Security-Policy': "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      'Content-Security-Policy': `default-src 'self'; img-src 'self' data:; frame-ancestors ${docEmbutido ? "'self'" : "'none'"}; base-uri 'self'; form-action 'self'`,
     });
     next();
   });

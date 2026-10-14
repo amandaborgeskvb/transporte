@@ -469,6 +469,30 @@ async function relatorio({ query, ir }) {
 }
 
 // ======================================================================
+// Diário de treinamento individual (RE.0150.23): o PDF da empresa, sem alteração, para imprimir
+// ======================================================================
+const PDF_DIARIO = '/docs/RE.0150.23-diario-de-treinamento-individual.pdf';
+async function diario() {
+  const quadro = h('iframe', { class: 'pdf-quadro', src: PDF_DIARIO, title: 'RE.0150.23 — Diário de treinamento individual (PDF)' });
+  const imprimir = () => {
+    try { quadro.contentWindow.focus(); quadro.contentWindow.print(); } catch { window.open(PDF_DIARIO, '_blank', 'noopener'); }
+  };
+  return [
+    cabecalhoPagina({
+      migalhas: [...BASE, ['Diário de treinamento']], titulo: 'Diário de treinamento individual',
+      sub: 'Formulário RE.0150.23 da empresa (5 páginas, A4), exatamente como o original',
+      acoes: [
+        h('a', { class: 'btn sec', href: PDF_DIARIO, download: 'RE.0150.23 - Diário de treinamento individual.pdf' }, icone('baixar'), 'Baixar PDF'),
+        h('a', { class: 'btn sec', href: PDF_DIARIO, target: '_blank', rel: 'noopener' }, icone('documento'), 'Abrir em nova aba'),
+        botao('Imprimir', imprimir, { icone: 'impressora' }),
+      ],
+    }),
+    h('div', { class: 'card' }, quadro,
+      h('p', { class: 'muted pequeno' }, 'Se o formulário não aparecer aqui (por exemplo, no celular), use "Abrir em nova aba" ou "Baixar PDF" e imprima por lá.')),
+  ];
+}
+
+// ======================================================================
 // Detalhe (C.I.) e impressão
 // ======================================================================
 async function detalhe({ params, ir }) {
@@ -897,6 +921,7 @@ export default async function treino(ctx) {
   const [sub = 'planilha', ...resto] = ctx.params;
   if (sub === 'planilha') return planilha(ctx);
   if (sub === 'relatorio') return relatorio(ctx);
+  if (sub === 'diario') return diario(ctx);
   if (sub === 'novo') return formulario({ ...ctx, params: [] });
   if (sub === 'registros' && resto[1] === 'editar') return formulario({ ...ctx, params: ['registros', resto[0]] });
   if (sub === 'registros' && resto.length) return detalhe({ ...ctx, params: resto });
