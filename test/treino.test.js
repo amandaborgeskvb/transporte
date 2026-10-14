@@ -92,9 +92,10 @@ test('acesso e parâmetros: cabeçalho RE. 0940.02D, assinaturas e vigência pad
 test('importação da planilha: prévia, aplicação sem repetir e números de C.I.', async () => {
   const previa = await importar(davi, 'registros=1');
   assert.equal(previa.status, 200);
-  assert.deepEqual(previa.corpo.base, { lidos: 3, criar: 3, atualizar: 0, com_escala: 1 });
+  assert.deepEqual(previa.corpo.base, { lidos: 3, criar: 3, atualizar: 0, iguais: 0, com_escala: 1 });
   assert.deepEqual(previa.corpo.gestores, { lidos: 1, criar: 1 });
-  assert.deepEqual([previa.corpo.registros.lidos, previa.corpo.registros.criar, previa.corpo.registros.erros], [4, 3, 1]);
+  assert.deepEqual([previa.corpo.registros.lidos, previa.corpo.registros.criar, previa.corpo.registros.repetidas_planilha, previa.corpo.registros.erros], [4, 3, 1, 1]);
+  assert.deepEqual(previa.corpo.registros.novos.map((x) => [x.matricula, x.numero]), [['7001', '1/2025'], ['1', '2/2025'], ['9001', '']]);
   assert.equal((await davi.get('/api/treino/parametros')).corpo.base.n, 0); // a prévia não grava
 
   const ok = await importar(davi, 'registros=1&aplicar=1');
@@ -112,7 +113,33 @@ test('importação da planilha: prévia, aplicação sem repetir e números de C
   await importar(davi, 'registros=1&aplicar=1');
   const vol = (await t.pool.query("SELECT situacao_funcao, gestor_nome, cursos FROM trein_registros WHERE matricula = '7001'")).rows[0];
   assert.deepEqual(vol, { situacao_funcao: 'CLASSIFICADO', gestor_nome: 'Gestor Teste', cursos: 'NR-12' });
-  assert.equal(de2.corpo.base.atualizar, 3);
+  assert.deepEqual([de2.corpo.base.criar, de2.corpo.base.atualizar, de2.corpo.base.iguais], [0, 0, 3]); // base igual: nada é regravado
+  assert.equal(de2.corpo.registros.iguais, 3);
+
+  // mudou no sistema a data de início (a linha é achada pelo Nº DOC) e a função ficou com espaços/minúsculas diferentes:
+  // a nova carga não duplica, só atualiza os campos que mudaram
+  await t.pool.query("UPDATE trein_registros SET vigencia_de = '2025-06-01' WHERE matricula = '7001'");
+  await t.pool.query("UPDATE trein_registros SET funcao_treinamento = 'motorista  carreta', doc_numero = NULL, doc_ano = NULL WHERE matricula = '1'");
+  const p3 = (await importar(davi, 'registros=1')).corpo.registros;
+  assert.deepEqual([p3.criar, p3.atualizar], [0, 2]);
+  assert.deepEqual(p3.alterados.map((x) => [x.matricula, x.campos.map((c) => `${c.campo}: ${c.de} → ${c.para}`)]).sort(),
+    [['1', ['Função de treinamento: motorista  carreta → MOTORISTA CARRETA']], ['7001', ['Vigência de: 2025-06-01 → 2025-06-05']]]);
+  await importar(davi, 'registros=1&aplicar=1');
+  assert.equal((await t.pool.query('SELECT count(*)::int AS n FROM trein_registros')).rows[0].n, 3);
+  assert.equal((await importar(davi, 'registros=1')).corpo.registros.atualizar, 0);
+
+  // duplicado lançado no sistema: aparece na verificação e pode ser excluído (fica o primeiro lançado)
+  const dup = await davi.post('/api/treino/registros', { matricula: '1', funcao_treinamento: 'Motorista  Carreta', setor_nova: 'TRANSPORTE', vigencia_de: '2025-09-01' });
+  assert.equal(dup.status, 201);
+  assert.equal((await importar(davi, 'registros=1')).corpo.registros.duplicados_sistema, 1);
+  const vd = (await davi.get('/api/treino/duplicados')).corpo;
+  assert.equal(vd.excedentes, 1);
+  assert.equal(vd.grupos[0].itens.length, 2);
+  assert.notEqual(vd.grupos[0].manter, dup.corpo.id);
+  assert.equal((await ana.req('POST', '/api/treino/duplicados/remover', {})).status, 403);
+  assert.equal((await davi.post('/api/treino/duplicados/remover', {})).corpo.excluidos, 1);
+  assert.equal((await davi.get(`/api/treino/registros/${dup.corpo.id}`)).status, 404);
+  assert.equal((await davi.get('/api/treino/duplicados')).corpo.excedentes, 0);
 
   const { itens } = (await davi.get('/api/treino/registros')).corpo;
   assert.equal(itens.length, 3);

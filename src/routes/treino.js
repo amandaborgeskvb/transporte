@@ -10,6 +10,15 @@ const {
 } = require('../treino');
 
 const CODIGO_RE = 'RE. 0940.02D';
+// Mesmo treinamento: matrícula + início da vigência + função de treinamento (sem acento, maiúscula ou espaços a mais)
+const chaveTreino = (r) => `${normMatricula(r.matricula)}|${dataLocal(r.vigencia_de)}|${semAcento(r.funcao_treinamento).replace(/\s+/g, ' ')}`;
+const ROTULO_CAMPO = {
+  nome: 'Nome', funcao: 'Função', setor: 'Setor', data_admissao: 'Admissão', situacao_colab: 'Situação do colaborador', possui_cnh: 'Possui CNH',
+  cnh_categoria: 'Cat-CNH', cnh_validade: 'Venc-CNH', observacao: 'Observação', possui_curso: 'Possui curso', cursos: 'Cursos',
+  funcao_treinamento: 'Função de treinamento', setor_nova: 'Setor da nova função', vigencia_de: 'Vigência de', vigencia_ate: 'Vigência até',
+  remetente: 'Remetente', gestor_matricula: 'Matrícula do gestor', gestor_nome: 'Gestor', gestor_funcao: 'Função do gestor', contato: 'Contato',
+  cidade: 'Cidade', escala: 'Escala', situacao: 'Situação', situacao_funcao: 'Situação da função', data_cracha: 'Data do crachá',
+};
 const { SQL_NUMERAR_TREINO: SQL_NUMERAR_PENDENTES } = require('../schema');
 const { gerarPdfSituacao } = require('../treinoPdf');
 const bool = (v) => v === true || v === 'true' || v === 1 || v === '1';
@@ -428,6 +437,39 @@ function criarTreino({ pool }) {
     res.status(204).end();
   }));
 
+  // ================= Duplicados =================
+  // Mesmo treinamento lançado mais de uma vez: mesma matrícula, mesmo início da vigência e mesma função de treinamento
+  // (sem diferença de acento, maiúscula ou espaços). Fica o primeiro lançado; os outros podem ser excluídos.
+  async function gruposDuplicados(db) {
+    const { rows } = await db.query(
+      `SELECT id, matricula, nome, funcao_treinamento, setor_nova, vigencia_de, vigencia_ate, doc_numero, doc_ano, origem, situacao, situacao_funcao, criado_em
+       FROM trein_registros ORDER BY id`);
+    const m = new Map();
+    for (const x of rows) { const k = chaveTreino(x); if (!m.has(k)) m.set(k, []); m.get(k).push(x); }
+    return [...m.values()].filter((l) => l.length > 1).map((l) => ({
+      manter: l[0].id,
+      itens: l.map((x) => ({ id: x.id, matricula: x.matricula, nome: x.nome, funcao_treinamento: x.funcao_treinamento, setor_nova: x.setor_nova,
+        vigencia_de: dataLocal(x.vigencia_de), vigencia_ate: dataLocal(x.vigencia_ate), numero_doc: x.doc_numero ? `${x.doc_numero}/${x.doc_ano}` : '',
+        origem: x.origem === 'digitado' ? 'lançado no sistema' : 'planilha', situacao: x.situacao, situacao_funcao: x.situacao_funcao || '' })),
+    }));
+  }
+  router.get('/treino/duplicados', wrap(async (_req, res) => {
+    const grupos = await gruposDuplicados(pool);
+    res.json({ grupos, excedentes: grupos.reduce((t, g) => t + g.itens.length - 1, 0) });
+  }));
+  // Exclui os repetidos (mantém o primeiro lançado de cada grupo) e acerta a numeração
+  router.post('/treino/duplicados/remover', wrap(async (req, res) => {
+    const r = await tx(pool, async (db) => {
+      await db.query('LOCK TABLE trein_registros IN SHARE ROW EXCLUSIVE MODE');
+      const ids = (await gruposDuplicados(db)).flatMap((g) => g.itens.filter((x) => x.id !== g.manter).map((x) => x.id));
+      if (ids.length) await db.query('DELETE FROM trein_registros WHERE id = ANY($1)', [ids]);
+      const ajustados = (await db.query('SELECT trein_ajustar_numeracao() AS n')).rows[0].n;
+      await auditar(db, req.usuario, 'remover_duplicados', 'trein_registro', null, { excluidos: ids.length, numeracao_ajustada: ajustados });
+      return { excluidos: ids.length, numeracao_ajustada: ajustados };
+    });
+    res.json(r);
+  }));
+
   // ================= Numeração do Nº DOC =================
   // O ano é o da data do crachá (sem ela, o do início da vigência) e cada ano recomeça do 1 (480/2025 → 1/2026).
   router.get('/treino/numeracao', wrap(async (_req, res) => {
@@ -469,69 +511,94 @@ function criarTreino({ pool }) {
     for (const r of lidos.registros) if (r.gestor_matricula && r.gestor_nome && !gestores.has(r.gestor_matricula)) gestores.set(r.gestor_matricula, { nome: r.gestor_nome, cargo: r.gestor_funcao });
 
     const resumo = await tx(pool, async (db) => {
-      const existBase = new Set((await db.query('SELECT matricula FROM trein_base')).rows.map((r) => r.matricula));
-      const existGest = new Set((await db.query('SELECT matricula FROM trein_gestores')).rows.map((r) => r.matricula));
-      const chave = (r) => `${r.matricula}|${r.vigencia_de}|${semAcento(r.funcao_treinamento)}`;
-      const regsBanco = (await db.query('SELECT * FROM trein_registros')).rows;
-      const porChave = new Map(regsBanco.map((r) => [chave({ ...r, vigencia_de: dataLocal(r.vigencia_de) }), r]));
-      const existReg = new Set(porChave.keys());
-      // Nº DOC: a planilha manda. Cada número (Nº DOC ou Seq./ano) fica com a primeira linha da planilha que o tem; quem já está
-      // no sistema com outro número passa a ter o da planilha, e quem ocupava um número da planilha recebe o próximo livre do ano.
-      const numeroDe = new Map(); // chave da linha da planilha -> { numero, ano }
-      if (comRegistros) {
-        const reivindicados = new Set();
-        for (const r of lidos.registros) {
-          const k = `${r.doc_ano}|${r.doc_numero}`;
-          if (!r.doc_numero || reivindicados.has(k) || numeroDe.has(chave(r))) continue;
-          reivindicados.add(k);
-          numeroDe.set(chave(r), { numero: r.doc_numero, ano: r.doc_ano });
-        }
-      }
-      const donoDoNumero = new Map([...numeroDe].map(([c, n]) => [`${n.ano}|${n.numero}`, c]));
-      const liberar = regsBanco.filter((e) => {
-        const c = chave({ ...e, vigencia_de: dataLocal(e.vigencia_de) });
-        const meu = numeroDe.get(c);
-        if (meu) return e.doc_numero !== meu.numero || e.doc_ano !== meu.ano; // vai receber o número da planilha
-        return e.doc_numero && donoDoNumero.has(`${e.doc_ano}|${e.doc_numero}`); // ocupa o número de outra linha da planilha
-      });
-      // Treinamentos que já estão no sistema: os dados vêm da planilha (cada campo preenchido nela substitui o do sistema)
-      const CAMPOS_PLANILHA = CAMPOS.filter((c) => !['matricula', 'vigencia_de'].includes(c));
       const comparavel = (v) => (v instanceof Date ? dataLocal(v) : v ?? '');
-      const atualizar = [];
+      const igual = (a, b2) => String(comparavel(a)) === String(b2 ?? '');
+      // ----- Base de funcionários (APFO + ESCALA): só entra quem é novo ou mudou
+      const colsB = ['matricula', 'nome', 'funcao', 'setor', 'data_admissao', 'situacao', 'possui_cnh', 'cnh_categoria', 'cnh_validade', 'celular', 'cidade', 'escala'];
+      const tiposB = ['text', 'text', 'text', 'text', 'date', 'text', 'bool', 'text', 'text', 'text', 'text', 'text'];
+      const baseBanco = new Map((await db.query('SELECT * FROM trein_base')).rows.map((x) => [x.matricula, x]));
+      const baseNovos = base.filter((x) => !baseBanco.has(x.matricula));
+      const baseAlterados = base.filter((x) => baseBanco.has(x.matricula) && !colsB.every((c) => igual(baseBanco.get(x.matricula)[c], x[c])));
+      const existGest = new Set((await db.query('SELECT matricula FROM trein_gestores')).rows.map((x) => x.matricula));
+
+      // ----- Treinamentos (aba Digitar): cada linha é procurada no sistema pelo Nº DOC + matrícula e, se não achar,
+      // pela matrícula + início da vigência + função de treinamento (sem diferença de acento, maiúscula ou espaços)
+      const regsBanco = (await db.query('SELECT * FROM trein_registros ORDER BY id')).rows;
+      const porChave = new Map();
+      for (const e of regsBanco) if (!porChave.has(chaveTreino(e))) porChave.set(chaveTreino(e), e);
+      const porDoc = new Map(regsBanco.filter((e) => e.doc_numero).map((e) => [`${e.doc_ano}|${e.doc_numero}|${e.matricula}`, e]));
+      const pares = [];
+      const repetidas = [];
       if (comRegistros) {
-        const feitos = new Set();
+        const usados = new Set();
+        const vistas = new Set(); // linhas da própria planilha já vistas (mesma matrícula, início e função)
         for (const r of lidos.registros) {
-          const e = porChave.get(chave(r));
-          if (!e || feitos.has(e.id)) continue;
-          feitos.add(e.id);
-          const campos = {};
-          for (const c of CAMPOS_PLANILHA) {
-            const v = r[c];
-            if (v === null || v === undefined || v === '') continue; // vazio na planilha: mantém o do sistema
-            if (String(comparavel(e[c])) !== String(v)) campos[c] = v;
-          }
-          if (Object.keys(campos).length) atualizar.push({ id: e.id, campos });
+          const k = chaveTreino(r);
+          const e = (r.doc_numero && porDoc.get(`${r.doc_ano}|${r.doc_numero}|${r.matricula}`)) || porChave.get(k);
+          if (vistas.has(k) || (e && usados.has(e.id))) { repetidas.push(r); continue; }
+          vistas.add(k);
+          if (e) usados.add(e.id);
+          pares.push({ r, e: e || null });
         }
       }
-      const vistos = new Set();
-      const novos = comRegistros ? lidos.registros.filter((r) => { const k = chave(r); if (existReg.has(k) || vistos.has(k)) return false; vistos.add(k); return true; }) : [];
+      // Nº DOC: a planilha manda. Cada número fica com a primeira linha que o tem; quem já está no sistema com outro
+      // número passa a ter o da planilha, e quem ocupava um número da planilha recebe o próximo livre do ano.
+      const numeroDoPar = new Map();
+      const donos = new Map();
+      pares.forEach((p, i) => {
+        const k = `${p.r.doc_ano}|${p.r.doc_numero}`;
+        if (!p.r.doc_numero || donos.has(k)) return;
+        donos.set(k, i);
+        numeroDoPar.set(i, { numero: p.r.doc_numero, ano: p.r.doc_ano });
+      });
+      const parDoId = new Map(pares.map((p, i) => [p.e?.id, i]).filter(([id]) => id));
+      const liberar = regsBanco.filter((e) => {
+        const i = parDoId.get(e.id);
+        const meu = i !== undefined ? numeroDoPar.get(i) : null;
+        if (meu) return e.doc_numero !== meu.numero || e.doc_ano !== meu.ano;
+        const dono = donos.get(`${e.doc_ano}|${e.doc_numero}`);
+        return !!e.doc_numero && dono !== undefined && dono !== i;
+      });
+      // Já no sistema: só os campos que mudaram (célula vazia na planilha não apaga o que está no sistema)
+      const CAMPOS_PLANILHA = CAMPOS.filter((c) => c !== 'matricula');
+      const atualizar = [];
+      const novos = [];
+      pares.forEach(({ r, e }, i) => {
+        if (!e) { novos.push({ r, i }); return; }
+        const campos = {};
+        for (const c of CAMPOS_PLANILHA) {
+          const v = r[c];
+          if (v === null || v === undefined || v === '') continue;
+          if (!igual(e[c], v)) campos[c] = v;
+        }
+        if (Object.keys(campos).length) atualizar.push({ e, campos });
+      });
+      const numeroTxt = (e) => (e.doc_numero ? `${e.doc_numero}/${e.doc_ano}` : '');
+      const duplicadosSistema = (await gruposDuplicados(db)).reduce((t, g) => t + g.itens.length - 1, 0);
       const r = {
         arquivo,
-        base: { lidos: base.length, criar: base.filter((b) => !existBase.has(b.matricula)).length, atualizar: base.filter((b) => existBase.has(b.matricula)).length, com_escala: base.filter((b) => b.escala).length },
+        base: { lidos: base.length, criar: baseNovos.length, atualizar: baseAlterados.length, iguais: base.length - baseNovos.length - baseAlterados.length, com_escala: base.filter((x) => x.escala).length },
         gestores: { lidos: gestores.size, criar: [...gestores.keys()].filter((m) => !existGest.has(m)).length },
         registros: comRegistros ? {
-          lidos: lidos.registros.length, criar: novos.length, ja_existentes: lidos.registros.length - novos.length, renumerar: liberar.length, atualizar: atualizar.length, erros: lidos.erros.length, exemplos_erros: lidos.erros.slice(0, 10),
+          lidos: lidos.registros.length, criar: novos.length, atualizar: atualizar.length, iguais: pares.length - novos.length - atualizar.length,
+          repetidas_planilha: repetidas.length, renumerar: liberar.length, erros: lidos.erros.length, exemplos_erros: lidos.erros.slice(0, 10),
+          duplicados_sistema: duplicadosSistema,
+          novos: novos.slice(0, 200).map(({ r: x, i }) => ({ linha: x.linha, matricula: x.matricula, nome: x.nome, funcao_treinamento: x.funcao_treinamento, vigencia_de: x.vigencia_de,
+            numero: numeroDoPar.get(i) ? `${numeroDoPar.get(i).numero}/${numeroDoPar.get(i).ano}` : '' })),
+          alterados: atualizar.slice(0, 200).map(({ e, campos }) => ({ numero: numeroTxt(e), matricula: e.matricula, nome: e.nome,
+            campos: Object.entries(campos).map(([c, v]) => ({ campo: ROTULO_CAMPO[c] || c, de: String(comparavel(e[c])), para: String(v) })) })),
+          repetidas: repetidas.slice(0, 50).map((x) => ({ linha: x.linha, matricula: x.matricula, nome: x.nome, funcao_treinamento: x.funcao_treinamento, vigencia_de: x.vigencia_de })),
         } : null,
       };
       if (!aplicar) return r;
-      const colsB = ['matricula', 'nome', 'funcao', 'setor', 'data_admissao', 'situacao', 'possui_cnh', 'cnh_categoria', 'cnh_validade', 'celular', 'cidade', 'escala'];
-      const tiposB = ['text', 'text', 'text', 'text', 'date', 'text', 'bool', 'text', 'text', 'text', 'text', 'text'];
-      for (let k = 0; k < base.length; k += 1000) {
-        const l = base.slice(k, k + 1000);
+
+      const baseGravar = [...baseNovos, ...baseAlterados];
+      for (let k = 0; k < baseGravar.length; k += 1000) {
+        const l = baseGravar.slice(k, k + 1000);
         await db.query(
           `INSERT INTO trein_base (${colsB.join(', ')}) SELECT * FROM unnest(${colsB.map((c, i) => `$${i + 1}::${tiposB[i]}[]`).join(', ')})
            ON CONFLICT (matricula) DO UPDATE SET ${colsB.slice(1).map((c) => `${c} = EXCLUDED.${c}`).join(', ')}, atualizado_em = now()`,
-          colsB.map((c) => l.map((b) => b[c] ?? null)));
+          colsB.map((c) => l.map((x) => x[c] ?? null)));
       }
       for (const [mat, g] of gestores) {
         await db.query('INSERT INTO trein_gestores (matricula, nome, cargo) VALUES ($1,$2,$3) ON CONFLICT (matricula) DO NOTHING', [mat, g.nome, g.cargo]);
@@ -541,8 +608,8 @@ function criarTreino({ pool }) {
         const cols = [...CAMPOS, 'doc_numero', 'doc_ano'];
         const tipos = cols.map((c) => TIPOS[c] || 'text');
         for (let k = 0; k < novos.length; k += 300) {
-          const l = novos.slice(k, k + 300).map((x) => {
-            const n = numeroDe.get(chave(x)); // número repetido na planilha: fica sem e recebe o próximo livre
+          const l = novos.slice(k, k + 300).map(({ r: x, i }) => {
+            const n = numeroDoPar.get(i); // número repetido na planilha: fica sem e recebe o próximo livre
             return { ...x, vigencia_ate: x.vigencia_ate || somarMeses(x.vigencia_de, 3), situacao: x.situacao || 'TREINANDO', doc_numero: n?.numero ?? null, doc_ano: n?.ano ?? null };
           });
           await db.query(
@@ -551,17 +618,20 @@ function criarTreino({ pool }) {
             [...cols.map((c, i) => l.map((x) => x[c] ?? (tipos[i] === 'text' && !['situacao', 'situacao_funcao'].includes(c) ? '' : null))), arquivo.slice(0, 150), req.usuario.id]);
         }
       }
-      for (const { id, campos } of atualizar) {
+      for (const { e, campos } of atualizar) {
         const cols = Object.keys(campos);
-        await db.query(`UPDATE trein_registros SET ${cols.map((c, i) => `${c} = $${i + 1}`).join(', ')}, atualizado_em = now() WHERE id = $${cols.length + 1}`, [...Object.values(campos), id]);
+        await db.query(`UPDATE trein_registros SET ${cols.map((c, i) => `${c} = $${i + 1}`).join(', ')}, atualizado_em = now() WHERE id = $${cols.length + 1}`, [...Object.values(campos), e.id]);
       }
       for (const e of liberar) {
-        const n = numeroDe.get(chave({ ...e, vigencia_de: dataLocal(e.vigencia_de) }));
+        const n = numeroDoPar.get(parDoId.get(e.id));
         if (n) await db.query('UPDATE trein_registros SET doc_numero = $1, doc_ano = $2 WHERE id = $3', [n.numero, n.ano, e.id]);
       }
       await db.query(SQL_NUMERAR_PENDENTES); // linhas sem Seq./ano (ou com número repetido) recebem os próximos números
       const ajustados = (await db.query('SELECT trein_ajustar_numeracao() AS n')).rows[0].n; // o ano segue a data e cada ano recomeça do 1
-      await auditar(db, req.usuario, 'importar', 'trein_importacao', null, { arquivo, base: base.length, gestores: gestores.size, registros: novos.length, atualizados: atualizar.length, numeracao_ajustada: ajustados });
+      await auditar(db, req.usuario, 'importar', 'trein_importacao', null, {
+        arquivo, base_novos: baseNovos.length, base_alterados: baseAlterados.length, gestores: gestores.size, registros: novos.length, atualizados: atualizar.length,
+        repetidas_planilha: repetidas.length, numeracao_ajustada: ajustados,
+      });
       return { ...r, aplicado: true };
     });
     res.status(aplicar ? 201 : 200).json(resumo);

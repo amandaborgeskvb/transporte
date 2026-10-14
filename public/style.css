@@ -485,6 +485,9 @@ input.doc-ci { font-weight: 700; font-size: 1.05rem; background: var(--card-2); 
 .pl tr.erro td.pl-chk { box-shadow: inset 4px 0 var(--bad); }
 .pl tr.salvo td { background: color-mix(in srgb, #2e9d57 14%, var(--card)); transition: background .6s; }
 .pl tbody tr:hover td.auto { background: var(--hover); }
+.ok-msg { color: var(--ok); background: var(--ok-bg); border-radius: 8px; padding: 8px 12px; font-size: .86rem; margin: 8px 0; }
+.dup-grupo { border-top: 1px solid var(--linha); padding: 8px 0; font-size: .86rem; }
+.dup-grupo ul { margin: 4px 0 0; padding-left: 18px; }
 .tr-auto { border: 1px dashed var(--linha); border-radius: 8px; padding: 10px 12px; margin: 4px 0 12px; }
 
 @media print {
