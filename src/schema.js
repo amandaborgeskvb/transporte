@@ -1,7 +1,8 @@
 // Esquema do banco (idempotente: pode rodar a cada inicialização).
 // Tabelas da v1 (viagens/despesas simples) são renomeadas para *_legado em db.js, sem perder dados.
 
-const PERFIS = ['administrador', 'solicitante', 'aprovador', 'financeiro'];
+// treinamento, gratificacao e contratacao: perfis de um módulo só (veem apenas o próprio módulo e o resumo dele no Início)
+const PERFIS = ['administrador', 'solicitante', 'aprovador', 'financeiro', 'treinamento', 'gratificacao', 'contratacao'];
 
 // Numera, na ordem de lançamento, os treinamentos ainda sem Nº DOC (ano da data do crachá ou, sem ela, do início da vigência)
 const SQL_NUMERAR_TREINO = `
@@ -34,6 +35,9 @@ CREATE TABLE IF NOT EXISTS usuarios (
   token_versao   INTEGER NOT NULL DEFAULT 1,
   criado_em      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Perfis novos (atualiza a lista permitida em bancos já existentes)
+ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_perfil_check;
+ALTER TABLE usuarios ADD CONSTRAINT usuarios_perfil_check CHECK (perfil IN (${PERFIS.map((p) => `'${p}'`).join(', ')}));
 
 CREATE TABLE IF NOT EXISTS motivos_viagem (
   id    SERIAL PRIMARY KEY,

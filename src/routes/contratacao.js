@@ -3,7 +3,7 @@
 const express = require('express');
 const { tx } = require('../db');
 const { wrap, texto, data, idParam, auditar, diff, ehData, round2, moedaCsv, enviarCsv, erro400, erro404 } = require('../util');
-const { exigirPerfil, ADM, FIN } = require('../workflow');
+const { exigirPerfil, ADM, FIN, CON } = require('../workflow');
 const { lerXlsx, MAX_BYTES } = require('../planilha');
 const {
   TURNOS, HORARIOS, JORNADA_PADRAO, formatarDepto, normDepto, lerParametros, lerFichasMala, semAcento,
@@ -20,7 +20,7 @@ const CAMPOS_FICHA = ['data', 'nome', 'funcao_id', 'funcao', 'depto_codigo', 'de
 
 function criarContratacao({ pool }) {
   const router = express.Router();
-  router.use('/contratacao', exigirPerfil(ADM, FIN));
+  router.use('/contratacao', exigirPerfil(ADM, FIN, CON));
 
   const lerDocumento = async (db) => {
     const d = (await db.query('SELECT * FROM documentos_re WHERE codigo = $1', [CODIGO_RE])).rows[0];

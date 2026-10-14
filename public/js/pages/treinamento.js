@@ -65,7 +65,7 @@ const TOPICOS = [
     ],
   },
   {
-    titulo: 'Contratação (Ficha de Informe de Contratação — RE.0150.03)', perfis: ['administrador', 'financeiro'], corpo: () => [
+    titulo: 'Contratação (Ficha de Informe de Contratação — RE.0150.03)', perfis: ['administrador', 'financeiro', 'contratacao'], corpo: () => [
       lista('Primeiro, em **Contratação → Parâmetros**, importe a planilha de controle (.xlsx): as abas Func_salário, Depto e Gerências viram os parâmetros. Marque a opção para trazer também as fichas já preenchidas (aba P_Mala-Direta).',
         'Em **Nova ficha**, digite o nome, escolha a função (o salário vem dela) e o código do departamento (a descrição vem dele); marque o turno (o horário é preenchido) e o tipo de contrato. A prévia do formulário aparece ao lado.',
         'Use **Salvar e nova** para lançar várias pessoas do mesmo contrato em sequência. Para imprimir, abra a ficha ou use **Imprimir fichas** (todas do filtro, uma por página).',
@@ -74,7 +74,7 @@ const TOPICOS = [
     ],
   },
   {
-    titulo: 'Treinamento prático e C.I. do crachá (RE. 0940.02D)', perfis: ['administrador', 'financeiro'], corpo: () => [
+    titulo: 'Treinamento prático e C.I. do crachá (RE. 0940.02D)', perfis: ['administrador', 'financeiro', 'treinamento'], corpo: () => [
       lista('Primeiro, em **Treinamento → Parâmetros**, importe a planilha RE.1005.04 (.xlsx): a aba APFO vira a base (CNH, contato, cidade), a ESCALA e os gestores também. Marque a opção para trazer os treinamentos já lançados (aba Digitar).',
         'Em **Planilha (Digitar)**, preencha como na planilha: digite a matrícula na última linha e as colunas cinza são puxadas; preencha a função de treinamento, o setor da nova função, a vigência e o gestor. Ao sair da linha ela é salva e recebe o **Nº DOC**, o mesmo número da C.I. Marque as linhas e clique em **Imprimir no formulário**.',
         'Se preferir um formulário com a prévia ao lado, use **Novo treinamento (C.I.)**: digite a matrícula: nome, função, setor, admissão, situação, CNH, contato e cidade são puxados. Preencha a **nova função** e o **setor da nova função**, o início da vigência (o fim vem com +3 meses) e escolha o **gestor responsável** (nome e função vêm da matrícula).',
@@ -86,7 +86,7 @@ const TOPICOS = [
     ],
   },
   {
-    titulo: 'Gratificação rescisória', perfis: ['administrador', 'financeiro'], corpo: () => [
+    titulo: 'Gratificação rescisória', perfis: ['administrador', 'financeiro', 'gratificacao'], corpo: () => [
       lista('Todo mês, em **Gratificação rescisória → Valores mensais**, faça a carga do arquivo (Excel ou CSV) com **Matrícula, BPP, Produtividade e Mês** — pode ser a própria planilha (a aba GRAT abre sozinha). Sem a coluna Mês, escolha o mês de referência. Confira em **Médias (3 meses)**.',
         'Em **Ocorrências**, envie o arquivo exportado do controle de notificações (Data, Mat-Func, Penalid Notific…): a prévia mostra o que entra e reenviar não duplica. Também dá para lançar uma ocorrência à mão.',
         'Em **Apuração → Nova apuração**, escolha o funcionário, o tipo de rescisão, a data (o formulário mostra na hora o **período de gratificação**: do dia 16 do mês anterior até a rescisão), o **turno** (A, B ou C) e a **escala de folga** (letra A–F, domingo ou 5×2): os dias trabalhados do ciclo são contados pelo calendário de folgas, como na aba BD. O sistema faz a média dos 3 meses, tira os dias das ocorrências, calcula o proporcional (÷ 25) e aplica os percentuais das ocorrências: **motoristas e operadores** na produtividade, **demais funções** no BPP. Se houver aviso (ocorrência fora do período, desconto que mudou de componente, função não classificada), leia antes de pagar.',
@@ -107,10 +107,11 @@ const TOPICOS = [
 
 export default async function treinamento({ usuario }) {
   const meus = TOPICOS.filter((t) => t.perfis.includes(usuario.perfil));
-  const outros = TOPICOS.filter((t) => !t.perfis.includes(usuario.perfil));
+  const soUmModulo = ['treinamento', 'gratificacao', 'contratacao'].includes(usuario.perfil); // não usam os outros módulos
+  const outros = soUmModulo ? [] : TOPICOS.filter((t) => !t.perfis.includes(usuario.perfil));
   const bloco = (t, aberto) => h('details', { class: 'treino', open: aberto }, h('summary', {}, t.titulo), h('div', { class: 'treino-corpo' }, t.corpo()));
   return [
-    cabecalhoPagina({ migalhas: [['Operação'], ['Treinamento']], titulo: 'Treinamento', sub: `Passo a passo do sistema — perfil: ${rotulo(usuario.perfil)}` }),
+    cabecalhoPagina({ migalhas: [['Configurações'], ['Guia do sistema']], titulo: 'Guia do sistema', sub: `Passo a passo do sistema — perfil: ${rotulo(usuario.perfil)}` }),
     secao('Para o seu perfil', null, ...meus.map((t, i) => bloco(t, i === 0))),
     outros.length ? secao('Outros tópicos', null, ...outros.map((t) => bloco(t, false))) : null,
   ].filter(Boolean);

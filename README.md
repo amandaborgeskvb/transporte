@@ -20,7 +20,7 @@ PostgreSQL como banco. Sem etapa de build e sem frameworks de interface.
 | **Importação** | Carga e atualização do cadastro de funcionários por até 3 arquivos do ERP (Ativos, Afastados, Demitidos), com situação, prévia, histórico e relatório |
 | **Relatórios** | Filtros por período, funcionário, setor, motivo, destino, status, categoria e prestação; exportação em CSV |
 | **Cadastros** | Funcionários, motivos de viagem, status, categorias de despesa e formas de pagamento |
-| **Usuários e perfis** | Login individual e quatro perfis de acesso; no menu, **Usuários e perfis** (lista e edição) e **Criar usuário** (abre direto o cadastro: nome, login, perfil, funcionário vinculado e senha inicial). A **tela de login** tem o painel da marca **CTT - TRANSPORTE** e a logo da CRV Industrial, com mostrar/ocultar senha e aviso de Caps Lock. |
+| **Usuários e perfis** | Login individual e sete perfis de acesso: Administrador, Solicitante, Aprovador e Financeiro, mais três **perfis de um módulo só** — **Treinamento**, **Gratificação** e **Contratação** — que veem apenas o próprio módulo (menu, telas e API) e, no Início, só o resumo dele (sem viagens, descontos, cadastros ou usuários); no menu, **Usuários e perfis** (lista e edição) e **Criar usuário** (abre direto o cadastro: nome, login, perfil, funcionário vinculado e senha inicial). A **tela de login** tem o painel da marca **CTT - TRANSPORTE** e a logo da CRV Industrial, com mostrar/ocultar senha e aviso de Caps Lock. |
 | **Auditoria** | Quem fez o quê e quando (aprovações, pagamentos, alterações), por registro e por viagem |
 
 ## Identidade visual e interface

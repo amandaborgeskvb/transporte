@@ -28,22 +28,25 @@ const guardar = (k, v) => { try { localStorage.setItem(k, v); } catch { /* sem a
 const lembrado = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 
 // ---------- Rotas ----------
+// Perfis que usam o módulo de viagens (os perfis de um módulo só — treinamento, gratificação, contratação — não)
+const VIAGEM = ['administrador', 'solicitante', 'aprovador', 'financeiro'];
+const GESTAO = ['administrador', 'financeiro'];
 const ROTAS = {
   dashboard: { titulo: 'Dashboard', pagina: dashboard },
-  viagens: { titulo: 'Viagens', pagina: (c) => (c.params.length ? detalheViagem(c) : listaViagens(c)), voltar: (c) => (c.params.length ? '#/viagens' : null) },
-  adiantamentos: { titulo: 'Adiantamentos', pagina: adiantamentos },
-  despesas: { titulo: 'Despesas', pagina: despesas },
-  reembolsos: { titulo: 'Reembolsos', pagina: reembolsos },
+  viagens: { titulo: 'Viagens', perfis: VIAGEM, pagina: (c) => (c.params.length ? detalheViagem(c) : listaViagens(c)), voltar: (c) => (c.params.length ? '#/viagens' : null) },
+  adiantamentos: { titulo: 'Adiantamentos', pagina: adiantamentos, perfis: VIAGEM },
+  despesas: { titulo: 'Despesas', pagina: despesas, perfis: VIAGEM },
+  reembolsos: { titulo: 'Reembolsos', pagina: reembolsos, perfis: VIAGEM },
   descontos: {
     titulo: 'Autorizações de desconto', perfis: ['administrador', 'financeiro', 'solicitante'],
     pagina: (c) => (!c.params.length ? listaDescontos(c) : c.params[0] === 'novo' || c.params[1] === 'editar' ? formDesconto(c) : detalheDesconto(c)),
     voltar: (c) => (c.params.length ? '#/descontos' : null),
   },
-  contratacao: { titulo: 'Contratação', pagina: contratacao, perfis: ['administrador', 'financeiro'], voltar: (c) => (c.params[0] === 'fichas' && c.params.length > 1 ? '#/contratacao/fichas' : null) },
-  gratificacao: { titulo: 'Gratificação rescisória', pagina: gratificacao, perfis: ['administrador', 'financeiro'], voltar: (c) => (c.params.length > 1 ? `#/gratificacao/${c.params[0]}` : null) },
-  treino: { titulo: 'Treinamento prático', pagina: treino, perfis: ['administrador', 'financeiro'], voltar: (c) => (c.params[0] === 'registros' && c.params.length > 1 ? '#/treino/registros' : null) },
+  contratacao: { titulo: 'Contratação', pagina: contratacao, perfis: [...GESTAO, 'contratacao'], voltar: (c) => (c.params[0] === 'fichas' && c.params.length > 1 ? '#/contratacao/fichas' : null) },
+  gratificacao: { titulo: 'Gratificação rescisória', pagina: gratificacao, perfis: [...GESTAO, 'gratificacao'], voltar: (c) => (c.params.length > 1 ? `#/gratificacao/${c.params[0]}` : null) },
+  treino: { titulo: 'Treinamento prático', pagina: treino, perfis: [...GESTAO, 'treinamento'], voltar: (c) => (c.params[0] === 'registros' && c.params.length > 1 ? '#/treino/registros' : null) },
   treinamento: { titulo: 'Guia do sistema', pagina: treinamento },
-  relatorios: { titulo: 'Relatório de viagem', pagina: relatorios },
+  relatorios: { titulo: 'Relatório de viagem', pagina: relatorios, perfis: VIAGEM },
   cadastros: { titulo: 'Cadastros', pagina: cadastrosPagina, perfis: ADMIN, voltar: () => '#/dashboard' },
   importacao: { titulo: 'Importação de funcionários', pagina: importacao, perfis: ADMIN, voltar: () => '#/dashboard' },
   usuarios: { titulo: 'Usuários e perfis', pagina: usuarios, perfis: ADMIN, voltar: (c) => (c.params.length ? '#/usuarios' : '#/dashboard') },
@@ -55,7 +58,7 @@ const MENU = [
   { rota: 'dashboard', titulo: 'Início / Dashboard', icone: 'dashboard' },
   { grupo: 'Operação' },
   {
-    rota: 'viagem', titulo: 'Viagem', icone: 'viagem',
+    rota: 'viagem', titulo: 'Viagem', icone: 'viagem', perfis: VIAGEM,
     filhos: [
       { rota: 'viagens', href: '#/viagens', titulo: 'Programação de viagens' },
       { rota: 'adiantamentos', href: '#/adiantamentos', titulo: 'Adiantamentos' },
@@ -66,7 +69,7 @@ const MENU = [
     ],
   },
   {
-    rota: 'gratificacao', titulo: 'Gratificação rescisória', icone: 'carteira', perfis: ['administrador', 'financeiro'],
+    rota: 'gratificacao', titulo: 'Gratificação rescisória', icone: 'carteira', perfis: [...GESTAO, 'gratificacao'],
     filhos: [
       { href: '#/gratificacao/apuracao', titulo: 'Apuração', prefixo: true },
       { href: '#/gratificacao/valores', titulo: 'Valores mensais', prefixo: true },
@@ -81,7 +84,7 @@ const MENU = [
     ],
   },
   {
-    rota: 'contratacao', titulo: 'Contratação', icone: 'documento', perfis: ['administrador', 'financeiro'],
+    rota: 'contratacao', titulo: 'Contratação', icone: 'documento', perfis: [...GESTAO, 'contratacao'],
     filhos: [
       { href: '#/contratacao/fichas', titulo: 'Fichas de contratação', prefixo: true },
       { href: '#/contratacao/nova', titulo: 'Nova ficha (RE.0150.03)', prefixo: true },
@@ -90,13 +93,13 @@ const MENU = [
     ],
   },
   {
-    rota: 'treino', titulo: 'Treinamento', icone: 'calendario', perfis: ['administrador', 'financeiro'],
+    rota: 'treino', titulo: 'Treinamento', icone: 'calendario', perfis: [...GESTAO, 'treinamento'],
     filhos: [
-      { href: '#/treino/planilha', titulo: 'Planilha (Digitar)', prefixo: true, perfis: ['administrador', 'financeiro'] },
-      { href: '#/treino/registros', titulo: 'Treinamentos práticos', prefixo: true, perfis: ['administrador', 'financeiro'] },
-      { href: '#/treino/novo', titulo: 'Novo treinamento (C.I.)', prefixo: true, perfis: ['administrador', 'financeiro'] },
-      { href: '#/treino/relatorio', titulo: 'Relatório', prefixo: true, perfis: ['administrador', 'financeiro'] },
-      { href: '#/treino/parametros', titulo: 'Parâmetros', prefixo: true, perfis: ['administrador', 'financeiro'] },
+      { href: '#/treino/planilha', titulo: 'Planilha (Digitar)', prefixo: true, perfis: [...GESTAO, 'treinamento'] },
+      { href: '#/treino/registros', titulo: 'Treinamentos práticos', prefixo: true, perfis: [...GESTAO, 'treinamento'] },
+      { href: '#/treino/novo', titulo: 'Novo treinamento (C.I.)', prefixo: true, perfis: [...GESTAO, 'treinamento'] },
+      { href: '#/treino/relatorio', titulo: 'Relatório', prefixo: true, perfis: [...GESTAO, 'treinamento'] },
+      { href: '#/treino/parametros', titulo: 'Parâmetros', prefixo: true, perfis: [...GESTAO, 'treinamento'] },
     ],
   },
   { grupo: 'Configurações' },
@@ -204,7 +207,7 @@ function montarBusca() {
     if (m.filhos?.some((f) => f.rota)) return filhos.map((f) => ({ titulo: f.titulo, href: f.href, icone: m.icone, sub: `Tela · ${m.titulo}` })); // grupo de telas
     return [{ titulo: m.titulo, href: `#/${m.rota}`, icone: m.icone, sub: 'Tela' }, ...filhos.map((f) => ({ titulo: `${m.titulo} › ${f.titulo}`, href: f.href, icone: m.icone, sub: 'Cadastro' }))];
   });
-  const campo = h('input', { type: 'search', placeholder: 'Buscar tela ou viagem', 'aria-label': 'Buscar tela ou viagem', autocomplete: 'off', role: 'combobox', 'aria-expanded': 'false' });
+  const campo = h('input', { type: 'search', placeholder: permitido(VIAGEM) ? 'Buscar tela ou viagem' : 'Buscar tela', 'aria-label': permitido(VIAGEM) ? 'Buscar tela ou viagem' : 'Buscar tela', autocomplete: 'off', role: 'combobox', 'aria-expanded': 'false' });
   const caixa = h('div', { class: 'campo' }, icone('buscar'), campo, h('kbd', {}, 'Ctrl K'));
   const lista = h('div', { class: 'busca-lista', role: 'listbox', hidden: true });
   let itens = [];
@@ -236,7 +239,7 @@ function montarBusca() {
     itens = telasFiltradas;
     foco = 0;
     desenhar();
-    if (q.length < 2) return;
+    if (q.length < 2 || !permitido(VIAGEM)) return; // perfis de um módulo só não buscam viagens
     const minha = ++seq;
     try {
       const viagens = await get(`/viagens?q=${encodeURIComponent(q)}`);

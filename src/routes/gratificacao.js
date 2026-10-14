@@ -7,7 +7,7 @@ const { tx } = require('../db');
 const {
   wrap, texto, data, idParam, inteiro, opcaoDe, auditar, diff, ehData, round2, moedaCsv, enviarCsv, erro400, erro404, erro409,
 } = require('../util');
-const { exigirPerfil, ADM, FIN } = require('../workflow');
+const { exigirPerfil, ADM, FIN, GRA } = require('../workflow');
 const { abrirPlanilha, MAX_BYTES } = require('../planilha');
 const {
   calcular, sugerirColunas, lerValores, lerOcorrencias, normMatricula, semAcento, CAMPOS_VALORES, CAMPOS_OCORRENCIAS, ESCALAS, ALVOS_DESCONTO,
@@ -34,7 +34,7 @@ const TURNOS = ['A', 'B', 'C'];
 
 function criarGratificacao({ pool }) {
   const router = express.Router();
-  router.use('/gratificacao', exigirPerfil(ADM, FIN));
+  router.use('/gratificacao', exigirPerfil(ADM, FIN, GRA));
 
   // ================= Parâmetros =================
   const lerConfig = async (db) => (await db.query('SELECT * FROM grat_config WHERE id = 1')).rows[0];

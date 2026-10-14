@@ -6,6 +6,11 @@ const ADM = 'administrador';
 const SOL = 'solicitante';
 const APR = 'aprovador';
 const FIN = 'financeiro';
+// Perfis de um módulo só: a rota da API que cada um pode usar
+const TRE = 'treinamento';
+const GRA = 'gratificacao';
+const CON = 'contratacao';
+const MODULO_DO_PERFIL = { [TRE]: '/treino', [GRA]: '/gratificacao', [CON]: '/contratacao' };
 const VE_TUDO = [ADM, APR, FIN];
 
 const exigirPerfil = (...perfis) => (req, _res, next) =>
@@ -109,8 +114,18 @@ function acoesReembolso(u, r, v) {
   return out;
 }
 
+// Perfis de um módulo só: além do próprio módulo, só a sessão (/me), as pendências e a leitura dos cadastros
+function restringirModulo(req, _res, next) {
+  const prefixo = MODULO_DO_PERFIL[req.usuario?.perfil];
+  if (!prefixo) return next();
+  const p = req.path;
+  const livre = p === '/me' || p === '/me/senha' || p === '/pendencias' || (req.method === 'GET' && p.startsWith('/cadastros/'));
+  if (livre || p === prefixo || p.startsWith(`${prefixo}/`) || p.startsWith(`${prefixo}.`)) return next();
+  return next(erro403());
+}
+
 module.exports = {
-  ADM, SOL, APR, FIN, VE_TUDO, TRANSICOES, STATUS_FINANCEIRO,
+  ADM, SOL, APR, FIN, TRE, GRA, CON, MODULO_DO_PERFIL, restringirModulo, VE_TUDO, TRANSICOES, STATUS_FINANCEIRO,
   exigirPerfil, escopoSql, ehDono, carregarViagem, podeTransicao, podeLancar, podeAnalisar, prestacaoAberta,
   acoesViagem, acoesAdiantamento, acoesDespesa, acoesReembolso,
 };

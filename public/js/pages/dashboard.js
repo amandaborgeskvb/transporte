@@ -193,35 +193,43 @@ function moduloTreinamento(p) {
 }
 
 export default async function dashboard({ query, ir, usuario }) {
-  const gestor = GESTAO.includes(usuario?.perfil);
+  const perfil = usuario?.perfil;
+  const gestor = GESTAO.includes(perfil);
+  const viagens = ['administrador', 'solicitante', 'aprovador', 'financeiro'].includes(perfil);
+  // perfis de um módulo só veem o resumo do próprio módulo
+  const ve = { descontos: gestor, gratificacao: gestor || perfil === 'gratificacao', contratacao: gestor || perfil === 'contratacao', treino: gestor || perfil === 'treinamento' };
+  const outros = ve.gratificacao || ve.contratacao || ve.treino;
   const anoAtual = new Date().getFullYear();
   const ano = /^\d{4}$/.test(query.ano || '') ? query.ano : String(anoAtual);
   const qv = new URLSearchParams(Object.fromEntries(Object.entries(query).filter(([k]) => ['de', 'ate'].includes(k)))).toString();
-  const opcional = (url) => (gestor ? get(url).catch(() => null) : null);
+  const se = (cond, url) => (cond ? get(url).catch(() => null) : null);
   const [d, pendencias, c, desc, grat, contr, trein] = await Promise.all([
-    get(`/dashboard${qv ? `?${qv}` : ''}`), get('/pendencias'), cadastros(),
-    opcional(`/descontos/painel?ano=${ano}`), opcional(`/gratificacao/painel?ano=${ano}`), opcional(`/contratacao/painel?ano=${ano}`), opcional(`/treino/relatorio?ano=${ano}`),
+    viagens ? get(`/dashboard${qv ? `?${qv}` : ''}`) : null, get('/pendencias').catch(() => []), viagens ? cadastros() : null,
+    se(ve.descontos, `/descontos/painel?ano=${ano}`), se(ve.gratificacao, `/gratificacao/painel?ano=${ano}`), se(ve.contratacao, `/contratacao/painel?ano=${ano}`), se(ve.treino, `/treino/relatorio?ano=${ano}`),
   ]);
+  const cartoes = [
+    d ? moduloViagens(d, c, query) : null,
+    desc ? moduloDescontos(desc) : null,
+    grat ? moduloGratificacao(grat) : null,
+    contr ? moduloContratacao(contr) : null,
+    trein ? moduloTreinamento(trein) : null,
+  ].filter(Boolean);
+  const sub = cartoes.length > 1 ? 'Resumo de cada módulo do sistema: clique em um cartão para ver os gráficos' : 'Clique no cartão para ver os gráficos do resumo';
 
   return [
-    cabecalhoPagina({ migalhas: [['Início', '#/dashboard'], ['Dashboard']], titulo: 'Início', sub: gestor ? 'Resumo de cada módulo do sistema: clique em um cartão para ver os gráficos' : 'Resumo de viagens, adiantamentos, despesas e reembolsos: clique no cartão para ver os gráficos' }),
+    cabecalhoPagina({ migalhas: [['Início', '#/dashboard'], ['Dashboard']], titulo: 'Início', sub }),
     barraFiltros([
-      { nome: 'de', rotulo: 'Viagens: saída de', tipo: 'date' },
-      { nome: 'ate', rotulo: 'até', tipo: 'date' },
-      gestor ? { nome: 'ano', rotulo: 'Ano dos demais módulos', tipo: 'select', semVazio: true, opcoes: [anoAtual + 1, anoAtual, anoAtual - 1, anoAtual - 2].map((a) => ({ valor: a, rotulo: a })) } : null,
+      viagens ? { nome: 'de', rotulo: 'Viagens: saída de', tipo: 'date' } : null,
+      viagens ? { nome: 'ate', rotulo: 'até', tipo: 'date' } : null,
+      outros ? { nome: 'ano', rotulo: viagens ? 'Ano dos demais módulos' : 'Ano', tipo: 'select', semVazio: true, opcoes: [anoAtual + 1, anoAtual, anoAtual - 1, anoAtual - 2].map((a) => ({ valor: a, rotulo: a })) } : null,
     ].filter(Boolean), { ...query, ano }, (v) => ir('#/dashboard', v)),
 
-    pendencias.length
+    pendencias?.length
       ? secao('Pendências para você', null, h('div', { class: 'pendencias' }, pendencias.map((p) =>
         h('a', { class: 'pendencia', href: p.link }, h('strong', {}, p.qtd), h('span', {}, p.rotulo), p.valor ? h('small', {}, brl(p.valor)) : null))))
       : null,
 
-    h('h3', { class: 'grupo' }, 'Resumo do sistema'),
-    h('div', { class: 'mod-grade' },
-      moduloViagens(d, c, query),
-      desc ? moduloDescontos(desc) : null,
-      grat ? moduloGratificacao(grat) : null,
-      contr ? moduloContratacao(contr) : null,
-      trein ? moduloTreinamento(trein) : null),
+    h('h3', { class: 'grupo' }, cartoes.length > 1 ? 'Resumo do sistema' : 'Resumo'),
+    h('div', { class: 'mod-grade' }, ...cartoes),
   ];
 }

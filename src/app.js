@@ -1,6 +1,7 @@
 const path = require('path');
 const express = require('express');
 const { criarAuth } = require('./auth');
+const { restringirModulo } = require('./workflow');
 const { ErroHttp, wrap } = require('./util');
 const { criarCadastros } = require('./routes/cadastros');
 const { criarViagens } = require('./routes/viagens');
@@ -54,6 +55,7 @@ function criarApp({ pool, secret, secure = false }) {
 
   const api = express.Router();
   api.use(auth.autenticar);
+  api.use(restringirModulo); // perfis de um módulo só não usam as outras rotas
   api.use(criarCadastros({ pool }));
   api.use(criarViagens({ pool }));
   api.use(criarLancamentos({ pool }));

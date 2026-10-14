@@ -3,7 +3,7 @@
 const express = require('express');
 const { tx } = require('../db');
 const { wrap, texto, data, idParam, auditar, diff, ehData, enviarCsv, erro400, erro404 } = require('../util');
-const { exigirPerfil, ADM, FIN } = require('../workflow');
+const { exigirPerfil, ADM, FIN, TRE } = require('../workflow');
 const { lerXlsx, MAX_BYTES } = require('../planilha');
 const {
   SITUACOES, SITUACOES_FUNCAO, MESES, somarMeses, derivados, normMatricula, lerBase, lerEscala, lerRegistros, semAcento,
@@ -34,7 +34,7 @@ const TIPOS = {
 
 function criarTreino({ pool }) {
   const router = express.Router();
-  router.use('/treino', exigirPerfil(ADM, FIN));
+  router.use('/treino', exigirPerfil(ADM, FIN, TRE));
 
   const lerConfig = async (db) => (await db.query('SELECT * FROM trein_config WHERE id = 1')).rows[0];
   const lerDocumento = async (db) => {
