@@ -557,15 +557,20 @@ CREATE INDEX IF NOT EXISTS trein_registros_ate_idx ON trein_registros (vigencia_
 CREATE UNIQUE INDEX IF NOT EXISTS trein_registros_doc_idx ON trein_registros (doc_ano, doc_numero) WHERE doc_numero IS NOT NULL;
 -- Nº DOC (Seq./ano) para todo treinamento, como na planilha: numera os que ficaram sem número
 ${SQL_NUMERAR_TREINO};
--- Numeração correta do Nº DOC: o ano é o da data do crachá (sem ela, o do início da vigência) e cada ano recomeça do 1.
--- Quem já está numerado naquele ano mantém a ordem; quem vem de outro ano (ou sem número) entra depois, pela data.
+-- Numeração correta do Nº DOC: o ano é o da data do crachá (sem ela, o do início da vigência), cada ano recomeça do 1
+-- e a ordem é a da data (no mesmo dia, mantém a ordem do número atual).
 CREATE OR REPLACE VIEW trein_numeracao_correta AS
 SELECT id, doc_ano, doc_numero, ano, n::int AS n FROM (
   SELECT id, doc_ano, doc_numero, ano, row_number() OVER (PARTITION BY ano
-           ORDER BY COALESCE(doc_ano = ano AND doc_numero IS NOT NULL, false) DESC, CASE WHEN doc_ano = ano THEN doc_numero END, dref, id) AS n
+           ORDER BY dref, CASE WHEN doc_ano = ano THEN doc_numero END NULLS LAST, id) AS n
   FROM (SELECT id, doc_ano, doc_numero, COALESCE(data_cracha, vigencia_de) AS dref, extract(year FROM COALESCE(data_cracha, vigencia_de))::int AS ano
         FROM trein_registros) b
 ) x;
+-- Chave do "mesmo treinamento": matrícula + início da vigência + função de treinamento (sem acento, maiúscula ou espaços a mais)
+CREATE OR REPLACE FUNCTION trein_chave(mat text, vig date, func text) RETURNS text LANGUAGE sql IMMUTABLE AS $f$
+  SELECT regexp_replace(trim(mat), '^0+(?=[0-9])', '') || '|' || vig::text || '|' ||
+         regexp_replace(trim(upper(translate(func, 'áàâãäéèêëíìîïóòôõöúùûüçÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇ', 'aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUC'))), '[[:space:]]+', ' ', 'g')
+$f$;
 -- Aplica a numeração correta; devolve quantos treinamentos mudaram de número
 CREATE OR REPLACE FUNCTION trein_ajustar_numeracao() RETURNS integer LANGUAGE plpgsql AS $f$
 DECLARE qtd integer;
@@ -581,6 +586,7 @@ BEGIN
   RETURN qtd;
 END $f$;
 ALTER TABLE trein_config ADD COLUMN IF NOT EXISTS numeracao_por_ano BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE trein_config ADD COLUMN IF NOT EXISTS limpeza_duplicados BOOLEAN NOT NULL DEFAULT false;
 
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,
@@ -642,11 +648,16 @@ VALUES ('RE. 0940.02D', 'COMUNICAÇÃO INTERNA (C.I)', 'Sistema de Gestão Integ
         'CRV INDUSTRIAL LTDA', 'Ipiaçu-MG')
 ON CONFLICT (codigo) DO NOTHING;
 INSERT INTO trein_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
--- Uma vez: acerta o Nº DOC dos treinamentos já no sistema (o ano segue a data e cada ano recomeça do 1)
+-- Uma vez: tira os treinamentos repetidos (mesma matrícula, início e função; fica o mais atualizado) e refaz o Nº DOC
+-- de todos pela data (cada ano recomeça do 1)
 DO $$ BEGIN
-  IF EXISTS (SELECT 1 FROM trein_config WHERE id = 1 AND NOT numeracao_por_ano) THEN
+  IF EXISTS (SELECT 1 FROM trein_config WHERE id = 1 AND NOT limpeza_duplicados) THEN
+    DELETE FROM trein_registros r USING (
+      SELECT id, row_number() OVER (PARTITION BY trein_chave(matricula, vigencia_de, funcao_treinamento) ORDER BY atualizado_em DESC, id) AS rn
+      FROM trein_registros
+    ) d WHERE r.id = d.id AND d.rn > 1;
     PERFORM trein_ajustar_numeracao();
-    UPDATE trein_config SET numeracao_por_ano = true WHERE id = 1;
+    UPDATE trein_config SET limpeza_duplicados = true, numeracao_por_ano = true WHERE id = 1;
   END IF;
 END $$;
 -- Assinaturas fixas da C.I. (a do gestor responsável vem do treinamento); editáveis em Treinamento prático → Parâmetros

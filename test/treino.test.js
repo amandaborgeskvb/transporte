@@ -95,16 +95,16 @@ test('importação da planilha: prévia, aplicação sem repetir e números de C
   assert.deepEqual(previa.corpo.base, { lidos: 3, criar: 3, atualizar: 0, iguais: 0, com_escala: 1 });
   assert.deepEqual(previa.corpo.gestores, { lidos: 1, criar: 1 });
   assert.deepEqual([previa.corpo.registros.lidos, previa.corpo.registros.criar, previa.corpo.registros.repetidas_planilha, previa.corpo.registros.erros], [4, 3, 1, 1]);
-  assert.deepEqual(previa.corpo.registros.novos.map((x) => [x.matricula, x.numero]), [['7001', '1/2025'], ['1', '2/2025'], ['9001', '']]);
+  assert.deepEqual(previa.corpo.registros.novos.map((x) => x.matricula), ['7001', '1', '9001']);
   assert.equal((await davi.get('/api/treino/parametros')).corpo.base.n, 0); // a prévia não grava
 
   const ok = await importar(davi, 'registros=1&aplicar=1');
   assert.equal(ok.status, 201);
-  // carga anterior com outro número: reimportar volta ao Nº DOC da planilha
+  // número fora da regra: a importação refaz o Nº DOC pela data
   await t.pool.query("UPDATE trein_registros SET doc_numero = doc_numero + 50 WHERE matricula = '1'");
   const de2 = await importar(davi, 'registros=1&aplicar=1');
   assert.equal(de2.corpo.registros.criar, 0);
-  assert.equal(de2.corpo.registros.renumerar, 1);
+  assert.equal(de2.corpo.numeracao_ajustada, 1);
   assert.equal(de2.corpo.registros.atualizar, 0); // nada mudou na planilha
   // alterado no sistema: reimportar traz de volta os dados da planilha (campos vazios na planilha não apagam)
   await t.pool.query("UPDATE trein_registros SET situacao_funcao = 'RENOVADO', gestor_nome = 'Outro', cursos = 'NR-12' WHERE matricula = '7001'");
@@ -128,17 +128,18 @@ test('importação da planilha: prévia, aplicação sem repetir e números de C
   assert.equal((await t.pool.query('SELECT count(*)::int AS n FROM trein_registros')).rows[0].n, 3);
   assert.equal((await importar(davi, 'registros=1')).corpo.registros.atualizar, 0);
 
-  // duplicado lançado no sistema: aparece na verificação e pode ser excluído (fica o primeiro lançado)
+  // duplicado lançado no sistema: aparece na verificação e pode ser excluído (fica o mais atualizado)
   const dup = await davi.post('/api/treino/registros', { matricula: '1', funcao_treinamento: 'Motorista  Carreta', setor_nova: 'TRANSPORTE', vigencia_de: '2025-09-01' });
   assert.equal(dup.status, 201);
   assert.equal((await importar(davi, 'registros=1')).corpo.registros.duplicados_sistema, 1);
   const vd = (await davi.get('/api/treino/duplicados')).corpo;
   assert.equal(vd.excedentes, 1);
   assert.equal(vd.grupos[0].itens.length, 2);
-  assert.notEqual(vd.grupos[0].manter, dup.corpo.id);
+  assert.equal(vd.grupos[0].manter, dup.corpo.id);
+  const original = vd.grupos[0].itens.find((x) => x.id !== dup.corpo.id).id;
   assert.equal((await ana.req('POST', '/api/treino/duplicados/remover', {})).status, 403);
   assert.equal((await davi.post('/api/treino/duplicados/remover', {})).corpo.excluidos, 1);
-  assert.equal((await davi.get(`/api/treino/registros/${dup.corpo.id}`)).status, 404);
+  assert.equal((await davi.get(`/api/treino/registros/${original}`)).status, 404);
   assert.equal((await davi.get('/api/treino/duplicados')).corpo.excedentes, 0);
 
   const { itens } = (await davi.get('/api/treino/registros')).corpo;
@@ -147,15 +148,14 @@ test('importação da planilha: prévia, aplicação sem repetir e números de C
   assert.deepEqual([sem.numero_doc, sem.status, sem.mes_vencimento, sem.situacao2, sem.funcao_para_treinamento, sem.situacao_atual],
     ['1/2025', '2025-09-06', 'SET', 'TREINADO', 'OPERADOR MAQ. AGR. II(TRATOR TRANSBORDO)', 'AFASTADO']);
   const ana1 = itens.find((r) => r.matricula === '1');
-  assert.equal(ana1.numero_doc, '2/2025'); // sem Nº DOC na planilha: Seq./ano
-  // número repetido (1/2025): recebe o próximo do ano; a ordem da planilha é a do Nº DOC
+  assert.equal(ana1.numero_doc, '2/2025');
+  // Nº DOC pela data: 7001 (crachá 05/06), matrícula 1 (início 01/09), 9001 (início 01/10)
   assert.deepEqual((await davi.get('/api/treino/registros?ordem=doc&doc_ano=2025')).corpo.itens.map((r) => [r.matricula, r.numero_doc]), [['7001', '1/2025'], ['1', '2/2025'], ['9001', '3/2025']]);
   assert.equal(ana1.vigencia_ate, '2025-12-01'); // sem fim na planilha: início + 3 meses
   const p = (await davi.get('/api/treino/parametros')).corpo;
   assert.deepEqual(p.gestores.map((g) => [g.matricula, g.nome, g.cargo]), [['9001', 'Gestor Teste', 'COORDENADOR AGRÍCOLA']]);
 
-  // a planilha manda no Nº DOC: linhas novas no meio da sequência ficam com o número da planilha,
-  // e quem ocupava esses números (lançado no sistema ou numerado antes) vai para o próximo livre do ano
+  // linhas novas na planilha: entram e o Nº DOC de todos é refeito pela data (lançado no sistema também)
   const dig = await davi.post('/api/treino/registros', { matricula: '1', funcao_treinamento: 'AJUDANTE', setor_nova: 'OFICINA', vigencia_de: '2025-11-10' });
   const num = async (id) => (await davi.get(`/api/treino/registros/${id}`)).corpo.numero_doc;
   assert.equal(await num(dig.corpo.id), '4/2025');
@@ -164,10 +164,10 @@ test('importação da planilha: prévia, aplicação sem repetir e números de C
     { 'Matrícula': 9001, 'Função de Treinamento': 'MOTORISTA', 'Setor-Função-Nova': 'CANAVIEIRO', 'Periodo de vigência de:': '04/11/2025', 'Seq.': 4, 'ano': 2025 },
   ];
   const de3 = await importar(davi, 'registros=1&aplicar=1', extras);
-  assert.deepEqual([de3.corpo.registros.criar, de3.corpo.registros.renumerar], [2, 2]);
+  assert.deepEqual([de3.corpo.registros.criar, de3.corpo.numeracao_ajustada], [2, 3]);
   const seq = (await davi.get('/api/treino/registros?ordem=doc&doc_ano=2025')).corpo.itens.map((r) => [r.matricula, r.funcao_treinamento, r.numero_doc]);
-  assert.deepEqual(seq, [['7001', 'OPERADOR MAQ. AGR. II', '1/2025'], ['1', 'MOTORISTA CARRETA', '2/2025'], ['7001', 'MOTORISTA', '3/2025'], ['9001', 'MOTORISTA', '4/2025'],
-    ['9001', 'LIDER', '5/2025'], ['1', 'AJUDANTE', '6/2025']]);
+  assert.deepEqual(seq, [['7001', 'OPERADOR MAQ. AGR. II', '1/2025'], ['1', 'MOTORISTA CARRETA', '2/2025'], ['9001', 'LIDER', '3/2025'], ['7001', 'MOTORISTA', '4/2025'],
+    ['9001', 'MOTORISTA', '5/2025'], ['1', 'AJUDANTE', '6/2025']]);
   for (const r of (await davi.get('/api/treino/registros?doc_ano=2025')).corpo.itens.filter((x) => ['MOTORISTA', 'AJUDANTE'].includes(x.funcao_treinamento))) {
     await davi.del(`/api/treino/registros/${r.id}`);
   }
@@ -277,7 +277,7 @@ test('gestores: a matrícula puxa nome e função do cadastro', async () => {
   assert.equal((await admin.del('/api/treino/gestores/2')).status, 204);
 });
 
-test('numeração: cada ano recomeça do 1 e o ano segue a data (480/2025 → 1/2026)', async () => {
+test('numeração: pela data, cada ano recomeça do 1 (480/2025 → 1/2026)', async () => {
   await davi.post('/api/treino/numeracao/ajustar', {}); // fecha as lacunas deixadas pelas exclusões dos testes anteriores
   const cria = async (vig, cracha) => (await davi.post('/api/treino/registros', { matricula: '1', funcao_treinamento: 'MOTORISTA', setor_nova: 'NUMERACAO', vigencia_de: vig, data_cracha: cracha })).corpo.id;
   const a = await cria('2027-12-20', '2027-12-28');
@@ -292,11 +292,28 @@ test('numeração: cada ano recomeça do 1 e o ano segue a data (480/2025 → 1/
   await t.pool.query('UPDATE trein_registros SET doc_numero = 482, doc_ano = 2028 WHERE id = $1', [c]);
   const v = (await davi.get('/api/treino/numeracao')).corpo;
   assert.equal(v.mudar, 3);
-  assert.deepEqual(v.exemplos.map((x) => [x.de, x.para]), [['480/2027', '1/2027'], ['482/2028', '1/2028'], ['481/2027', '2/2028']]);
+  assert.deepEqual(v.exemplos.map((x) => [x.de, x.para]), [['480/2027', '1/2027'], ['481/2027', '1/2028'], ['482/2028', '2/2028']]);
   assert.equal((await ana.req('POST', '/api/treino/numeracao/ajustar', {})).status, 403);
   assert.equal((await davi.post('/api/treino/numeracao/ajustar', {})).corpo.ajustados, 3);
-  assert.deepEqual([await num(a), await num(b), await num(c)], ['1/2027', '2/2028', '1/2028']);
+  assert.deepEqual([await num(a), await num(b), await num(c)], ['1/2027', '1/2028', '2/2028']); // b (crachá 06/01) antes de c (início 10/01)
   assert.equal((await davi.get('/api/treino/numeracao')).corpo.mudar, 0);
   assert.equal((await t.pool.query('SELECT numeracao_por_ano FROM trein_config')).rows[0].numeracao_por_ano, true);
   for (const id of [a, b, c]) await davi.del(`/api/treino/registros/${id}`);
+});
+
+test('limpeza na atualização: tira os repetidos (fica o mais atualizado) e refaz o Nº DOC pela data', async () => {
+  const { migrate } = require('../src/db');
+  const cria = async (vig, func) => (await davi.post('/api/treino/registros', { matricula: '1', funcao_treinamento: func, setor_nova: 'LIMPEZA', vigencia_de: vig })).corpo.id;
+  const a1 = await cria('2029-03-10', 'MOTORISTA III');
+  const b1 = await cria('2029-02-01', 'OPERADOR');
+  const a2 = await cria('2029-03-10', 'motorista  iii'); // repetido de a1 (outro número), mais atualizado
+  await t.pool.query("UPDATE trein_registros SET atualizado_em = now() + interval '1 minute', cursos = 'NR-31' WHERE id = $1", [a2]);
+  await t.pool.query('UPDATE trein_config SET limpeza_duplicados = false');
+  await migrate(t.pool);
+  const { rows } = await t.pool.query("SELECT id, doc_numero || '/' || doc_ano AS doc, cursos FROM trein_registros WHERE setor_nova = 'LIMPEZA' ORDER BY doc_numero");
+  assert.deepEqual(rows.map((x) => [x.id, x.doc]), [[b1, '1/2029'], [a2, '2/2029']]);
+  assert.equal(rows[1].cursos, 'NR-31');
+  assert.equal((await t.pool.query('SELECT 1 FROM trein_registros WHERE id = $1', [a1])).rowCount, 0);
+  assert.equal((await t.pool.query('SELECT limpeza_duplicados FROM trein_config')).rows[0].limpeza_duplicados, true);
+  for (const id of [b1, a2]) await davi.del(`/api/treino/registros/${id}`);
 });

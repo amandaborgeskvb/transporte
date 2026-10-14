@@ -746,7 +746,7 @@ function cartaoImportacao(p, { aoImportar, comTreinamentos = false }) {
         const r = await enviarArquivo('/treino/importar', arquivo, q);
         const linha = (t, lidos, novos, alterados, iguais, obs) => h('tr', {}, h('td', {}, t), ...[lidos, novos, alterados, iguais].map((v) => h('td', { class: 'num' }, v == null ? '—' : fmt(v))), h('td', {}, obs || ''));
         const g = r.registros;
-        const nada = !r.base.criar && !r.base.atualizar && !r.gestores.criar && (!g || (!g.criar && !g.atualizar && !g.renumerar));
+        const nada = !r.base.criar && !r.base.atualizar && !r.gestores.criar && (!g || (!g.criar && !g.atualizar));
         const detalhe = (titulo, itens, desenhar) => (itens?.length ? h('details', { class: 'imp-motivo' }, h('summary', {}, titulo), h('ul', {}, itens.map(desenhar))) : null);
         cartao.replaceChildren(...[
           h('div', { class: 'card-topo' }, h('h2', {}, `Prévia: ${r.arquivo}`)),
@@ -757,9 +757,9 @@ function cartaoImportacao(p, { aoImportar, comTreinamentos = false }) {
               linha('APFO (base de funcionários: CNH, contato, cidade)', r.base.lidos, r.base.criar, r.base.atualizar, r.base.iguais, `${fmt(r.base.com_escala)} com escala`),
               linha('Gestores (da aba Digitar)', r.gestores.lidos, r.gestores.criar, null, r.gestores.lidos - r.gestores.criar, 'os já cadastrados não mudam'),
               g ? linha('Digitar (treinamentos)', g.lidos, g.criar, g.atualizar, g.iguais,
-                [g.repetidas_planilha ? `${fmt(g.repetidas_planilha)} repetidas na planilha (ignoradas)` : '', g.renumerar ? `${fmt(g.renumerar)} com o Nº DOC corrigido` : '', g.erros ? `${fmt(g.erros)} com erro` : ''].filter(Boolean).join(' · ')) : null))),
+                [g.repetidas_planilha ? `${fmt(g.repetidas_planilha)} repetidas na planilha (ignoradas)` : '', g.erros ? `${fmt(g.erros)} com erro` : ''].filter(Boolean).join(' · ')) : null))),
           nada ? h('p', { class: 'ok-msg' }, 'Nada novo nem alterado: o sistema já está igual à planilha.') : null,
-          g ? detalhe(`Novos treinamentos (${fmt(g.criar)})`, g.novos, (x) => h('li', {}, `${x.numero ? `${x.numero} · ` : ''}${x.matricula} - ${x.nome} · ${x.funcao_treinamento} · início ${dataBR(x.vigencia_de)} (linha ${x.linha})`)) : null,
+          g ? detalhe(`Novos treinamentos (${fmt(g.criar)}) — o Nº DOC é dado pela data ao importar`, g.novos, (x) => h('li', {}, `${x.matricula} - ${x.nome} · ${x.funcao_treinamento} · início ${dataBR(x.vigencia_de)} (linha ${x.linha})`)) : null,
           g ? detalhe(`Treinamentos alterados (${fmt(g.atualizar)})`, g.alterados, (x) => h('li', {}, h('strong', {}, `${x.numero ? `${x.numero} · ` : ''}${x.matricula} - ${x.nome}`),
             h('ul', {}, x.campos.map((c) => h('li', {}, `${c.campo}: `, h('s', { class: 'muted' }, c.de || '(vazio)'), ' → ', h('b', {}, c.para)))))) : null,
           g ? detalhe(`Linhas repetidas na planilha (${fmt(g.repetidas_planilha)}) — não entram`, g.repetidas, (x) => h('li', {}, `Linha ${x.linha}: ${x.matricula} - ${x.nome} · ${x.funcao_treinamento} · início ${dataBR(x.vigencia_de)}`)) : null,
@@ -769,7 +769,7 @@ function cartaoImportacao(p, { aoImportar, comTreinamentos = false }) {
             botao('Importar', async () => {
               try {
                 const f = await enviarArquivo('/treino/importar', arquivo, { ...q, aplicar: '1' });
-                toast(f.registros ? `Planilha importada: ${fmt(f.registros.criar)} novos e ${fmt(f.registros.atualizar)} alterados.` : 'Planilha importada.');
+                toast(f.registros ? `Planilha importada: ${fmt(f.registros.criar)} novos, ${fmt(f.registros.atualizar)} alterados${f.numeracao_ajustada ? ` e ${fmt(f.numeracao_ajustada)} com o Nº DOC refeito pela data` : ''}.` : 'Planilha importada.');
                 aoImportar();
               } catch (e) { toast(e.message, 'erro'); }
             }, { icone: 'ok' })),
@@ -835,7 +835,7 @@ async function parametros({ recarregarPagina }) {
     const v = await get('/treino/numeracao');
     if (!v.mudar) { toast('A numeração já está certa: cada ano começa do 1 e o ano segue a data.'); return; }
     const lista = h('ul', { class: 'pequeno' }, v.exemplos.map((x) => h('li', {}, `${x.de} → ${x.para} · ${x.matricula} - ${x.nome}`)), v.mudar > v.exemplos.length ? h('li', { class: 'muted' }, `… e mais ${fmt(v.mudar - v.exemplos.length)}`) : null);
-    const ok = await confirmar('Ajustar a numeração do Nº DOC', h('div', {}, h('p', {}, `${fmt(v.mudar)} treinamento${v.mudar === 1 ? '' : 's'} vão mudar de número para seguir a regra: o ano é o da data do crachá (sem ela, o do início da vigência) e cada ano recomeça do 1.`), lista), { rotulo: 'Ajustar' });
+    const ok = await confirmar('Ajustar a numeração do Nº DOC', h('div', {}, h('p', {}, `${fmt(v.mudar)} treinamento${v.mudar === 1 ? '' : 's'} vão mudar de número para seguir a regra: numeração pela data do crachá (sem ela, a do início da vigência), recomeçando do 1 a cada ano.`), lista), { rotulo: 'Ajustar' });
     if (!ok) return;
     const r = await post('/treino/numeracao/ajustar', {});
     toast(`Numeração ajustada: ${fmt(r.ajustados)} treinamento${r.ajustados === 1 ? '' : 's'}.`);
@@ -850,7 +850,7 @@ async function parametros({ recarregarPagina }) {
       h('ul', {}, g.itens.map((x) => h('li', {}, x.id === g.manter ? h('b', {}, 'Fica: ') : h('span', { class: 'erro' }, 'Sai: '),
         `${x.numero_doc || 'sem nº'} · ${x.origem} · ${x.situacao || ''}${x.situacao_funcao ? ` · ${x.situacao_funcao}` : ''} `, h('a', { href: `#/treino/registros/${x.id}` }, 'abrir')))))));
     const ok = await confirmar('Treinamentos em duplicidade', h('div', {},
-      h('p', {}, `${fmt(d.grupos.length)} treinamento${d.grupos.length === 1 ? '' : 's'} lançado${d.grupos.length === 1 ? '' : 's'} mais de uma vez (mesma matrícula, início da vigência e função). Fica o primeiro lançado de cada um e ${fmt(d.excedentes)} repetido${d.excedentes === 1 ? '' : 's'} ${d.excedentes === 1 ? 'é excluído' : 'são excluídos'}; a numeração do ano é acertada em seguida. Para escolher outro, abra e exclua à mão.`), lista),
+      h('p', {}, `${fmt(d.grupos.length)} treinamento${d.grupos.length === 1 ? '' : 's'} lançado${d.grupos.length === 1 ? '' : 's'} mais de uma vez (mesma matrícula, início da vigência e função). Fica o mais atualizado de cada um e ${fmt(d.excedentes)} repetido${d.excedentes === 1 ? '' : 's'} ${d.excedentes === 1 ? 'é excluído' : 'são excluídos'}; em seguida o Nº DOC é refeito pela data (cada ano recomeça do 1). Para escolher outro, abra e exclua à mão.`), lista),
     { rotulo: `Excluir ${fmt(d.excedentes)} repetido${d.excedentes === 1 ? '' : 's'}`, perigo: true });
     if (!ok) return;
     const r = await post('/treino/duplicados/remover', {});
@@ -859,10 +859,10 @@ async function parametros({ recarregarPagina }) {
   };
   const cartaoDuplicados = h('div', { class: 'card' }, h('div', { class: 'card-topo' }, h('h2', {}, 'Duplicados'),
     h('div', { class: 'acoes' }, botao('Verificar duplicados', verDuplicados, { tom: 'sec', icone: 'buscar' }))),
-  h('p', { class: 'muted pequeno' }, 'Procura o mesmo treinamento lançado mais de uma vez: mesma matrícula, mesmo início da vigência e mesma função de treinamento (sem diferença de acento, maiúscula ou espaços). A importação já não cria repetidos: cada linha da planilha é achada pelo Nº DOC ou por esses dados, e só entram as novas e as alteradas.'));
+  h('p', { class: 'muted pequeno' }, 'Procura o mesmo treinamento lançado mais de uma vez: mesma matrícula, mesmo início da vigência e mesma função de treinamento (sem diferença de acento, maiúscula ou espaços). A importação não cria repetidos: cada linha da planilha é achada por esses dados (ou pelo Nº DOC, se a data ou a função mudaram), e só entram as novas e as alteradas.'));
   const cartaoNumeracao = h('div', { class: 'card' }, h('div', { class: 'card-topo' }, h('h2', {}, 'Numeração do Nº DOC (C.I. DEST)'),
     h('div', { class: 'acoes' }, botao('Verificar e ajustar', ajustarNumeracao, { tom: 'sec', icone: 'ok' }))),
-  h('p', { class: 'muted pequeno' }, 'O número da C.I. recomeça do 1 a cada ano: se o último de 2025 for 480/2025, o primeiro de 2026 é 1/2026. O ano é o da data de confecção do crachá (sem ela, o do início da vigência). A importação da planilha já aplica esta regra; use o botão para conferir e acertar os que estão no sistema.'));
+  h('p', { class: 'muted pequeno' }, 'O número da C.I. segue a data e recomeça do 1 a cada ano: se o último de 2025 for 480/2025, o primeiro de 2026 é 1/2026. A data é a de confecção do crachá (sem ela, a do início da vigência); no mesmo dia, mantém a ordem atual. A importação da planilha já refaz a numeração assim; use o botão para conferir e acertar os que estão no sistema.'));
 
   return [
     cabecalhoPagina({ migalhas: [...BASE, ['Parâmetros']], titulo: 'Parâmetros do treinamento prático', sub: 'Vigência, textos e assinaturas da C.I. do crachá, gestores responsáveis e carga da planilha' }),

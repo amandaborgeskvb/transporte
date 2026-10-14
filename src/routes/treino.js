@@ -19,7 +19,6 @@ const ROTULO_CAMPO = {
   remetente: 'Remetente', gestor_matricula: 'Matrícula do gestor', gestor_nome: 'Gestor', gestor_funcao: 'Função do gestor', contato: 'Contato',
   cidade: 'Cidade', escala: 'Escala', situacao: 'Situação', situacao_funcao: 'Situação da função', data_cracha: 'Data do crachá',
 };
-const { SQL_NUMERAR_TREINO: SQL_NUMERAR_PENDENTES } = require('../schema');
 const { gerarPdfSituacao } = require('../treinoPdf');
 const bool = (v) => v === true || v === 'true' || v === 1 || v === '1';
 const triBool = (v) => (v === true || v === 'true' || v === 'sim' ? true : v === false || v === 'false' || v === 'nao' ? false : null);
@@ -439,13 +438,15 @@ function criarTreino({ pool }) {
 
   // ================= Duplicados =================
   // Mesmo treinamento lançado mais de uma vez: mesma matrícula, mesmo início da vigência e mesma função de treinamento
-  // (sem diferença de acento, maiúscula ou espaços). Fica o primeiro lançado; os outros podem ser excluídos.
+  // (sem diferença de acento, maiúscula ou espaços). Fica o mais atualizado; os outros podem ser excluídos.
   async function gruposDuplicados(db) {
     const { rows } = await db.query(
-      `SELECT id, matricula, nome, funcao_treinamento, setor_nova, vigencia_de, vigencia_ate, doc_numero, doc_ano, origem, situacao, situacao_funcao, criado_em
-       FROM trein_registros ORDER BY id`);
+      `SELECT id, matricula, nome, funcao_treinamento, setor_nova, vigencia_de, vigencia_ate, doc_numero, doc_ano, origem, situacao, situacao_funcao,
+              trein_chave(matricula, vigencia_de, funcao_treinamento) AS chave
+       FROM trein_registros ORDER BY trein_chave(matricula, vigencia_de, funcao_treinamento), atualizado_em DESC, id`);
     const m = new Map();
-    for (const x of rows) { const k = chaveTreino(x); if (!m.has(k)) m.set(k, []); m.get(k).push(x); }
+    for (const x of rows) { if (!m.has(x.chave)) m.set(x.chave, []); m.get(x.chave).push(x); }
+    // fica o mais atualizado de cada grupo (o primeiro da ordem acima)
     return [...m.values()].filter((l) => l.length > 1).map((l) => ({
       manter: l[0].id,
       itens: l.map((x) => ({ id: x.id, matricula: x.matricula, nome: x.nome, funcao_treinamento: x.funcao_treinamento, setor_nova: x.setor_nova,
@@ -457,7 +458,7 @@ function criarTreino({ pool }) {
     const grupos = await gruposDuplicados(pool);
     res.json({ grupos, excedentes: grupos.reduce((t, g) => t + g.itens.length - 1, 0) });
   }));
-  // Exclui os repetidos (mantém o primeiro lançado de cada grupo) e acerta a numeração
+  // Exclui os repetidos (mantém o mais atualizado de cada grupo) e refaz a numeração pela data
   router.post('/treino/duplicados/remover', wrap(async (req, res) => {
     const r = await tx(pool, async (db) => {
       await db.query('LOCK TABLE trein_registros IN SHARE ROW EXCLUSIVE MODE');
@@ -530,41 +531,33 @@ function criarTreino({ pool }) {
       const pares = [];
       const repetidas = [];
       if (comRegistros) {
+        // 1º pela chave (matrícula + início + função); 2º, para quem não achou, pelo Nº DOC + matrícula (data ou função mudaram na planilha)
+        const vistas = new Set(); // linhas da própria planilha já vistas
         const usados = new Set();
-        const vistas = new Set(); // linhas da própria planilha já vistas (mesma matrícula, início e função)
+        const linhas = [];
         for (const r of lidos.registros) {
           const k = chaveTreino(r);
-          const e = (r.doc_numero && porDoc.get(`${r.doc_ano}|${r.doc_numero}|${r.matricula}`)) || porChave.get(k);
-          if (vistas.has(k) || (e && usados.has(e.id))) { repetidas.push(r); continue; }
+          if (vistas.has(k)) { repetidas.push(r); continue; }
           vistas.add(k);
+          const e = porChave.get(k) || null;
           if (e) usados.add(e.id);
-          pares.push({ r, e: e || null });
+          linhas.push({ r, e });
+        }
+        for (const l of linhas) {
+          if (!l.e && l.r.doc_numero) {
+            const e = porDoc.get(`${l.r.doc_ano}|${l.r.doc_numero}|${l.r.matricula}`);
+            if (e && !usados.has(e.id)) { usados.add(e.id); l.e = e; }
+          }
+          pares.push(l);
         }
       }
-      // Nº DOC: a planilha manda. Cada número fica com a primeira linha que o tem; quem já está no sistema com outro
-      // número passa a ter o da planilha, e quem ocupava um número da planilha recebe o próximo livre do ano.
-      const numeroDoPar = new Map();
-      const donos = new Map();
-      pares.forEach((p, i) => {
-        const k = `${p.r.doc_ano}|${p.r.doc_numero}`;
-        if (!p.r.doc_numero || donos.has(k)) return;
-        donos.set(k, i);
-        numeroDoPar.set(i, { numero: p.r.doc_numero, ano: p.r.doc_ano });
-      });
-      const parDoId = new Map(pares.map((p, i) => [p.e?.id, i]).filter(([id]) => id));
-      const liberar = regsBanco.filter((e) => {
-        const i = parDoId.get(e.id);
-        const meu = i !== undefined ? numeroDoPar.get(i) : null;
-        if (meu) return e.doc_numero !== meu.numero || e.doc_ano !== meu.ano;
-        const dono = donos.get(`${e.doc_ano}|${e.doc_numero}`);
-        return !!e.doc_numero && dono !== undefined && dono !== i;
-      });
+      // O Nº DOC é refeito pela data depois de gravar (cada ano recomeça do 1); o número da planilha só ajuda a achar a linha
       // Já no sistema: só os campos que mudaram (célula vazia na planilha não apaga o que está no sistema)
       const CAMPOS_PLANILHA = CAMPOS.filter((c) => c !== 'matricula');
       const atualizar = [];
       const novos = [];
-      pares.forEach(({ r, e }, i) => {
-        if (!e) { novos.push({ r, i }); return; }
+      pares.forEach(({ r, e }) => {
+        if (!e) { novos.push({ r }); return; }
         const campos = {};
         for (const c of CAMPOS_PLANILHA) {
           const v = r[c];
@@ -581,10 +574,9 @@ function criarTreino({ pool }) {
         gestores: { lidos: gestores.size, criar: [...gestores.keys()].filter((m) => !existGest.has(m)).length },
         registros: comRegistros ? {
           lidos: lidos.registros.length, criar: novos.length, atualizar: atualizar.length, iguais: pares.length - novos.length - atualizar.length,
-          repetidas_planilha: repetidas.length, renumerar: liberar.length, erros: lidos.erros.length, exemplos_erros: lidos.erros.slice(0, 10),
+          repetidas_planilha: repetidas.length, erros: lidos.erros.length, exemplos_erros: lidos.erros.slice(0, 10),
           duplicados_sistema: duplicadosSistema,
-          novos: novos.slice(0, 200).map(({ r: x, i }) => ({ linha: x.linha, matricula: x.matricula, nome: x.nome, funcao_treinamento: x.funcao_treinamento, vigencia_de: x.vigencia_de,
-            numero: numeroDoPar.get(i) ? `${numeroDoPar.get(i).numero}/${numeroDoPar.get(i).ano}` : '' })),
+          novos: novos.slice(0, 200).map(({ r: x }) => ({ linha: x.linha, matricula: x.matricula, nome: x.nome, funcao_treinamento: x.funcao_treinamento, vigencia_de: x.vigencia_de })),
           alterados: atualizar.slice(0, 200).map(({ e, campos }) => ({ numero: numeroTxt(e), matricula: e.matricula, nome: e.nome,
             campos: Object.entries(campos).map(([c, v]) => ({ campo: ROTULO_CAMPO[c] || c, de: String(comparavel(e[c])), para: String(v) })) })),
           repetidas: repetidas.slice(0, 50).map((x) => ({ linha: x.linha, matricula: x.matricula, nome: x.nome, funcao_treinamento: x.funcao_treinamento, vigencia_de: x.vigencia_de })),
@@ -603,15 +595,11 @@ function criarTreino({ pool }) {
       for (const [mat, g] of gestores) {
         await db.query('INSERT INTO trein_gestores (matricula, nome, cargo) VALUES ($1,$2,$3) ON CONFLICT (matricula) DO NOTHING', [mat, g.nome, g.cargo]);
       }
-      if (liberar.length) await db.query('UPDATE trein_registros SET doc_numero = NULL, doc_ano = NULL WHERE id = ANY($1)', [liberar.map((e) => e.id)]);
       if (novos.length) {
-        const cols = [...CAMPOS, 'doc_numero', 'doc_ano'];
+        const cols = [...CAMPOS];
         const tipos = cols.map((c) => TIPOS[c] || 'text');
         for (let k = 0; k < novos.length; k += 300) {
-          const l = novos.slice(k, k + 300).map(({ r: x, i }) => {
-            const n = numeroDoPar.get(i); // número repetido na planilha: fica sem e recebe o próximo livre
-            return { ...x, vigencia_ate: x.vigencia_ate || somarMeses(x.vigencia_de, 3), situacao: x.situacao || 'TREINANDO', doc_numero: n?.numero ?? null, doc_ano: n?.ano ?? null };
-          });
+          const l = novos.slice(k, k + 300).map(({ r: x }) => ({ ...x, vigencia_ate: x.vigencia_ate || somarMeses(x.vigencia_de, 3), situacao: x.situacao || 'TREINANDO' }));
           await db.query(
             `INSERT INTO trein_registros (${cols.join(', ')}, origem, criado_por)
              SELECT u.*, $${cols.length + 1}, $${cols.length + 2} FROM unnest(${cols.map((c, i) => `$${i + 1}::${tipos[i]}[]`).join(', ')}) AS u(${cols.join(', ')})`,
@@ -622,17 +610,12 @@ function criarTreino({ pool }) {
         const cols = Object.keys(campos);
         await db.query(`UPDATE trein_registros SET ${cols.map((c, i) => `${c} = $${i + 1}`).join(', ')}, atualizado_em = now() WHERE id = $${cols.length + 1}`, [...Object.values(campos), e.id]);
       }
-      for (const e of liberar) {
-        const n = numeroDoPar.get(parDoId.get(e.id));
-        if (n) await db.query('UPDATE trein_registros SET doc_numero = $1, doc_ano = $2 WHERE id = $3', [n.numero, n.ano, e.id]);
-      }
-      await db.query(SQL_NUMERAR_PENDENTES); // linhas sem Seq./ano (ou com número repetido) recebem os próximos números
-      const ajustados = (await db.query('SELECT trein_ajustar_numeracao() AS n')).rows[0].n; // o ano segue a data e cada ano recomeça do 1
+      const ajustados = (await db.query('SELECT trein_ajustar_numeracao() AS n')).rows[0].n; // Nº DOC pela data; cada ano recomeça do 1
       await auditar(db, req.usuario, 'importar', 'trein_importacao', null, {
         arquivo, base_novos: baseNovos.length, base_alterados: baseAlterados.length, gestores: gestores.size, registros: novos.length, atualizados: atualizar.length,
         repetidas_planilha: repetidas.length, numeracao_ajustada: ajustados,
       });
-      return { ...r, aplicado: true };
+      return { ...r, aplicado: true, numeracao_ajustada: ajustados };
     });
     res.status(aplicar ? 201 : 200).json(resumo);
   }));
