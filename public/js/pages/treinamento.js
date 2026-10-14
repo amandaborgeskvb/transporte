@@ -86,6 +86,16 @@ const TOPICOS = [
     ],
   },
   {
+    titulo: 'Acompanhamento de ônibus', perfis: ['administrador', 'financeiro', 'onibus'], corpo: () => [
+      lista('Primeiro, cadastre em **Ônibus → Frota** os ônibus (prefixo, placa, lugares e o vencimento do licenciamento, tacógrafo, vistoria e seguro) e em **Linhas** os trajetos com os horários e o km previstos.',
+        'Em **Acompanhamento do dia**, programe as viagens com **Nova viagem** (ao escolher a linha, os horários previstos vêm dela) ou use **Copiar programação de outro dia** para repetir a escala de ontem.',
+        'Quando o ônibus sair, clique em **Saída** na linha da viagem (a hora atual já vem preenchida; informe o km do hodômetro). Na chegada, clique em **Chegada** e informe o km final e os passageiros.',
+        'Saída mais de 10 minutos depois do previsto conta como atraso; viagem de hoje que passou do horário e ainda não saiu aparece como **não saiu**. O km rodado, o tempo de viagem e a ocupação são calculados.',
+        'Registre em **Ocorrências** atrasos, quebras, acidentes, reclamações e superlotação; acompanhe as abertas e marque como **resolvida** com a solução.'),
+      dica('Documentos vencidos ou que vencem em até 30 dias aparecem no acompanhamento do dia e no Início. Em **Viagens**, filtre por período, ônibus, linha ou situação e exporte para o Excel.'),
+    ],
+  },
+  {
     titulo: 'Gratificação rescisória', perfis: ['administrador', 'financeiro', 'gratificacao'], corpo: () => [
       lista('Todo mês, em **Gratificação rescisória → Valores mensais**, faça a carga do arquivo (Excel ou CSV) com **Matrícula, BPP, Produtividade e Mês** — pode ser a própria planilha (a aba GRAT abre sozinha). Sem a coluna Mês, escolha o mês de referência. Confira em **Médias (3 meses)**.',
         'Em **Ocorrências**, envie o arquivo exportado do controle de notificações (Data, Mat-Func, Penalid Notific…): a prévia mostra o que entra e reenviar não duplica. Também dá para lançar uma ocorrência à mão.',
@@ -107,7 +117,7 @@ const TOPICOS = [
 
 export default async function treinamento({ usuario }) {
   const meus = TOPICOS.filter((t) => t.perfis.includes(usuario.perfil));
-  const soUmModulo = ['treinamento', 'gratificacao', 'contratacao'].includes(usuario.perfil); // não usam os outros módulos
+  const soUmModulo = ['treinamento', 'gratificacao', 'contratacao', 'onibus'].includes(usuario.perfil); // não usam os outros módulos
   const outros = soUmModulo ? [] : TOPICOS.filter((t) => !t.perfis.includes(usuario.perfil));
   const bloco = (t, aberto) => h('details', { class: 'treino', open: aberto }, h('summary', {}, t.titulo), h('div', { class: 'treino-corpo' }, t.corpo()));
   return [

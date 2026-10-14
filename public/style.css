@@ -709,3 +709,16 @@ html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
   .demo-tab tr { break-inside: avoid; }
   .demo-tab th, .demo-tab tr.subtotal td, .demo-tab tr.total td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* ---------- Acompanhamento de ônibus ---------- */
+.oni-dia-nav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.oni-dia-nav input[type=date] { width: auto; }
+.oni-hora { display: flex; flex-direction: column; gap: 1px; line-height: 1.25; white-space: nowrap; }
+.oni-hora small { font-size: .78rem; }
+.oni-hora .badge { align-self: flex-start; }
+.oni-atraso { color: var(--bad); }
+.oni-acoes { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
+.oni-alertas { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 6px; }
+.oni-alertas li { line-height: 1.4; }
+.oni-docs { display: flex; flex-wrap: wrap; gap: 4px; }
+.oni-docs .badge { white-space: nowrap; }

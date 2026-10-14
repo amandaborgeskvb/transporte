@@ -192,20 +192,58 @@ function moduloTreinamento(p) {
   });
 }
 
+// ---------- Acompanhamento de ônibus ----------
+function moduloOnibus(p) {
+  const series = [{ k: 'no_horario', nome: 'No horário', cor: COR[2] }, { k: 'atrasadas', nome: 'Atrasadas', cor: COR[3] },
+    { k: 'sem_horario', nome: 'Sem horário previsto', cor: COR[1] }, { k: 'canceladas', nome: 'Canceladas', cor: COR.sem }];
+  const meses = p.meses.map((m) => ({ ...m, sem_horario: Math.max(0, m.viagens - m.no_horario - m.atrasadas) }));
+  const serieKm = { k: 'km', nome: 'Km rodados', cor: 'var(--serie-1)' };
+  const ocorr = [{ k: 'aberta', nome: 'Em aberto', cor: COR[3] }, { k: 'resolvida', nome: 'Resolvidas', cor: COR[2] }];
+  const TIPO = { atraso: 'Atraso', quebra: 'Quebra / pane', acidente: 'Acidente', reclamacao: 'Reclamação', superlotacao: 'Superlotação', limpeza: 'Limpeza', outro: 'Outro' };
+  const porTipo = p.por_tipo.filter((t) => t.aberta + t.resolvida).sort((a, b) => b.aberta + b.resolvida - a.aberta - a.resolvida)
+    .map((t) => ({ nome: TIPO[t.tipo] || t.tipo, valores: { aberta: t.aberta, resolvida: t.resolvida }, total: t.aberta + t.resolvida }));
+  const dataBr = (iso) => iso.split('-').reverse().join('/');
+  const corpo = () => [
+    kpis(
+      kpi(`Viagens em ${p.ano}`, fmt(p.viagens), { icone: 'onibus', sub: p.canceladas ? `${fmt(p.canceladas)} cancelada${p.canceladas === 1 ? '' : 's'}` : null }),
+      kpi('Pontualidade na saída', pct(p.pontualidade), { icone: 'relogio', tom: p.pontualidade == null ? 'neutro' : p.pontualidade >= 90 ? 'ok' : 'alerta', sub: 'até 10 min do previsto' }),
+      kpi('Passageiros', fmt(p.passageiros), { icone: 'usuarios' }),
+      kpi('Km rodados', fmt(p.km), { icone: 'viagem', tom: 'neutro' }),
+      kpi('Ocorrências em aberto', fmt(p.ocorrencias_abertas), { icone: 'alerta', tom: p.ocorrencias_abertas ? 'alerta' : 'neutro', sub: `${fmt(p.ocorrencias)} no ano`, link: '#/onibus/ocorrencias?situacao=aberta' }),
+      kpi('Documentos da frota', fmt(p.documentos_alerta), { icone: 'documento', tom: p.documentos_alerta ? 'alerta' : 'ok', sub: `vencidos ou vencendo · ${fmt(p.frota.ativos)} ônibus ativos`, link: '#/onibus/frota' })),
+    secao(`Viagens por mês — ${p.ano}`, null, legendaSeries(series), colunasAno(meses, series, p.ano, { aria: `Viagens de ônibus por mês em ${p.ano}` })),
+    grade(
+      secao(`Km rodados por mês — ${p.ano}`, null, colunasAno(meses, [serieKm], p.ano, { aria: `Km rodados por mês em ${p.ano}`, largura: 560 })),
+      secao('Km por ônibus', null, barras(p.por_onibus.map((o) => ({ ...o, extra: `${fmt(o.viagens)} viage${o.viagens === 1 ? 'm' : 'ns'}` })), serieKm, { vazioMsg: 'Sem viagens no ano.' }))),
+    grade(
+      secao('Ocorrências por tipo', null, legendaSeries(ocorr), barrasEmpilhadas(porTipo, ocorr, { vazioMsg: 'Sem ocorrências no ano.' })),
+      secao('Documentos vencidos ou vencendo', null, p.alertas.length
+        ? h('ul', { class: 'oni-alertas' }, p.alertas.map((a) => h('li', {}, h('strong', {}, `${a.prefixo} · ${a.placa}`), ` — ${a.documento}: ${a.situacao === 'vencido' ? 'venceu' : 'vence'} em ${dataBr(a.vencimento)}`)))
+        : h('p', { class: 'muted vazio' }, 'Todos os documentos da frota em dia.'))),
+  ];
+  return cartao({
+    titulo: 'Acompanhamento de ônibus', nomeIcone: 'onibus', principal: fmt(p.viagens), rotulo: `viage${p.viagens === 1 ? 'm' : 'ns'} em ${p.ano}`,
+    linhas: [['Pontualidade', pct(p.pontualidade)], ['Ocorrências em aberto', fmt(p.ocorrencias_abertas)], ['Documentos a vencer', fmt(p.documentos_alerta)]],
+    tom: p.ocorrencias_abertas || p.documentos_alerta ? 'atencao' : '', serie: { valores: p.meses.map((m) => m.viagens), destaque: mesAtual() }, legendaSerie: `viagens por mês em ${p.ano}`,
+    abrir: () => abrirModal({ titulo: 'Acompanhamento de ônibus', sub: `Viagens, pontualidade, ocorrências e frota em ${p.ano}`, nomeIcone: 'onibus', corpo: corpo(), link: { href: '#/onibus/dia', rotulo: 'Abrir Acompanhamento do dia' } }),
+  });
+}
+
 export default async function dashboard({ query, ir, usuario }) {
   const perfil = usuario?.perfil;
   const gestor = GESTAO.includes(perfil);
   const viagens = ['administrador', 'solicitante', 'aprovador', 'financeiro'].includes(perfil);
   // perfis de um módulo só veem o resumo do próprio módulo
-  const ve = { descontos: gestor, gratificacao: gestor || perfil === 'gratificacao', contratacao: gestor || perfil === 'contratacao', treino: gestor || perfil === 'treinamento' };
-  const outros = ve.gratificacao || ve.contratacao || ve.treino;
+  const ve = { descontos: gestor, gratificacao: gestor || perfil === 'gratificacao', contratacao: gestor || perfil === 'contratacao', treino: gestor || perfil === 'treinamento', onibus: gestor || perfil === 'onibus' };
+  const outros = ve.gratificacao || ve.contratacao || ve.treino || ve.onibus;
   const anoAtual = new Date().getFullYear();
   const ano = /^\d{4}$/.test(query.ano || '') ? query.ano : String(anoAtual);
   const qv = new URLSearchParams(Object.fromEntries(Object.entries(query).filter(([k]) => ['de', 'ate'].includes(k)))).toString();
   const se = (cond, url) => (cond ? get(url).catch(() => null) : null);
-  const [d, pendencias, c, desc, grat, contr, trein] = await Promise.all([
+  const [d, pendencias, c, desc, grat, contr, trein, oni] = await Promise.all([
     viagens ? get(`/dashboard${qv ? `?${qv}` : ''}`) : null, get('/pendencias').catch(() => []), viagens ? cadastros() : null,
     se(ve.descontos, `/descontos/painel?ano=${ano}`), se(ve.gratificacao, `/gratificacao/painel?ano=${ano}`), se(ve.contratacao, `/contratacao/painel?ano=${ano}`), se(ve.treino, `/treino/relatorio?ano=${ano}`),
+    se(ve.onibus, `/onibus/painel?ano=${ano}`),
   ]);
   const cartoes = [
     d ? moduloViagens(d, c, query) : null,
@@ -213,6 +251,7 @@ export default async function dashboard({ query, ir, usuario }) {
     grat ? moduloGratificacao(grat) : null,
     contr ? moduloContratacao(contr) : null,
     trein ? moduloTreinamento(trein) : null,
+    oni ? moduloOnibus(oni) : null,
   ].filter(Boolean);
   const sub = cartoes.length > 1 ? 'Resumo de cada módulo do sistema: clique em um cartão para ver os gráficos' : 'Clique no cartão para ver os gráficos do resumo';
 

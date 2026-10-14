@@ -64,6 +64,7 @@ const ICONES = {
   filtro: '<path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3Z"/>',
   upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
   documento: '<path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/>',
+  onibus: '<path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="16" cy="18" r="2"/>',
   impressora: '<path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/>',
 };
 export function icone(nome, classe = '') {
@@ -81,7 +82,7 @@ export const mesBR = (ym) => { const [a, m] = ym.split('-'); return `${m}/${a}`;
 
 export const ROTULOS = {
   administrador: 'Administrador', solicitante: 'Solicitante', aprovador: 'Aprovador', financeiro: 'Financeiro',
-  treinamento: 'Treinamento', gratificacao: 'Gratificação', contratacao: 'Contratação',
+  treinamento: 'Treinamento', gratificacao: 'Gratificação', contratacao: 'Contratação', onibus: 'Ônibus',
 };
 export const rotulo = (k) => ROTULOS[k] || k;
 
@@ -378,6 +379,8 @@ const EVENTOS = {
   'trocar_senha:usuarios': 'alterou a própria senha',
   'ajustar_numeracao:trein_registro': 'ajustou a numeração do Nº DOC dos treinamentos',
   'remover_duplicados:trein_registro': 'excluiu treinamentos em duplicidade',
+  'saida:onibus_viagem': 'registrou a saída do ônibus', 'chegada:onibus_viagem': 'registrou a chegada do ônibus', 'cancelar:onibus_viagem': 'cancelou a viagem de ônibus',
+  'copiar:onibus_viagem': 'copiou a programação de ônibus de outro dia',
   'importar:importacao_funcionarios': 'importou funcionários de arquivos do ERP',
   'emitir:autorizacao_desconto': 'emitiu a autorização de desconto', 'editar:autorizacao_desconto': 'editou a autorização de desconto',
   'assinar:autorizacao_desconto': 'registrou a assinatura da autorização de desconto', 'concluir:autorizacao_desconto': 'concluiu o desconto em folha',
@@ -386,7 +389,7 @@ const EVENTOS = {
 };
 const ENTIDADES_ROTULO = {
   viagem: 'viagem', adiantamento: 'adiantamento', despesa: 'despesa', reembolso: 'reembolso', usuarios: 'usuário', funcionarios: 'funcionário',
-  motivos_viagem: 'motivo de viagem', autorizacao_desconto: 'autorização de desconto', importacao_funcionarios: 'importação de funcionários', documentos_re: 'formulário (RE)', grat_rescisao: 'apuração da gratificação rescisória', grat_valor: 'valor mensal da gratificação', grat_valores: 'valores mensais da gratificação', grat_ocorrencia: 'ocorrência da gratificação', grat_criterio: 'critério de rescisão', grat_penalidade: 'ponto de desconto por função', grat_config: 'regras da gratificação rescisória', grat_signatario: 'assinatura do demonstrativo', grat_funcao: 'função de motorista ou operador', contr_ficha: 'ficha de contratação', contr_funcao: 'função (contratação)', contr_departamento: 'departamento (contratação)', contr_gerencia: 'gerência (contratação)', contr_parametros: 'parâmetros da contratação', trein_registro: 'treinamento prático', trein_gestor: 'gestor (treinamento)', trein_signatario: 'assinatura da C.I. de treinamento', trein_config: 'parâmetros do treinamento', trein_importacao: 'importação do treinamento prático', categorias_despesa: 'categoria de despesa', formas_pagamento: 'forma de pagamento', status_viagem: 'status de viagem',
+  motivos_viagem: 'motivo de viagem', autorizacao_desconto: 'autorização de desconto', importacao_funcionarios: 'importação de funcionários', documentos_re: 'formulário (RE)', grat_rescisao: 'apuração da gratificação rescisória', grat_valor: 'valor mensal da gratificação', grat_valores: 'valores mensais da gratificação', grat_ocorrencia: 'ocorrência da gratificação', grat_criterio: 'critério de rescisão', grat_penalidade: 'ponto de desconto por função', grat_config: 'regras da gratificação rescisória', grat_signatario: 'assinatura do demonstrativo', grat_funcao: 'função de motorista ou operador', contr_ficha: 'ficha de contratação', contr_funcao: 'função (contratação)', contr_departamento: 'departamento (contratação)', contr_gerencia: 'gerência (contratação)', contr_parametros: 'parâmetros da contratação', trein_registro: 'treinamento prático', trein_gestor: 'gestor (treinamento)', trein_signatario: 'assinatura da C.I. de treinamento', trein_config: 'parâmetros do treinamento', trein_importacao: 'importação do treinamento prático', onibus_frota: 'ônibus (frota)', onibus_linha: 'linha de ônibus', onibus_viagem: 'viagem de ônibus', onibus_ocorrencia: 'ocorrência de ônibus', categorias_despesa: 'categoria de despesa', formas_pagamento: 'forma de pagamento', status_viagem: 'status de viagem',
 };
 export const entidadeRotulo = (e) => ENTIDADES_ROTULO[e] || e.replaceAll('_', ' ');
 export function descreverEvento(e) {

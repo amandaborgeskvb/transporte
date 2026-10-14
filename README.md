@@ -10,17 +10,18 @@ PostgreSQL como banco. Sem etapa de build e sem frameworks de interface.
 
 | Módulo | O que faz |
 |---|---|
-| **Início (Dashboard)** | As **pendências** de cada usuário e um **cartão de resumo por módulo** (Viagens e despesas; e, para administrador e financeiro, Autorização de desconto, Gratificação rescisória, Contratação e Treinamento prático), cada um com os números principais e um mini gráfico dos 12 meses. Ao clicar, o resumo completo abre em uma **janela (modal)** com indicadores, gráficos (colunas por mês, rosca, barras por tipo/setor/função/gestor, com os números ao passar o mouse) e o atalho para o módulo. Filtro de saída para as viagens e de ano para os demais módulos. |
+| **Início (Dashboard)** | As **pendências** de cada usuário e um **cartão de resumo por módulo** (Viagens e despesas; e, para administrador e financeiro, Autorização de desconto, Gratificação rescisória, Contratação, Treinamento prático e Acompanhamento de ônibus), cada um com os números principais e um mini gráfico dos 12 meses. Ao clicar, o resumo completo abre em uma **janela (modal)** com indicadores, gráficos (colunas por mês, rosca, barras por tipo/setor/função/gestor, com os números ao passar o mouse) e o atalho para o módulo. Filtro de saída para as viagens e de ano para os demais módulos. |
 | **Viagens** | Programação (nº automático `VG-AAAA-NNNN`, funcionário, destino, motivo, datas, descrição, valor estimado), realização e cancelamento (a viagem já nasce programada) |
 | **Adiantamentos** | Solicitado já liberado para pagamento → pago, com forma (dinheiro, depósito, transferência…), data e comprovante |
 | **Despesas** | Alimentação, combustível, hospedagem, pedágio, manutenção etc., com comprovantes e análise do financeiro |
 | **Reembolsos** | Solicitação e pagamento direto (depósito em conta, transferência, outros) |
 | **Prestação de contas** | Com a viagem realizada, o solicitante encerra a prestação: a viagem é concluída e travada (sem etapa de análise); administrador/financeiro podem reabrir, com motivo |
+| **Acompanhamento de ônibus** | Programação e acompanhamento das viagens de ônibus do dia (saída e chegada, atraso, km rodado, passageiros e ocupação), ocorrências, frota com o vencimento dos documentos e linhas (veja abaixo) |
 | **Autorizações de desconto** | Formulário padrão **RE. 0150.09** (Autorização de Desconto) emitido a partir da viagem ou avulso, com prévia ao vivo, impressão em A4 e acompanhamento até o desconto em folha |
 | **Importação** | Carga e atualização do cadastro de funcionários por até 3 arquivos do ERP (Ativos, Afastados, Demitidos), com situação, prévia, histórico e relatório |
 | **Relatórios** | Filtros por período, funcionário, setor, motivo, destino, status, categoria e prestação; exportação em CSV |
 | **Cadastros** | Funcionários, motivos de viagem, status, categorias de despesa e formas de pagamento |
-| **Usuários e perfis** | Login individual e sete perfis de acesso: Administrador, Solicitante, Aprovador e Financeiro, mais três **perfis de um módulo só** — **Treinamento**, **Gratificação** e **Contratação** — que veem apenas o próprio módulo (menu, telas e API) e, no Início, só o resumo dele (sem viagens, descontos, cadastros ou usuários); no menu, **Usuários e perfis** (lista e edição) e **Criar usuário** (abre direto o cadastro: nome, login, perfil, funcionário vinculado e senha inicial). A **tela de login** tem o painel da marca **CTT - TRANSPORTE** e a logo da CRV Industrial, com mostrar/ocultar senha e aviso de Caps Lock. |
+| **Usuários e perfis** | Login individual e oito perfis de acesso: Administrador, Solicitante, Aprovador e Financeiro, mais quatro **perfis de um módulo só** — **Treinamento**, **Gratificação**, **Contratação** e **Ônibus** — que veem apenas o próprio módulo (menu, telas e API) e, no Início, só o resumo dele (sem viagens, descontos, cadastros ou usuários); no menu, **Usuários e perfis** (lista e edição) e **Criar usuário** (abre direto o cadastro: nome, login, perfil, funcionário vinculado e senha inicial). A **tela de login** tem o painel da marca **CTT - TRANSPORTE** e a logo da CRV Industrial, com mostrar/ocultar senha e aviso de Caps Lock. |
 | **Auditoria** | Quem fez o quê e quando (aprovações, pagamentos, alterações), por registro e por viagem |
 
 ## Identidade visual e interface
@@ -159,6 +160,20 @@ A C.I. impressa segue o modelo da empresa: cabeçalho do SGI (*COMUNICAÇÃO INT
 *DADOS DO COLABORADOR* / *DADOS PARA O TREINAMENTO DA PRATICA* e as assinaturas: **a primeira é a do gestor responsável escolhido no
 treinamento** (muda conforme o gestor) e depois as fixas cadastradas em Parâmetros. O cabeçalho é editável em Cadastros → Formulários (RE).
 A planilha e o Word originais não ficam no repositório (contêm dados pessoais).
+
+## Acompanhamento de ônibus
+
+Menu **Ônibus** (administrador, financeiro e o perfil **Ônibus**):
+
+| Tela | O que faz |
+|---|---|
+| **Acompanhamento do dia** | As viagens do dia em ordem de saída, com o previsto × realizado. **Saída** e **Chegada** registram a hora (a atual já vem preenchida), o km do hodômetro e os passageiros; sem km, a saída usa o km final da última viagem do ônibus. Saída mais de **10 minutos** depois do previsto conta como **atraso**; viagem de hoje que passou do horário e não saiu aparece como **não saiu**. Indicadores do dia (a sair, em rota, concluídas, atrasadas, passageiros e km), alertas de documentos da frota e ocorrências em aberto. **Copiar programação de outro dia** repete a escala (ônibus, linha, motorista, turma e horários previstos) sem duplicar o que já existe. Navega entre os dias e exporta o dia para o Excel. |
+| **Viagens** | Lista por período, ônibus, linha, situação (programada, em rota, concluída, cancelada) e busca (motorista, turma, prefixo, placa, linha), com pontualidade, passageiros e km; exporta em CSV. A viagem abre em um formulário com saída/chegada previstas e reais, km, passageiros, tempo de viagem, ocupação e as ocorrências dela; ao escolher a linha, os horários previstos vêm dela. Cancelar pede o motivo. |
+| **Ocorrências** | Atraso, quebra/pane, acidente, reclamação, superlotação, limpeza e outros, ligados ao ônibus e à viagem; acompanhadas até **resolvidas** (com a solução e a data). |
+| **Frota** | Prefixo, placa (padrão antigo ou Mercosul), modelo, ano, lugares, própria ou terceirizada e o vencimento do **licenciamento, tacógrafo, vistoria e seguro** — vencidos em vermelho e os que vencem em até 30 dias em amarelo. Ônibus com viagens não é excluído (desmarque *Ativo*). |
+| **Linhas** | Trajetos com origem, destino, horários e km previstos. |
+
+No **Início**, o cartão *Acompanhamento de ônibus* abre o resumo do ano: viagens, pontualidade na saída, passageiros, km, ocorrências e documentos, com colunas por mês (no horário, atrasadas, sem horário e canceladas), km por mês e por ônibus e ocorrências por tipo.
 
 ## Gratificação rescisória
 

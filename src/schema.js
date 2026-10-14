@@ -1,8 +1,8 @@
 // Esquema do banco (idempotente: pode rodar a cada inicialização).
 // Tabelas da v1 (viagens/despesas simples) são renomeadas para *_legado em db.js, sem perder dados.
 
-// treinamento, gratificacao e contratacao: perfis de um módulo só (veem apenas o próprio módulo e o resumo dele no Início)
-const PERFIS = ['administrador', 'solicitante', 'aprovador', 'financeiro', 'treinamento', 'gratificacao', 'contratacao'];
+// treinamento, gratificacao, contratacao e onibus: perfis de um módulo só (veem apenas o próprio módulo e o resumo dele no Início)
+const PERFIS = ['administrador', 'solicitante', 'aprovador', 'financeiro', 'treinamento', 'gratificacao', 'contratacao', 'onibus'];
 
 // Numera, na ordem de lançamento, os treinamentos ainda sem Nº DOC (ano da data do crachá ou, sem ela, do início da vigência)
 const SQL_NUMERAR_TREINO = `
@@ -591,6 +591,81 @@ BEGIN
 END $f$;
 ALTER TABLE trein_config ADD COLUMN IF NOT EXISTS numeracao_por_ano BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE trein_config ADD COLUMN IF NOT EXISTS limpeza_duplicados BOOLEAN NOT NULL DEFAULT false;
+
+-- ============ Acompanhamento de ônibus ============
+-- Frota: ônibus com os vencimentos dos documentos
+CREATE TABLE IF NOT EXISTS onibus_frota (
+  id                  SERIAL PRIMARY KEY,
+  prefixo             TEXT NOT NULL UNIQUE,
+  placa               TEXT NOT NULL UNIQUE,
+  modelo              TEXT NOT NULL DEFAULT '',
+  ano                 INTEGER CHECK (ano IS NULL OR ano BETWEEN 1950 AND 2100),
+  capacidade          INTEGER CHECK (capacidade IS NULL OR capacidade BETWEEN 1 AND 200),
+  proprietario        TEXT NOT NULL DEFAULT 'proprio' CHECK (proprietario IN ('proprio','terceiro')),
+  empresa             TEXT NOT NULL DEFAULT '',
+  venc_licenciamento  DATE,
+  venc_tacografo      DATE,
+  venc_vistoria       DATE,
+  venc_seguro         DATE,
+  observacao          TEXT NOT NULL DEFAULT '',
+  ativo               BOOLEAN NOT NULL DEFAULT true,
+  criado_em           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Linhas (rotas): de onde para onde, horários previstos e km
+CREATE TABLE IF NOT EXISTS onibus_linhas (
+  id                SERIAL PRIMARY KEY,
+  nome              TEXT NOT NULL UNIQUE,
+  origem            TEXT NOT NULL DEFAULT '',
+  destino           TEXT NOT NULL DEFAULT '',
+  km_previsto       NUMERIC(8,1) CHECK (km_previsto IS NULL OR km_previsto >= 0),
+  saida_prevista    TEXT CHECK (saida_prevista IS NULL OR saida_prevista ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
+  chegada_prevista  TEXT CHECK (chegada_prevista IS NULL OR chegada_prevista ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
+  ativo             BOOLEAN NOT NULL DEFAULT true,
+  criado_em         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Viagens do dia: programado × realizado
+CREATE TABLE IF NOT EXISTS onibus_viagens (
+  id                SERIAL PRIMARY KEY,
+  data              DATE NOT NULL,
+  onibus_id         INTEGER NOT NULL REFERENCES onibus_frota(id),
+  linha_id          INTEGER REFERENCES onibus_linhas(id) ON DELETE SET NULL,
+  sentido           TEXT NOT NULL DEFAULT 'ida' CHECK (sentido IN ('ida','volta')),
+  motorista         TEXT NOT NULL DEFAULT '',
+  motorista_matricula TEXT NOT NULL DEFAULT '',
+  turma             TEXT NOT NULL DEFAULT '',
+  saida_prevista    TEXT CHECK (saida_prevista IS NULL OR saida_prevista ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
+  chegada_prevista  TEXT CHECK (chegada_prevista IS NULL OR chegada_prevista ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
+  saida_real        TEXT CHECK (saida_real IS NULL OR saida_real ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
+  chegada_real      TEXT CHECK (chegada_real IS NULL OR chegada_real ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
+  km_inicial        NUMERIC(10,1) CHECK (km_inicial IS NULL OR km_inicial >= 0),
+  km_final          NUMERIC(10,1) CHECK (km_final IS NULL OR km_final >= 0),
+  passageiros       INTEGER CHECK (passageiros IS NULL OR passageiros BETWEEN 0 AND 300),
+  situacao          TEXT NOT NULL DEFAULT 'programada' CHECK (situacao IN ('programada','em_rota','concluida','cancelada')),
+  observacao        TEXT NOT NULL DEFAULT '',
+  criado_por        INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS onibus_viagens_data_idx ON onibus_viagens (data, saida_prevista);
+CREATE INDEX IF NOT EXISTS onibus_viagens_onibus_idx ON onibus_viagens (onibus_id, data);
+-- Ocorrências: atraso, quebra, acidente, reclamação… acompanhadas até resolver
+CREATE TABLE IF NOT EXISTS onibus_ocorrencias (
+  id            SERIAL PRIMARY KEY,
+  data          DATE NOT NULL,
+  hora          TEXT CHECK (hora IS NULL OR hora ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$'),
+  onibus_id     INTEGER REFERENCES onibus_frota(id) ON DELETE SET NULL,
+  viagem_id     INTEGER REFERENCES onibus_viagens(id) ON DELETE SET NULL,
+  tipo          TEXT NOT NULL CHECK (tipo IN ('atraso','quebra','acidente','reclamacao','superlotacao','limpeza','outro')),
+  descricao     TEXT NOT NULL,
+  situacao      TEXT NOT NULL DEFAULT 'aberta' CHECK (situacao IN ('aberta','resolvida')),
+  solucao       TEXT NOT NULL DEFAULT '',
+  resolvida_em  DATE,
+  criado_por    INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS onibus_ocorrencias_data_idx ON onibus_ocorrencias (data);
 
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,
