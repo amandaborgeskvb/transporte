@@ -46,7 +46,7 @@ const ROTAS = {
   relatorios: { titulo: 'Relatório de viagem', pagina: relatorios },
   cadastros: { titulo: 'Cadastros', pagina: cadastrosPagina, perfis: ADMIN, voltar: () => '#/dashboard' },
   importacao: { titulo: 'Importação de funcionários', pagina: importacao, perfis: ADMIN, voltar: () => '#/dashboard' },
-  usuarios: { titulo: 'Usuários e perfis', pagina: usuarios, perfis: ADMIN, voltar: () => '#/dashboard' },
+  usuarios: { titulo: 'Usuários e perfis', pagina: usuarios, perfis: ADMIN, voltar: (c) => (c.params.length ? '#/usuarios' : '#/dashboard') },
   auditoria: { titulo: 'Auditoria', pagina: auditoria, perfis: ADMIN, voltar: () => '#/dashboard' },
 };
 
@@ -102,7 +102,13 @@ const MENU = [
   { grupo: 'Configurações' },
   { rota: 'cadastros', titulo: 'Cadastros', icone: 'cadastros', perfis: ADMIN, filhos: Object.entries(TIPOS_CADASTRO).map(([k, t]) => ({ href: `#/cadastros/${k}`, titulo: t.titulo })) },
   { rota: 'importacao', titulo: 'Importação', icone: 'upload', perfis: ADMIN },
-  { rota: 'usuarios', titulo: 'Usuários e perfis', icone: 'usuarios', perfis: ADMIN },
+  {
+    rota: 'usuarios', titulo: 'Usuários e perfis', icone: 'usuarios', perfis: ADMIN,
+    filhos: [
+      { href: '#/usuarios', titulo: 'Usuários e perfis' },
+      { href: '#/usuarios/novo', titulo: 'Criar usuário' },
+    ],
+  },
   { rota: 'auditoria', titulo: 'Auditoria', icone: 'auditoria', perfis: ADMIN },
   { rota: 'treinamento', titulo: 'Guia do sistema', icone: 'ajuda' },
 ];
@@ -327,15 +333,38 @@ function telaLogin(aviso) {
   tokenRender += 1;
   const erro = h('div', { class: 'erro', role: 'alert' }, aviso || '');
   const entrar = h('button', { type: 'submit' }, 'Entrar');
-  const form = h('form', { class: 'login-card' },
-    h('img', { class: 'logo logo-claro', src: '/img/crv-industrial-azul.png?v=2', alt: 'CRV Industrial — Açúcar, Etanol e Energia', width: 260, height: 81 }),
-    h('img', { class: 'logo logo-escuro', src: '/img/crv-industrial-branca.png?v=2', alt: 'CRV Industrial — Açúcar, Etanol e Energia', width: 260, height: 81 }),
-    h('h1', {}, 'TRANSPORTE - CTT'),
+  const senha = h('input', { name: 'senha', type: 'password', autocomplete: 'current-password', required: true });
+  const verSenha = h('button', { type: 'button', class: 'ver-senha', 'aria-label': 'Mostrar senha', 'aria-pressed': 'false' }, 'Mostrar');
+  verSenha.addEventListener('click', () => {
+    const mostrar = senha.type === 'password';
+    senha.type = mostrar ? 'text' : 'password';
+    verSenha.textContent = mostrar ? 'Ocultar' : 'Mostrar';
+    verSenha.setAttribute('aria-pressed', String(mostrar));
+    verSenha.setAttribute('aria-label', mostrar ? 'Ocultar senha' : 'Mostrar senha');
+    senha.focus();
+  });
+  const capsLock = h('small', { class: 'caps-lock', role: 'status' });
+  senha.addEventListener('keyup', (e) => { capsLock.textContent = e.getModifierState?.('CapsLock') ? 'Caps Lock ligado' : ''; });
+  // Painel da marca (CTT) ao lado do formulário com a logo da empresa (CRV Industrial)
+  const marca = h('aside', { class: 'login-marca' },
+    h('img', { class: 'login-ctt', src: '/img/ctt-branca.svg', alt: 'CTT — Transporte', width: 230, height: 50 }),
+    h('h1', {}, 'CTT - TRANSPORTE'),
+    h('p', { class: 'login-desc' }, 'Controle do transporte em um só lugar.'),
+    h('ul', { class: 'login-modulos' },
+      [['viagem', 'Viagens, adiantamentos e despesas'], ['carteira', 'Gratificação rescisória'], ['documento', 'Contratação'], ['calendario', 'Treinamento prático']]
+        .map(([ic, t]) => h('li', {}, icone(ic), t))),
+    h('div', { class: 'login-empresa' },
+      h('img', { src: '/img/crv-industrial-branca.png?v=2', alt: 'CRV Industrial', width: 170, height: 53 }),
+      h('span', {}, 'Açúcar, Etanol e Energia')));
+  const form = h('form', { class: 'login-form', 'aria-labelledby': 'login-titulo' },
+    h('img', { class: 'logo logo-claro', src: '/img/crv-industrial-azul.png?v=2', alt: 'CRV Industrial — Açúcar, Etanol e Energia', width: 220, height: 69 }),
+    h('img', { class: 'logo logo-escuro', src: '/img/crv-industrial-branca.png?v=2', alt: 'CRV Industrial — Açúcar, Etanol e Energia', width: 220, height: 69 }),
+    h('h2', { id: 'login-titulo' }, 'Entrar'),
     h('p', { class: 'muted' }, 'Acesse com seu usuário e senha'),
-    h('label', {}, 'Usuário', h('input', { name: 'usuario', autocomplete: 'username', required: true, autofocus: true })),
-    h('label', {}, 'Senha', h('input', { name: 'senha', type: 'password', autocomplete: 'current-password', required: true })),
+    h('label', {}, 'Usuário', h('input', { name: 'usuario', autocomplete: 'username', required: true, autofocus: true, autocapitalize: 'none', spellcheck: 'false' })),
+    h('label', {}, 'Senha', h('div', { class: 'campo-senha' }, senha, verSenha), capsLock),
     erro, entrar,
-    h('div', { class: 'login-rodape' }, 'Açúcar, Etanol e Energia'));
+    h('p', { class: 'login-ajuda' }, 'Não tem usuário ou esqueceu a senha? Fale com o administrador do sistema.'));
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const f = new FormData(form);
@@ -349,8 +378,8 @@ function telaLogin(aviso) {
       entrar.disabled = false;
     }
   });
-  document.title = `Entrar · ${MARCA}`;
-  raiz.replaceChildren(h('div', { class: 'login' }, botaoTema('icone-btn login-tema'), form));
+  document.title = 'Entrar · CTT - TRANSPORTE';
+  raiz.replaceChildren(h('div', { class: 'login' }, botaoTema('icone-btn login-tema'), h('div', { class: 'login-painel' }, marca, form)));
 }
 
 async function sair() {

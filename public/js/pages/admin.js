@@ -14,10 +14,10 @@ const DESCRICAO_PERFIL = {
 };
 const TOM_PERFIL = { administrador: 'ok', solicitante: 'mute', aprovador: 'info', financeiro: 'warn' };
 
-export async function usuarios() {
+export async function usuarios({ params = [] } = {}) {
   const [dados, c] = await Promise.all([get('/usuarios'), cadastros(true)]);
   let lista = dados;
-  let selecionado = lista[0] || 'novo';
+  let selecionado = params[0] === 'novo' ? 'novo' : lista[0] || 'novo'; // #/usuarios/novo abre direto o cadastro
   let filtro = '';
 
   const listaEl = h('div', { class: 'lista-itens' });
