@@ -10,7 +10,7 @@ PostgreSQL como banco. Sem etapa de build e sem frameworks de interface.
 
 | Módulo | O que faz |
 |---|---|
-| **Dashboard** | Viagens por situação, adiantamentos, despesas, reembolsos, saldo pendente de prestação, gráficos por mês, motivo, funcionário e setor, e as **pendências** de cada usuário |
+| **Início (Dashboard)** | As **pendências** de cada usuário e um **cartão de resumo por módulo** (Viagens e despesas; e, para administrador e financeiro, Autorização de desconto, Gratificação rescisória, Contratação e Treinamento prático), cada um com os números principais e um mini gráfico dos 12 meses. Ao clicar, o resumo completo abre em uma **janela (modal)** com indicadores, gráficos (colunas por mês, rosca, barras por tipo/setor/função/gestor, com os números ao passar o mouse) e o atalho para o módulo. Filtro de saída para as viagens e de ano para os demais módulos. |
 | **Viagens** | Programação (nº automático `VG-AAAA-NNNN`, funcionário, destino, motivo, datas, descrição, valor estimado), realização e cancelamento (a viagem já nasce programada) |
 | **Adiantamentos** | Solicitado já liberado para pagamento → pago, com forma (dinheiro, depósito, transferência…), data e comprovante |
 | **Despesas** | Alimentação, combustível, hospedagem, pedágio, manutenção etc., com comprovantes e análise do financeiro |
@@ -41,7 +41,7 @@ conceitos de ERPs e plataformas de operação agrícola:
   Prestação de contas), barra de comandos com as ações liberadas para o perfil e abas (Resumo, Adiantamentos, Despesas,
   Reembolsos, Histórico). A aba aberta fica gravada na URL.
 - **Lista de viagens** com visões rápidas (Programadas, Realizadas, Prestação em aberto…).
-- **Dashboard** com indicadores com ícone, rosca de viagens por situação (cores dos status), colunas por mês e rankings.
+- **Início** com cartões de resumo de cada módulo e janelas (modal) com indicadores, roscas, colunas por mês e rankings; fecha no X, no Esc ou clicando fora.
 - Responsivo (celular e tablet) e **tema escuro** (a escolha fica lembrada no navegador).
 - Fontes **Inter** e **Barlow Condensed** (licença OFL) hospedadas junto do sistema em `public/fonts/` — nada é carregado
   de CDN, o que mantém a política de segurança (CSP) restrita.

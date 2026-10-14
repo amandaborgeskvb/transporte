@@ -125,6 +125,24 @@ function criarDescontos({ pool }) {
   }));
 
   // ---- Consultar ----
+  // Resumo do ano para o Início (cartão e modal): por situação e por mês do documento
+  router.get('/descontos/painel', apenasGestores, wrap(async (req, res) => {
+    const ano = /^\d{4}$/.test(req.query.ano || '') ? Number(req.query.ano) : Number(hojeSP().slice(0, 4));
+    const intervalo = [`${ano}-01-01`, `${ano}-12-31`];
+    const [sit, meses] = await Promise.all([
+      pool.query('SELECT situacao, count(*)::int AS qtd, COALESCE(sum(valor), 0) AS valor FROM autorizacoes_desconto WHERE data_documento BETWEEN $1 AND $2 GROUP BY 1', intervalo),
+      pool.query(`SELECT extract(month FROM data_documento)::int AS mes, count(*)::int AS qtd, COALESCE(sum(valor), 0) AS valor
+                  FROM autorizacoes_desconto WHERE data_documento BETWEEN $1 AND $2 AND situacao <> 'cancelada' GROUP BY 1`, intervalo),
+    ]);
+    const por = Object.fromEntries(['emitida', 'assinada', 'concluida', 'cancelada'].map((k) => [k, { qtd: 0, valor: 0 }]));
+    for (const r of sit.rows) por[r.situacao] = { qtd: r.qtd, valor: Math.round(Number(r.valor) * 100) / 100 };
+    const porMes = Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtd: 0, valor: 0 }));
+    for (const m of meses.rows) porMes[m.mes - 1] = { mes: m.mes, qtd: m.qtd, valor: Math.round(Number(m.valor) * 100) / 100 };
+    res.json({
+      ano, por_situacao: por, total: Object.values(por).reduce((t, x) => t + x.qtd, 0),
+      em_aberto: { qtd: por.emitida.qtd + por.assinada.qtd, valor: Math.round((por.emitida.valor + por.assinada.valor) * 100) / 100 }, meses: porMes,
+    });
+  }));
   router.get('/descontos/:id', quemVe, wrap(async (req, res) => {
     const id = idParam(req);
     const row = await carregar(pool, id, req.usuario);

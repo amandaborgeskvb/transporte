@@ -69,7 +69,8 @@ export function rosca(itens, { centro = 'Total' } = {}) {
   let acum = 0;
   for (const i of lista) {
     const comp = (i.valor / total) * C;
-    const arco = svg('circle', { cx: 70, cy: 70, r: R, fill: 'none', stroke: i.cor, 'stroke-width': 18, 'stroke-dasharray': `${Math.max(comp - 1.5, 0.5)} ${C}`, 'stroke-dashoffset': -acum });
+    const arco = svg('circle', { cx: 70, cy: 70, r: R, fill: 'none', 'stroke-width': 18, 'stroke-dasharray': `${Math.max(comp - 1.5, 0.5)} ${C}`, 'stroke-dashoffset': -acum });
+    arco.style.stroke = i.cor; // aceita variáveis de cor (var(--…))
     arco.append(Object.assign(svg('title'), { textContent: `${i.nome}: ${i.valor}` }));
     g.append(arco);
     acum += comp;
@@ -96,9 +97,10 @@ let tip = null;
 function mostrarDica(alvo, titulo, linhas, evento) {
   if (!tip) {
     tip = h('div', { class: 'ch-tip', role: 'tooltip' });
-    document.body.append(tip);
     window.addEventListener('hashchange', () => { tip.hidden = true; }); // ao trocar de tela
   }
+  const hospedeiro = alvo.closest('dialog') || document.body; // dentro de uma janela (modal) o tooltip precisa ficar nela
+  if (tip.parentNode !== hospedeiro) hospedeiro.append(tip);
   tip.replaceChildren(h('div', { class: 'ch-tip-tit' }, titulo), ...linhas.map(([valor, nome, cor]) => {
     const traco = h('i');
     if (cor) traco.style.background = cor;
@@ -140,15 +142,15 @@ export function legendaSeries(series) {
   }));
 }
 
-const linhasDica = (series, valores, total) => [
-  ...series.map((s) => [fmtN(valores[s.k]), s.nome, s.cor]),
-  [fmtN(total), 'Total', null],
+const linhasDica = (series, valores, total, fmt = fmtN) => [
+  ...series.map((s) => [fmt(valores[s.k]), s.nome, s.cor]),
+  ...(series.length > 1 ? [[fmt(total), 'Total', null]] : []),
 ];
 
 // Colunas empilhadas. categorias: [{ rotulo, titulo, valores: { k: n }, total }]
-export function colunasEmpilhadas(categorias, series, { aria = 'Gráfico de colunas empilhadas' } = {}) {
+export function colunasEmpilhadas(categorias, series, { aria = 'Gráfico de colunas empilhadas', fmt = fmtN, largura } = {}) {
   // largura de desenho próxima à da tela, para as colunas ficarem finas (≤ 24 px) e o texto no tamanho real
-  const L = Math.max(720, categorias.length * 90);
+  const L = largura || Math.max(720, categorias.length * 90); // largura: quadros estreitos (meia tela) desenham menor para o texto não encolher
   const A = 290;
   const m = { t: 22, r: 8, b: 28, l: 36 };
   const util = A - m.t - m.b;
@@ -163,7 +165,7 @@ export function colunasEmpilhadas(categorias, series, { aria = 'Gráfico de colu
   }
   categorias.forEach((c, i) => {
     const cx = m.l + i * banda + banda / 2;
-    const g = svg('g', { class: 'ch-grupo', tabindex: 0, 'aria-label': `${c.titulo || c.rotulo}: ${fmtN(c.total)}` });
+    const g = svg('g', { class: 'ch-grupo', tabindex: 0, 'aria-label': `${c.titulo || c.rotulo}: ${fmt(c.total)}` });
     g.append(svg('rect', { x: cx - banda / 2, y: m.t - 18, width: banda, height: util + 18, class: 'ch-alvo' }));
     let base = 0;
     const visiveis = series.filter((s) => c.valores[s.k] > 0);
@@ -182,16 +184,16 @@ export function colunasEmpilhadas(categorias, series, { aria = 'Gráfico de colu
       g.append(seg);
       base += v;
     });
-    if (c.total) g.append(Object.assign(svg('text', { x: cx, y: y(c.total) - 6, class: 'ch-total', 'text-anchor': 'middle' }), { textContent: fmtN(c.total) }));
+    if (c.total) g.append(Object.assign(svg('text', { x: cx, y: y(c.total) - 6, class: 'ch-total', 'text-anchor': 'middle' }), { textContent: fmt === fmtN ? fmtN(c.total) : compacto(c.total) }));
     g.append(Object.assign(svg('text', { x: cx, y: A - 9, class: 'eixo', 'text-anchor': 'middle' }), { textContent: c.rotulo }));
-    ligarDica(g, () => [c.titulo || c.rotulo, linhasDica(series, c.valores, c.total)]);
+    ligarDica(g, () => [c.titulo || c.rotulo, linhasDica(series, c.valores, c.total, fmt)]);
     raiz.append(g);
   });
   return h('div', { class: 'scroll' }, raiz);
 }
 
 // Barras horizontais empilhadas. itens: [{ nome, valores: { k: n }, total, extra? }]
-export function barrasEmpilhadas(itens, series, { vazioMsg = 'Sem dados.' } = {}) {
+export function barrasEmpilhadas(itens, series, { vazioMsg = 'Sem dados.', fmt = fmtN } = {}) {
   if (!itens.length) return h('p', { class: 'muted vazio' }, vazioMsg);
   const max = Math.max(...itens.map((i) => i.total), 1);
   return h('div', { class: 'ch-barras' }, itens.map((i) => {
@@ -206,9 +208,23 @@ export function barrasEmpilhadas(itens, series, { vazioMsg = 'Sem dados.' } = {}
       cheio.append(seg);
     }
     trilho.append(cheio);
-    const linha = h('div', { class: 'ch-linha', tabindex: 0, 'aria-label': `${i.nome}: ${fmtN(i.total)}` },
-      h('span', { class: 'nome', title: i.nome }, i.nome), trilho, h('span', { class: 'valor' }, fmtN(i.total), i.extra ? h('small', {}, i.extra) : null));
-    ligarDica(linha, () => [i.nome, linhasDica(series, i.valores, i.total)]);
+    const linha = h('div', { class: 'ch-linha', tabindex: 0, 'aria-label': `${i.nome}: ${fmt(i.total)}` },
+      h('span', { class: 'nome', title: i.nome }, i.nome), trilho, h('span', { class: 'valor' }, fmt(i.total), i.extra ? h('small', {}, i.extra) : null));
+    ligarDica(linha, () => [i.nome, linhasDica(series, i.valores, i.total, fmt)]);
     return linha;
   }));
+}
+
+// Mini colunas dos cartões do Início (12 meses, uma série; o cartão traz os números em texto)
+export function miniBarras(valores, { destaque = -1 } = {}) {
+  const L = 132;
+  const A = 40;
+  const max = Math.max(...valores, 1);
+  const larg = L / valores.length;
+  const raiz = svg('svg', { viewBox: `0 0 ${L} ${A}`, class: 'mini-barras', 'aria-hidden': 'true', focusable: 'false' });
+  valores.forEach((v, i) => {
+    const alt = v ? Math.max(2, (v / max) * (A - 2)) : 1;
+    raiz.append(svg('rect', { x: i * larg + 1, y: A - alt, width: Math.max(2, larg - 3), height: alt, rx: Math.min(2, (larg - 3) / 2), class: i === destaque ? 'atual' : v ? '' : 'zero' }));
+  });
+  return raiz;
 }

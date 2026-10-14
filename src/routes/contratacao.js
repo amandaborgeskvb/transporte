@@ -284,6 +284,32 @@ function criarContratacao({ pool }) {
     ]);
   }));
 
+  // Resumo do ano para o Início (cartão e modal)
+  router.get('/contratacao/painel', wrap(async (req, res) => {
+    const h = hoje();
+    const ano = /^\d{4}$/.test(req.query.ano || '') ? Number(req.query.ano) : Number(h.slice(0, 4));
+    const intervalo = [`${ano}-01-01`, `${ano}-12-31`];
+    const [meses, funcoes, deptos, turnos, totais] = await Promise.all([
+      pool.query('SELECT extract(month FROM data)::int AS mes, count(*)::int AS qtd, COALESCE(sum(salario), 0) AS salarios FROM contr_fichas WHERE data BETWEEN $1 AND $2 GROUP BY 1', intervalo),
+      pool.query(`SELECT COALESCE(NULLIF(funcao, ''), '(sem função)') AS nome, count(*)::int AS qtd FROM contr_fichas WHERE data BETWEEN $1 AND $2 GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 8`, intervalo),
+      pool.query(`SELECT COALESCE(NULLIF(depto_descricao, ''), NULLIF(depto_codigo, ''), '(sem departamento)') AS nome, count(*)::int AS qtd FROM contr_fichas WHERE data BETWEEN $1 AND $2 GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 8`, intervalo),
+      pool.query(`SELECT COALESCE(turno, '') AS turno, count(*)::int AS qtd FROM contr_fichas WHERE data BETWEEN $1 AND $2 GROUP BY 1`, intervalo),
+      pool.query(`SELECT count(*) FILTER (WHERE data = $3::date)::int AS hoje, count(*) FILTER (WHERE date_trunc('month', data) = date_trunc('month', $3::date))::int AS mes_atual,
+                         count(*) FILTER (WHERE contrato_safra)::int AS safra, count(*) FILTER (WHERE contrato_experiencia)::int AS experiencia,
+                         count(*) FILTER (WHERE contrato_determinado)::int AS determinado, count(*) FILTER (WHERE contrato_indeterminado)::int AS indeterminado,
+                         max(data) AS ultima
+                  FROM contr_fichas WHERE data BETWEEN $1 AND $2`, [...intervalo, h]),
+    ]);
+    const porMes = Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, qtd: 0, salarios: 0 }));
+    for (const m of meses.rows) porMes[m.mes - 1] = { mes: m.mes, qtd: m.qtd, salarios: round2(Number(m.salarios)) };
+    const t = totais.rows[0];
+    res.json({
+      ano, total: porMes.reduce((x, m) => x + m.qtd, 0), hoje: t.hoje, mes_atual: t.mes_atual, ultima: dataLocal(t.ultima),
+      contratos: { safra: t.safra, experiencia: t.experiencia, determinado: t.determinado, indeterminado: t.indeterminado },
+      meses: porMes, por_funcao: funcoes.rows, por_depto: deptos.rows, por_turno: turnos.rows,
+    });
+  }));
+
   // Resumo do dia (aba Resumo): fichas feitas na data, agrupadas por função e departamento
   router.get('/contratacao/resumo', wrap(async (req, res) => {
     const dia = ehData(req.query.data) ? req.query.data : (await pool.query('SELECT to_char(max(data), \'YYYY-MM-DD\') AS d FROM contr_fichas')).rows[0].d || hoje();

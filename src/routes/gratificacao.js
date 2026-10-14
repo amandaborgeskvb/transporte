@@ -604,6 +604,31 @@ function criarGratificacao({ pool }) {
     const { rows } = await pool.query(`${SELECT_RESCISAO} WHERE ${where} ORDER BY f.setor, f.nome LIMIT 2000`, params);
     return comCalculo(pool, rows);
   }
+  // Resumo do ano para o Início (cartão e modal): quantidades e valores por mês, tipo de rescisão e setor
+  router.get('/gratificacao/painel', wrap(async (req, res) => {
+    const ano = /^\d{4}$/.test(req.query.ano || '') ? Number(req.query.ano) : Number(new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }).slice(0, 4));
+    const { rows } = await pool.query(`${SELECT_RESCISAO} WHERE r.dt_rescisao BETWEEN $1 AND $2`, [`${ano}-01-01`, `${ano}-12-31`]);
+    const itens = await comCalculo(pool, rows);
+    const iso = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d));
+    const meses = Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, pagas: 0, apuradas: 0, total: 0 }));
+    const grupos = (chave) => {
+      const m = new Map();
+      for (const r of itens) { const k = chave(r) || '(não informado)'; const g = m.get(k) || { nome: k, qtd: 0, total: 0 }; g.qtd += 1; g.total += r.calculo.total; m.set(k, g); }
+      return [...m.values()].map((g) => ({ ...g, total: round2(g.total) })).sort((a, b) => b.total - a.total || b.qtd - a.qtd).slice(0, 8);
+    };
+    for (const r of itens) {
+      const m = meses[Number(iso(r.dt_rescisao).slice(5, 7)) - 1];
+      m[r.situacao === 'paga' ? 'pagas' : 'apuradas'] += 1;
+      m.total = round2(m.total + r.calculo.total);
+    }
+    const soma = (f) => round2(itens.reduce((t, r) => t + f(r), 0));
+    res.json({
+      ano, qtd: itens.length, pagas: itens.filter((r) => r.situacao === 'paga').length, apuradas: itens.filter((r) => r.situacao !== 'paga').length,
+      total: soma((r) => r.calculo.total), a_pagar: soma((r) => (r.situacao === 'paga' ? 0 : r.calculo.total)), folha: soma((r) => r.calculo.folha),
+      cartao_gold: soma((r) => r.calculo.cartao_gold), desconto: soma((r) => r.calculo.desconto), zerados: itens.filter((r) => !r.calculo.total).length,
+      meses, por_tipo: grupos((r) => r.tipo_rescisao), por_setor: grupos((r) => r.funcionario_setor),
+    });
+  }));
   router.get('/gratificacao/relatorio', wrap(async (req, res) => {
     const itens = await dadosRelatorio(req);
     const soma = (campo) => round2(itens.reduce((t, r) => t + campo(r.calculo), 0));
