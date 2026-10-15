@@ -360,7 +360,7 @@ async function planilha({ query, ir, recarregarPagina }) {
   return [
     cabecalhoPagina({
       migalhas: [...BASE, ['RESUMO']], titulo: 'RESUMO',
-      sub: `Levantamento Transporte Funcionários · ${porExtenso(d.data)}${d.data === d.hoje ? ' (hoje)' : ''}`,
+      sub: `Acompanhamento Diário Ônibus · ${porExtenso(d.data)}${d.data === d.hoje ? ' (hoje)' : ''}`,
       acoes: [h('a', { class: 'btn sec', href: `#/onibus/imprimir?data=${d.data}` }, icone('impressora'), 'Imprimir RESUMO + disponibilidade'), vazioDia ? null : botaoSalvar],
     }),
     vazioDia ? null : h('div', { class: 'oni-barra-salvar' }, status),
@@ -588,7 +588,7 @@ function folhaPlanilha(d) {
   linhasTab.push(h('tr', { class: 'oni-total geral' }, h('td', {}), h('td', {}, 'TOTAL GERAL'), h('td', { class: 'c' }, d.linhas.length), h('td', {}),
     h('td', { class: 'c' }, fmt(d.linhas.reduce((t, l) => t + (l.passageiros || 0), 0))), h('td', { colspan: 9 })));
   return h('article', { class: 'oni-folha' },
-    cabecalhoFolha('Levantamento Transporte Funcionários', ['CRV Industrial - Unidade Capinópolis/MG', 'Departamento de Transporte'], dataBR(d.data)),
+    cabecalhoFolha('Acompanhamento Diário Ônibus', ['CRV Industrial - Unidade Capinópolis/MG', 'Departamento de Transporte'], dataBR(d.data)),
     indicadoresFolha(d, por),
     d.linhas.length ? h('table', { class: 'oni-ftab' },
       h('thead', {}, h('tr', {}, ['Nº', 'EMPRESA', 'FROTA', 'Nº TOTAL PASS.', 'PASS. POR DIA', 'ÚLTIMA VISTORIA', 'PRÓXIMA VISTORIA', 'LAVAGEM 1', 'LAVAGEM 2', 'ATIVIDADE', 'ROTA/IDA', 'ROTA/VOLTA', 'SITUAÇÃO', 'OBS.'].map((t) => h('th', {}, t)))),
