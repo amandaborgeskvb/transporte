@@ -74,7 +74,10 @@ function criarApp({ pool, secret, secure = false }) {
   app.use('/api', api);
   app.use('/api', (_req, res) => res.status(404).json({ erro: 'Rota não encontrada.' }));
 
-  app.use(express.static(path.join(__dirname, '..', 'public')));
+  // telas (html/js/css): o navegador sempre confere se há versão nova (ETag) — depois de um deploy ninguém fica com a tela antiga
+  app.use(express.static(path.join(__dirname, '..', 'public'), {
+    setHeaders: (res, arquivo) => { if (/\.(html|js|css)$/.test(arquivo)) res.setHeader('Cache-Control', 'no-cache'); },
+  }));
 
   // eslint-disable-next-line no-unused-vars
   app.use((err, _req, res, _next) => {
