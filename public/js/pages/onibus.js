@@ -1,6 +1,7 @@
 // Acompanhamento de ônibus: viagens do dia (saída e chegada), programação, ocorrências, frota (com vencimentos) e linhas.
-// Rotas: #/onibus/dia | viagens | viagens/novo | viagens/:id | ocorrencias | frota | linhas
+// Rotas: #/onibus/planilha | disponibilidade | imprimir (em onibusPlanilha.js) | dia | viagens | viagens/novo | viagens/:id | ocorrencias | frota | linhas
 import { get, post, put, del } from '../api.js';
+import { planilha, disponibilidadePagina, imprimir } from './onibusPlanilha.js';
 import {
   h, dataBR, hojeISO, tabela, botao, cabecalhoPagina, barraComandos, barraFiltros, secao, kpi, vazio, toast, confirmar, dialogo, icone, badgeTom, formulario,
 } from '../ui.js';
@@ -14,7 +15,7 @@ const nomeTipo = (t) => TIPOS.find(([k]) => k === t)?.[1] || t;
 const DOC_TOM = { vencido: 'bad', vence_logo: 'warn', em_dia: 'ok', sem_data: 'mute' };
 const somarDias = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 const diaSemana = (iso) => new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-const nomeOnibus = (v) => `${v.prefixo} · ${v.placa}`;
+const nomeOnibus = (v) => (v.placa ? `${v.prefixo} · ${v.placa}` : v.prefixo);
 const minutosTexto = (m) => (m == null ? '' : m === 0 ? 'no horário' : m > 0 ? `${m} min atrasado` : `${-m} min adiantado`);
 // Botão só com ícone (com nome para leitores de tela)
 function botaoIcone(rotulo, aoClicar, nomeIcone) {
@@ -23,7 +24,7 @@ function botaoIcone(rotulo, aoClicar, nomeIcone) {
   b.setAttribute('aria-label', rotulo);
   return b;
 }
-const opcoesOnibus = (frota, atual) => frota.filter((o) => o.ativo || String(o.id) === String(atual ?? '')).map((o) => ({ valor: o.id, rotulo: `${o.prefixo} · ${o.placa}${o.capacidade ? ` (${o.capacidade} lug.)` : ''}` }));
+const opcoesOnibus = (frota, atual) => frota.filter((o) => o.ativo || String(o.id) === String(atual ?? '')).map((o) => ({ valor: o.id, rotulo: `${nomeOnibus(o)}${o.capacidade ? ` (${o.capacidade} lug.)` : ''}` }));
 const opcoesLinhas = (linhas, atual) => linhas.filter((l) => l.ativo || String(l.id) === String(atual ?? '')).map((l) => ({ valor: l.id, rotulo: l.nome }));
 
 // Horário previsto × real, com o atraso em destaque
@@ -122,12 +123,12 @@ async function dia({ query, ir, recarregarPagina }) {
   const linhas = d.viagens;
   const alertas = [
     ...d.alertas_documentos.map((a) => h('li', {}, badgeTom(a.situacao === 'vencido' ? 'Vencido' : 'Vence logo', DOC_TOM[a.situacao]), ' ',
-      h('a', { href: '#/onibus/frota' }, `${a.prefixo} · ${a.placa}`), ` — ${a.documento} ${a.situacao === 'vencido' ? `venceu em ${dataBR(a.vencimento)}` : `vence em ${dataBR(a.vencimento)} (${a.dias} dia${a.dias === 1 ? '' : 's'})`}`)),
+      h('a', { href: '#/onibus/frota' }, nomeOnibus(a)), ` — ${a.documento} ${a.situacao === 'vencido' ? `venceu em ${dataBR(a.vencimento)}` : `vence em ${dataBR(a.vencimento)} (${a.dias} dia${a.dias === 1 ? '' : 's'})`}`)),
   ];
 
   return [
     cabecalhoPagina({
-      migalhas: [...BASE, ['Acompanhamento do dia']], titulo: 'Acompanhamento do dia', sub: `${diaSemana(d.data)}${ehHoje ? ` · agora ${d.agora}` : ''}`,
+      migalhas: [...BASE, ['Viagens do dia']], titulo: 'Viagens do dia', sub: `${diaSemana(d.data)}${ehHoje ? ` · agora ${d.agora}` : ''}`,
       acoes: [botao('Nova viagem', () => ir('#/onibus/viagens/novo', { data: d.data }), { icone: 'mais' })],
     }),
     h('div', { class: 'oni-dia-nav' },
@@ -197,7 +198,7 @@ async function listaViagens({ query, ir, recarregarPagina }) {
       kpi('Canceladas', fmt(itens.filter((v) => v.situacao === 'cancelada').length), { icone: 'proibido', tom: 'neutro' })),
     barraFiltros([
       { nome: 'de', rotulo: 'Data de', tipo: 'date' }, { nome: 'ate', rotulo: 'até', tipo: 'date' },
-      { nome: 'onibus_id', rotulo: 'Ônibus', tipo: 'select', opcoes: frota.map((o) => ({ valor: o.id, rotulo: `${o.prefixo} · ${o.placa}` })) },
+      { nome: 'onibus_id', rotulo: 'Ônibus', tipo: 'select', opcoes: frota.map((o) => ({ valor: o.id, rotulo: nomeOnibus(o) })) },
       { nome: 'linha_id', rotulo: 'Linha', tipo: 'select', opcoes: linhas.map((l) => ({ valor: l.id, rotulo: l.nome })) },
       { nome: 'situacao', rotulo: 'Situação', tipo: 'select', opcoes: Object.entries(SITUACAO).map(([valor, [rotulo]]) => ({ valor, rotulo })) },
       { nome: 'q', rotulo: 'Busca', placeholder: 'Motorista, turma, prefixo, placa ou linha' },
@@ -319,12 +320,12 @@ async function ocorrencias({ query, ir, recarregarPagina }) {
       { nome: 'de', rotulo: 'Data de', tipo: 'date' }, { nome: 'ate', rotulo: 'até', tipo: 'date' },
       { nome: 'situacao', rotulo: 'Situação', tipo: 'select', opcoes: [{ valor: 'aberta', rotulo: 'Em aberto' }, { valor: 'resolvida', rotulo: 'Resolvidas' }] },
       { nome: 'tipo', rotulo: 'Tipo', tipo: 'select', opcoes: TIPOS.map(([valor, rotulo]) => ({ valor, rotulo })) },
-      { nome: 'onibus_id', rotulo: 'Ônibus', tipo: 'select', opcoes: frota.map((o) => ({ valor: o.id, rotulo: `${o.prefixo} · ${o.placa}` })) },
+      { nome: 'onibus_id', rotulo: 'Ônibus', tipo: 'select', opcoes: frota.map((o) => ({ valor: o.id, rotulo: nomeOnibus(o) })) },
     ], query, (v) => ir('#/onibus/ocorrencias', v)),
     h('div', { class: 'card' }, tabela([
       { t: 'Data', cls: 'nowrap', f: (o) => [dataBR(o.data), o.hora ? h('div', { class: 'muted pequeno' }, o.hora) : null] },
       { t: 'Tipo', f: (o) => nomeTipo(o.tipo) },
-      { t: 'Ônibus', f: (o) => (o.prefixo ? `${o.prefixo} · ${o.placa}` : '—') },
+      { t: 'Ônibus', f: (o) => (o.prefixo ? nomeOnibus(o) : '—') },
       { t: 'Descrição', f: (o) => [o.descricao, o.solucao ? h('div', { class: 'muted pequeno' }, `Solução${o.resolvida_em ? ` (${dataBR(o.resolvida_em)})` : ''}: ${o.solucao}`) : null,
         o.viagem_id ? h('div', {}, h('a', { class: 'pequeno', href: `#/onibus/viagens/${o.viagem_id}` }, 'ver viagem')) : null] },
       { t: 'Situação', f: (o) => badgeTom(o.situacao === 'resolvida' ? 'Resolvida' : 'Aberta', o.situacao === 'resolvida' ? 'ok' : 'warn') },
@@ -347,13 +348,14 @@ async function frotaPagina({ recarregarPagina }) {
     const ok = await dialogo({
       titulo: o.id ? `Ônibus ${o.prefixo}` : 'Novo ônibus',
       campos: [
-        { nome: 'prefixo', rotulo: 'Prefixo / nº de frota', valor: o.prefixo || '', obrigatorio: true, max: 20 },
-        { nome: 'placa', rotulo: 'Placa', valor: o.placa || '', obrigatorio: true, max: 10, dica: 'ABC1234 ou ABC1D23' },
+        { nome: 'prefixo', rotulo: 'Frota (nº / prefixo)', valor: o.prefixo || '', obrigatorio: true, max: 20 },
+        { nome: 'placa', rotulo: 'Placa', valor: o.placa || '', max: 10, dica: 'Opcional · ABC1234 ou ABC1D23' },
         { nome: 'modelo', rotulo: 'Modelo', valor: o.modelo || '', max: 80 },
         { nome: 'ano', rotulo: 'Ano', tipo: 'number', passo: '1', min: '1950', max: '2100', valor: o.ano ?? '' },
         { nome: 'capacidade', rotulo: 'Capacidade (lugares)', tipo: 'number', passo: '1', min: '1', max: '200', valor: o.capacidade ?? '' },
-        { nome: 'proprietario', rotulo: 'Frota', tipo: 'select', opcoes: [{ valor: 'proprio', rotulo: 'Própria' }, { valor: 'terceiro', rotulo: 'Terceirizada' }], valor: o.proprietario || 'proprio' },
-        { nome: 'empresa', rotulo: 'Empresa (se terceirizada)', valor: o.empresa || '', max: 120 },
+        { nome: 'proprietario', rotulo: 'Ônibus', tipo: 'select', opcoes: [{ valor: 'terceiro', rotulo: 'Terceirizado' }, { valor: 'proprio', rotulo: 'Próprio' }], valor: o.proprietario || 'terceiro' },
+        { nome: 'empresa', rotulo: 'Empresa', valor: o.empresa || '', max: 120, dica: 'Agrupa as linhas na planilha diária.' },
+        { nome: 'ultima_vistoria', rotulo: 'Última vistoria (vale 30 dias)', tipo: 'date', valor: o.ultima_vistoria || '' },
         { nome: 'venc_licenciamento', rotulo: 'Vencimento do licenciamento', tipo: 'date', valor: o.venc_licenciamento || '' },
         { nome: 'venc_tacografo', rotulo: 'Vencimento do tacógrafo', tipo: 'date', valor: o.venc_tacografo || '' },
         { nome: 'venc_vistoria', rotulo: 'Vencimento da vistoria', tipo: 'date', valor: o.venc_vistoria || '' },
@@ -375,15 +377,16 @@ async function frotaPagina({ recarregarPagina }) {
       kpi('Com documento vencido', fmt(vencidos), { icone: 'alerta', tom: vencidos ? 'alerta' : 'neutro' }),
       kpi('Vencendo em 30 dias', fmt(vencendo), { icone: 'relogio', tom: vencendo ? 'alerta' : 'neutro' })),
     h('div', { class: 'card' }, tabela([
-      { t: 'Prefixo', f: (o) => [h('strong', {}, o.prefixo), o.ativo ? null : h('div', {}, badgeTom('Inativo', 'mute'))] },
-      { t: 'Placa', cls: 'nowrap', f: (o) => o.placa },
-      { t: 'Modelo', f: (o) => [o.modelo || '—', h('div', { class: 'muted pequeno' }, [o.ano, o.proprietario === 'terceiro' ? `Terceirizado${o.empresa ? ` · ${o.empresa}` : ''}` : 'Próprio'].filter(Boolean).join(' · '))] },
+      { t: 'Frota', f: (o) => [h('strong', {}, o.prefixo), o.ativo ? null : h('div', {}, badgeTom('Inativo', 'mute'))] },
+      { t: 'Empresa', f: (o) => o.empresa || '—' },
+      { t: 'Placa', cls: 'nowrap', f: (o) => o.placa || '—' },
+      { t: 'Modelo', f: (o) => [o.modelo || '—', h('div', { class: 'muted pequeno' }, [o.ano, o.proprietario === 'terceiro' ? 'Terceirizado' : 'Próprio'].filter(Boolean).join(' · '))] },
       { t: 'Lugares', num: true, f: (o) => o.capacidade ?? '—' },
       { t: 'Documentos', f: (o) => h('div', { class: 'oni-docs' }, o.documentos.map((d) => h('span', { title: d.vencimento ? `${d.nome}: ${dataBR(d.vencimento)}` : `${d.nome}: sem data` },
         badgeTom(`${d.nome} ${d.vencimento ? dataBR(d.vencimento) : '—'}`, DOC_TOM[d.situacao])))) },
       { t: 'Viagens', num: true, f: (o) => fmt(o.viagens) },
       { t: '', f: (o) => (o.viagens ? null : botaoIcone('Excluir ônibus', async () => {
-        if (!(await confirmar('Excluir ônibus', `${o.prefixo} · ${o.placa}`, { rotulo: 'Excluir', perigo: true }))) return;
+        if (!(await confirmar('Excluir ônibus', nomeOnibus(o), { rotulo: 'Excluir', perigo: true }))) return;
         await del(`/onibus/frota/${o.id}`); toast('Ônibus excluído.'); recarregarPagina();
       }, 'lixeira')) },
     ], frota, { vazioMsg: 'Nenhum ônibus cadastrado. Use "Novo ônibus".', aoClicar: (o) => editar(o) })),
@@ -431,7 +434,10 @@ async function linhasPagina({ recarregarPagina }) {
 // Roteamento interno
 // ======================================================================
 export default async function onibus(ctx) {
-  const [sub = 'dia', ...resto] = ctx.params;
+  const [sub = 'planilha', ...resto] = ctx.params;
+  if (sub === 'planilha') return planilha(ctx);
+  if (sub === 'disponibilidade') return disponibilidadePagina(ctx);
+  if (sub === 'imprimir') return imprimir(ctx);
   if (sub === 'viagens' && resto.length) return formViagem({ ...ctx, params: resto });
   if (sub === 'viagens') return listaViagens(ctx);
   if (sub === 'ocorrencias') return ocorrencias(ctx);

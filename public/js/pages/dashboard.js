@@ -2,7 +2,7 @@
 // uma janela (modal) com indicadores e gráficos e o atalho para o módulo.
 import { get, cadastros } from '../api.js';
 import { h, brl, kpi, secao, barraFiltros, cabecalhoPagina, icone } from '../ui.js';
-import { colunasMensais, barrasHorizontais, rosca, colunasEmpilhadas, barrasEmpilhadas, legendaSeries, miniBarras } from '../charts.js';
+import { colunasMensais, barrasHorizontais, rosca, colunasEmpilhadas, barrasEmpilhadas, legendaSeries, miniBarras, colunasMeta } from '../charts.js';
 
 const MESES = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
 const MESES_LONGOS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -203,7 +203,25 @@ function moduloOnibus(p) {
   const porTipo = p.por_tipo.filter((t) => t.aberta + t.resolvida).sort((a, b) => b.aberta + b.resolvida - a.aberta - a.resolvida)
     .map((t) => ({ nome: TIPO[t.tipo] || t.tipo, valores: { aberta: t.aberta, resolvida: t.resolvida }, total: t.aberta + t.resolvida }));
   const dataBr = (iso) => iso.split('-').reverse().join('/');
+  const dd = p.diario;
+  const seriesSit = [{ k: 'liberado', nome: 'Liberado', cor: COR[2] }, { k: 'manutencao', nome: 'Manutenção', cor: COR[3] },
+    { k: 'interditado', nome: 'Interditado', cor: 'var(--cls-4)' }, { k: 'outros', nome: 'Reserva / parado', cor: COR.sem }];
+  // planilha diária: disponibilidade (liberados ÷ ônibus lançados) da frota
+  const blocoDiario = () => (dd ? [
+    h('h3', { class: 'grupo' }, `Planilha diária e disponibilidade (último dia lançado: ${dataBr(dd.ultimo_dia)})`),
+    kpis(
+      kpi('Disponibilidade — 7 dias', pct(dd.disponibilidade_7d), { icone: 'ok', tom: dd.disponibilidade_7d >= dd.meta ? 'ok' : 'alerta', sub: `meta ${dd.meta}% · ${dataBr(dd.de_7d)} a ${dataBr(dd.ultimo_dia)}`, link: '#/onibus/disponibilidade' }),
+      kpi(`Disponibilidade em ${p.ano}`, pct(dd.disponibilidade_ano), { icone: 'relatorio', tom: 'neutro' }),
+      kpi('Liberados no último dia', `${fmt(dd.dia.liberado)} de ${fmt(dd.dia.total)}`, { icone: 'onibus', sub: `${fmt(dd.dia.manutencao)} em manutenção · ${fmt(dd.dia.interditado)} interditado`, link: '#/onibus/planilha' }),
+      kpi('Passageiros no último dia', fmt(dd.dia.passageiros), { icone: 'usuarios', tom: 'neutro' }),
+      kpi('Vistorias vencidas', fmt(dd.dia.vistorias_vencidas), { icone: 'alerta', tom: dd.dia.vistorias_vencidas ? 'alerta' : 'ok', sub: 'a vistoria vale 30 dias' })),
+    grade(
+      secao('Disponibilidade por empresa — 7 dias', null, colunasMeta(dd.empresas_7d.map((e) => ({ nome: e.empresa, valor: e.disponibilidade, linhas: [[`${fmt(e.liberado)} de ${fmt(e.total)}`, 'ônibus-dia liberados', null]] })), { meta: dd.meta, largura: 560, aria: 'Disponibilidade por empresa nos últimos 7 dias' })),
+      secao(`Situação da frota por mês — ${p.ano}`, null, legendaSeries(seriesSit), colunasAno(dd.meses.map((m) => ({ ...m, outros: m.reserva + m.parado })), seriesSit, p.ano, { aria: `Ônibus-dia por situação e mês em ${p.ano}`, largura: 560 }))),
+    h('h3', { class: 'grupo' }, 'Viagens'),
+  ] : []);
   const corpo = () => [
+    ...blocoDiario(),
     kpis(
       kpi(`Viagens em ${p.ano}`, fmt(p.viagens), { icone: 'onibus', sub: p.canceladas ? `${fmt(p.canceladas)} cancelada${p.canceladas === 1 ? '' : 's'}` : null }),
       kpi('Pontualidade na saída', pct(p.pontualidade), { icone: 'relogio', tom: p.pontualidade == null ? 'neutro' : p.pontualidade >= 90 ? 'ok' : 'alerta', sub: 'até 10 min do previsto' }),
@@ -218,14 +236,22 @@ function moduloOnibus(p) {
     grade(
       secao('Ocorrências por tipo', null, legendaSeries(ocorr), barrasEmpilhadas(porTipo, ocorr, { vazioMsg: 'Sem ocorrências no ano.' })),
       secao('Documentos vencidos ou vencendo', null, p.alertas.length
-        ? h('ul', { class: 'oni-alertas' }, p.alertas.map((a) => h('li', {}, h('strong', {}, `${a.prefixo} · ${a.placa}`), ` — ${a.documento}: ${a.situacao === 'vencido' ? 'venceu' : 'vence'} em ${dataBr(a.vencimento)}`)))
+        ? h('ul', { class: 'oni-alertas' }, p.alertas.map((a) => h('li', {}, h('strong', {}, a.placa ? `${a.prefixo} · ${a.placa}` : a.prefixo), ` — ${a.documento}: ${a.situacao === 'vencido' ? 'venceu' : 'vence'} em ${dataBr(a.vencimento)}`)))
         : h('p', { class: 'muted vazio' }, 'Todos os documentos da frota em dia.'))),
   ];
   return cartao({
-    titulo: 'Acompanhamento de ônibus', nomeIcone: 'onibus', principal: fmt(p.viagens), rotulo: `viage${p.viagens === 1 ? 'm' : 'ns'} em ${p.ano}`,
-    linhas: [['Pontualidade', pct(p.pontualidade)], ['Ocorrências em aberto', fmt(p.ocorrencias_abertas)], ['Documentos a vencer', fmt(p.documentos_alerta)]],
-    tom: p.ocorrencias_abertas || p.documentos_alerta ? 'atencao' : '', serie: { valores: p.meses.map((m) => m.viagens), destaque: mesAtual() }, legendaSerie: `viagens por mês em ${p.ano}`,
-    abrir: () => abrirModal({ titulo: 'Acompanhamento de ônibus', sub: `Viagens, pontualidade, ocorrências e frota em ${p.ano}`, nomeIcone: 'onibus', corpo: corpo(), link: { href: '#/onibus/dia', rotulo: 'Abrir Acompanhamento do dia' } }),
+    titulo: 'Acompanhamento de ônibus', nomeIcone: 'onibus',
+    ...(dd ? {
+      principal: pct(dd.disponibilidade_7d), rotulo: 'de disponibilidade (7 dias)',
+      linhas: [['Liberados no último dia', `${fmt(dd.dia.liberado)} de ${fmt(dd.dia.total)}`], ['Vistorias vencidas', fmt(dd.dia.vistorias_vencidas)], ['Ocorrências em aberto', fmt(p.ocorrencias_abertas)]],
+      tom: dd.disponibilidade_7d < dd.meta || dd.dia.vistorias_vencidas ? 'atencao' : '',
+      serie: { valores: dd.meses.map((m) => m.disponibilidade || 0), destaque: mesAtual() }, legendaSerie: `disponibilidade por mês em ${p.ano}`,
+    } : {
+      principal: fmt(p.viagens), rotulo: `viage${p.viagens === 1 ? 'm' : 'ns'} em ${p.ano}`,
+      linhas: [['Pontualidade', pct(p.pontualidade)], ['Ocorrências em aberto', fmt(p.ocorrencias_abertas)], ['Documentos a vencer', fmt(p.documentos_alerta)]],
+      tom: p.ocorrencias_abertas || p.documentos_alerta ? 'atencao' : '', serie: { valores: p.meses.map((m) => m.viagens), destaque: mesAtual() }, legendaSerie: `viagens por mês em ${p.ano}`,
+    }),
+    abrir: () => abrirModal({ titulo: 'Acompanhamento de ônibus', sub: `Disponibilidade da frota, viagens, ocorrências e documentos em ${p.ano}`, nomeIcone: 'onibus', corpo: corpo(), link: dd ? { href: '#/onibus/planilha', rotulo: 'Abrir a Planilha diária' } : { href: '#/onibus/dia', rotulo: 'Abrir Viagens do dia' } }),
   });
 }
 

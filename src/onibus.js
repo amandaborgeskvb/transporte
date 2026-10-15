@@ -57,12 +57,48 @@ function calculosViagem(v, capacidade = null) {
 }
 
 // Situação de um documento: vencido, vence em até 30 dias, em dia ou não informado
-function situacaoDocumento(venc, hoje) {
+function situacaoDocumento(venc, hoje, aviso = AVISO_DIAS) {
   if (!venc) return { situacao: 'sem_data', dias: null };
   const dias = Math.round((Date.parse(`${venc}T00:00:00Z`) - Date.parse(`${hoje}T00:00:00Z`)) / 86400000);
-  return { situacao: dias < 0 ? 'vencido' : dias <= AVISO_DIAS ? 'vence_logo' : 'em_dia', dias };
+  return { situacao: dias < 0 ? 'vencido' : dias <= aviso ? 'vence_logo' : 'em_dia', dias };
 }
+
+// ================= Planilha diária (Levantamento Transporte Funcionários) =================
+const VISTORIA_DIAS = 30; // a vistoria feita vale 30 dias
+const LAVAGEM_DIAS = 7; // a 2ª lavagem é 7 dias depois da 1ª
+const META_DISPONIBILIDADE = 85; // % de ônibus liberados (meta da planilha de disponibilidade)
+const SITUACOES_DIARIO = ['liberado', 'manutencao', 'reserva', 'interditado', 'parado'];
+const NOME_SITUACAO = { liberado: 'Liberado', manutencao: 'Manutenção', reserva: 'Reserva', interditado: 'Interditado', parado: 'Parado' };
+const somarDias = (iso, n) => (iso ? new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10) : null);
+const semAcento = (t) => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+// Próxima vistoria = última + 30 dias; vencida a partir do dia da próxima (como na planilha: HOJE >= última + 30)
+function situacaoVistoria(ultima, dia) {
+  if (!ultima) return { proxima: null, vencida: null, dias: null };
+  const proxima = somarDias(ultima, VISTORIA_DIAS);
+  const dias = Math.round((Date.parse(`${proxima}T00:00:00Z`) - Date.parse(`${dia}T00:00:00Z`)) / 86400000);
+  return { proxima, vencida: dias <= 0, dias };
+}
+// Lavagem: a 2ª é pendente (amarelo) a partir da data dela
+const lavagemPendente = (lavagem2, dia) => !!lavagem2 && dia >= lavagem2;
+// "Liberado", "MANUTENÇÃO", "manutencao"… → chave
+function lerSituacaoDiario(v) {
+  const t = semAcento(v).trim().toLowerCase();
+  if (!t) return null;
+  return SITUACOES_DIARIO.find((s) => t.startsWith(s.slice(0, 5))) || null;
+}
+// Passageiros como digitados na planilha: 48, "50 + 45" (soma), "" → null
+function lerPassageiros(v) {
+  const t = String(v ?? '').trim();
+  if (!t) return null;
+  const partes = t.split('+').map((x) => x.trim());
+  if (!partes.every((x) => /^\d+(\.0+)?$/.test(x))) return undefined;
+  return partes.reduce((s, x) => s + Math.round(Number(x)), 0);
+}
+// Disponibilidade = ônibus-dia liberados ÷ ônibus-dia lançados (%)
+const disponibilidade = (liberados, total) => (total ? Math.round((liberados * 1000) / total) / 10 : null);
 
 module.exports = {
   TOLERANCIA_MIN, SITUACOES, TIPOS_OCORRENCIA, DOCUMENTOS, AVISO_DIAS, ehHora, minutos, lerHora, diferenca, duracao, calculosViagem, situacaoDocumento,
+  VISTORIA_DIAS, LAVAGEM_DIAS, META_DISPONIBILIDADE, SITUACOES_DIARIO, NOME_SITUACAO, somarDias, semAcento, situacaoVistoria, lavagemPendente,
+  lerSituacaoDiario, lerPassageiros, disponibilidade,
 };

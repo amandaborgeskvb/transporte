@@ -1,0 +1,160 @@
+const { test, before, after } = require('node:test');
+const assert = require('node:assert/strict');
+const { iniciar, SENHA } = require('./setup');
+const { criarXlsx } = require('./xlsx-util');
+
+// Ônibus — planilha diária (Levantamento Transporte Funcionários) e disponibilidade. Dados 100% fictícios.
+let t; let admin; let oni; let ana;
+const D1 = '2026-05-04'; // segunda-feira
+const D2 = '2026-05-05';
+before(async () => {
+  t = await iniciar();
+  ({ admin } = await t.popular());
+  assert.equal((await admin.post('/api/usuarios', { nome: 'oni', login: 'oni', senha: SENHA, perfil: 'onibus' })).status, 201);
+  [oni, ana] = await Promise.all(['oni', 'ana'].map((l) => t.logado(l)));
+});
+after(() => t.encerrar());
+
+const serial = (iso) => Math.round((Date.parse(`${iso}T00:00:00Z`) - Date.UTC(1899, 11, 30)) / 86400000);
+const CAB = ['DATA', 'EMPRESA ', 'FROTA ', 'N° TOTAL PASSAGEIROS', 'N° TOTAL PASSAGEIROS POR DIA', 'VISTORIADO', 'VENCIMENTO', 'LAVAGEM_1', 'LAVAGEM_2', 'ATIVIDADE ', 'ROTA/IDA', 'ROTA/VOLTA', 'Situação', '∆ %'];
+const planilha = (linhas) => criarXlsx([{ nome: 'BASE', linhas: [[], [], ['', '', '', 'Levantamento Transporte Funcionários'], [], [], [], [], [],
+  ['', '', '', ...CAB, '', '', '', '', '', 'DATA', 'EMPRESA '], ...linhas.map((l) => ['', '', '', ...l])] }]);
+const importar = (c, buf, aplicar) => c.req('POST', `/api/onibus/diario/importar?nome=acomp.xlsx${aplicar ? '&aplicar=1' : ''}`, undefined, { bruto: buf, tipo: 'application/octet-stream' });
+
+test('acesso: só administrador, financeiro e perfil Ônibus', async () => {
+  assert.equal((await oni.get('/api/onibus/diario')).status, 200);
+  assert.equal((await ana.get('/api/onibus/diario')).status, 403);
+  assert.equal((await ana.get('/api/onibus/disponibilidade')).status, 403);
+});
+
+let linhaA;
+test('nova frota sem placa, começar o dia e digitar a linha', async () => {
+  // ônibus da planilha: nº de frota, empresa e lugares (placa opcional)
+  const a = (await oni.post('/api/onibus/frota', { prefixo: '50001', empresa: 'Viação Alfa', capacidade: 48, ultima_vistoria: '2026-04-10' })).corpo;
+  assert.equal(a.placa, null);
+  assert.equal(a.empresa, 'VIAÇÃO ALFA');
+  assert.ok(a.documentos.some((x) => x.campo === 'ultima_vistoria' && x.vencimento === '2026-05-10'));
+  await oni.post('/api/onibus/frota', { prefixo: '50002', empresa: 'VIAÇÃO ALFA', capacidade: 44 });
+  await oni.post('/api/onibus/frota', { prefixo: '60001', empresa: 'TRANSPORTE BETA', capacidade: 33 });
+  assert.equal((await oni.post('/api/onibus/frota', { prefixo: '50003', placa: '123' })).status, 400); // placa informada precisa ser válida
+
+  let d = (await oni.get(`/api/onibus/diario?data=${D1}`)).corpo;
+  assert.equal(d.linhas.length, 0);
+  assert.equal(d.fora_do_dia.length, 3);
+  assert.equal((await oni.post('/api/onibus/diario/iniciar', { data: D1 })).corpo.linhas, 3); // 1º dia: a frota ativa
+  d = (await oni.get(`/api/onibus/diario?data=${D1}`)).corpo;
+  assert.deepEqual(d.linhas.map((l) => [l.empresa, l.prefixo]), [['VIAÇÃO ALFA', '50001'], ['VIAÇÃO ALFA', '50002'], ['TRANSPORTE BETA', '60001']]);
+  linhaA = d.linhas[0];
+  assert.equal(linhaA.capacidade, 48);
+  assert.equal(linhaA.ultima_vistoria, '2026-04-10');
+  assert.equal(linhaA.proxima_vistoria, '2026-05-10');
+  assert.equal(linhaA.vistoria_vencida, false);
+
+  // vistoria + 30 dias: vencida a partir do dia da próxima; lavagem 2 = lavagem 1 + 7; passageiros "50 + 45" = 95
+  let r = await oni.put(`/api/onibus/diario/${linhaA.id}`, { ...linhaA, ultima_vistoria: '2026-04-04', lavagem_1: '2026-04-28', lavagem_2: '', passageiros: '30 + 12', atividade: 'frente 1', rota_ida: 'cidade / base', situacao: 'Liberado', observacao: 'Pneu trocado' });
+  assert.equal(r.status, 200, JSON.stringify(r.corpo));
+  assert.equal(r.corpo.proxima_vistoria, '2026-05-04');
+  assert.equal(r.corpo.vistoria_vencida, true);
+  assert.equal(r.corpo.lavagem_2, '2026-05-05');
+  assert.equal(r.corpo.lavagem_pendente, false);
+  assert.equal(r.corpo.passageiros, 42);
+  assert.equal(r.corpo.atividade, 'FRENTE 1');
+  assert.equal(r.corpo.observacao, 'Pneu trocado');
+  // a última vistoria vai para a frota
+  assert.equal((await oni.get('/api/onibus/frota')).corpo.find((o) => o.prefixo === '50001').ultima_vistoria, '2026-04-04');
+  assert.equal((await oni.put(`/api/onibus/diario/${linhaA.id}`, { ...linhaA, passageiros: 'muitos' })).status, 400);
+  assert.equal((await oni.put(`/api/onibus/diario/${linhaA.id}`, { ...linhaA, situacao: 'xyz' })).status, 400);
+  const b = d.linhas[1];
+  await oni.put(`/api/onibus/diario/${b.id}`, { ...b, situacao: 'manutencao', atividade: 'Manutenção - motor' });
+  assert.equal((await oni.put(`/api/onibus/diario-obs/${D1}`, { observacao: 'As manobras estão sendo feitas normalmente!' })).status, 200);
+
+  d = (await oni.get(`/api/onibus/diario?data=${D1}`)).corpo;
+  assert.deepEqual(d.resumo.por_situacao, { liberado: 2, manutencao: 1, reserva: 0, interditado: 0, parado: 0 });
+  assert.equal(d.resumo.disponibilidade, 66.7);
+  assert.equal(d.resumo.vistorias_vencidas, 1);
+  assert.equal(d.observacao, 'As manobras estão sendo feitas normalmente!');
+  assert.ok(d.sugestoes.atividades.includes('FRENTE 1'));
+});
+
+test('o dia seguinte começa copiando o anterior; incluir e tirar ônibus', async () => {
+  const r = await oni.post('/api/onibus/diario/iniciar', { data: D2 });
+  assert.equal(r.corpo.linhas, 3);
+  let d = (await oni.get(`/api/onibus/diario?data=${D2}`)).corpo;
+  assert.equal(d.anterior, D1);
+  const a = d.linhas.find((l) => l.prefixo === '50001');
+  assert.equal(a.passageiros, 42);
+  assert.equal(a.situacao, 'liberado');
+  assert.equal(a.lavagem_pendente, true); // 05/05 = dia da 2ª lavagem
+  assert.equal(d.linhas.find((l) => l.prefixo === '50002').situacao, 'manutencao');
+  assert.equal(d.observacao, 'As manobras estão sendo feitas normalmente!');
+  // tirar e incluir de novo
+  const beta = d.linhas.find((l) => l.prefixo === '60001');
+  assert.equal((await oni.del(`/api/onibus/diario/${beta.id}`)).status, 204);
+  d = (await oni.get(`/api/onibus/diario?data=${D2}`)).corpo;
+  assert.deepEqual(d.fora_do_dia.map((o) => o.prefixo), ['60001']);
+  assert.equal((await oni.post('/api/onibus/diario', { data: D2, onibus_id: d.fora_do_dia[0].id })).status, 201);
+  assert.equal((await oni.post('/api/onibus/diario', { data: D2, onibus_id: d.fora_do_dia[0].id })).status, 409);
+  assert.equal((await oni.post('/api/onibus/diario', { data: D2, todos: true })).corpo.incluidos, 0);
+});
+
+test('disponibilidade por empresa e por dia (meta 85%)', async () => {
+  const p = (await oni.get(`/api/onibus/disponibilidade?de=${D1}&ate=${D2}`)).corpo;
+  assert.equal(p.meta, 85);
+  assert.deepEqual(p.empresas.map((e) => [e.empresa, e.liberado, e.total, e.disponibilidade]), [['VIAÇÃO ALFA', 2, 4, 50], ['TRANSPORTE BETA', 2, 2, 100]]);
+  assert.equal(p.total.disponibilidade, 66.7);
+  assert.equal(p.abaixo_da_meta, 1);
+  assert.deepEqual(p.dias.map((x) => [x.data, x.liberado, x.manutencao, x.total]), [[D1, 2, 1, 3], [D2, 2, 1, 3]]);
+  // padrão: da segunda-feira da semana até a data
+  const s = (await oni.get(`/api/onibus/disponibilidade?ate=${D2}`)).corpo;
+  assert.equal(s.de, D1);
+  assert.equal((await oni.get(`/api/onibus/disponibilidade?de=${D2}&ate=${D1}`)).status, 400);
+  const csv = await oni.get(`/api/onibus/diario.csv?de=${D1}&ate=${D2}`);
+  const texto = Buffer.isBuffer(csv.corpo) ? csv.corpo.toString('utf8') : csv.corpo;
+  assert.match(texto, /VIAÇÃO ALFA;50001;48;42;04\/04\/2026;04\/05\/2026/);
+  // Início: resumo da planilha no painel do ano
+  const painel = (await oni.get('/api/onibus/painel?ano=2026')).corpo;
+  assert.equal(painel.diario.ultimo_dia, D2);
+  assert.equal(painel.diario.dia.liberado, 2);
+  assert.equal(painel.diario.dia.vistorias_vencidas, 1);
+  assert.equal(painel.diario.meses[4].total, 6);
+});
+
+test('importar a planilha do Excel (aba BASE): prévia, novas, alteradas e ônibus novos', async () => {
+  const D0 = '2026-04-30';
+  const linhas = [
+    [serial(D0), 'VIAÇÃO ALFA', 50001, 48, 40, serial('2026-04-04'), serial('2026-05-04'), serial('2026-04-28'), serial('2026-05-05'), 'FRENTE 1', 'CIDADE/BASE', 'BASE/CIDADE', 'Liberado'],
+    [serial(D0), 'VIAÇÃO GAMA', 'ABC-1D23', 16, '10 + 5', '', serial('2026-05-20'), '', '', 'MANUTENÇÃO - MOTOR', '-', '-', 'Manutenção'],
+    [serial(D0), 'VIAÇÃO GAMA', 70001, 44, 0, '', '', '', '', 'RESERVA', '-', '-', 'Reserva'],
+    [serial(D1), 'VIAÇÃO ALFA', 50001, 48, 42, serial('2026-04-04'), serial('2026-05-04'), serial('2026-04-28'), serial('2026-05-05'), 'FRENTE 2', 'CIDADE / BASE', '-', 'Liberado'],
+    ['', 'TOTAL', 2],
+  ];
+  const buf = planilha(linhas);
+  let r = await importar(oni, buf, false);
+  assert.equal(r.status, 200, JSON.stringify(r.corpo));
+  assert.equal(r.corpo.aba, 'BASE');
+  assert.equal(r.corpo.novas, 3);
+  assert.equal(r.corpo.alteradas, 1); // 50001 em 04/05: atividade e rotas mudaram
+  assert.deepEqual(r.corpo.onibus_novos, ['ABC-1D23', '70001']);
+  assert.equal(r.corpo.aplicado, false);
+  assert.equal((await oni.get(`/api/onibus/diario?data=${D0}`)).corpo.linhas.length, 0); // a prévia não grava
+
+  r = await importar(oni, buf, true);
+  assert.equal(r.status, 201);
+  const d0 = (await oni.get(`/api/onibus/diario?data=${D0}`)).corpo;
+  assert.deepEqual(d0.linhas.map((l) => [l.empresa, l.prefixo, l.passageiros, l.situacao]), [
+    ['VIAÇÃO ALFA', '50001', 40, 'liberado'], ['VIAÇÃO GAMA', 'ABC-1D23', 15, 'manutencao'], ['VIAÇÃO GAMA', '70001', 0, 'reserva']]);
+  // sem "VISTORIADO", a última vistoria sai do vencimento − 30 dias
+  assert.equal(d0.linhas[1].ultima_vistoria, '2026-04-20');
+  assert.equal(d0.linhas[1].rota_ida, '');
+  const d1 = (await oni.get(`/api/onibus/diario?data=${D1}`)).corpo.linhas.find((l) => l.prefixo === '50001');
+  assert.equal(d1.atividade, 'FRENTE 2');
+  assert.equal(d1.rota_volta, '');
+  assert.equal(d1.passageiros, 42);
+  // reimportar não repete nada
+  r = await importar(oni, buf, false);
+  assert.equal(r.corpo.novas, 0);
+  assert.equal(r.corpo.alteradas, 0);
+  assert.equal(r.corpo.sem_alteracao, 4);
+  assert.equal((await importar(oni, criarXlsx([{ nome: 'X', linhas: [['A', 'B']] }]), false)).status, 400);
+  assert.equal((await importar(ana, buf, false)).status, 403);
+});

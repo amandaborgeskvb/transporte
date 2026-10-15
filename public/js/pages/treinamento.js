@@ -87,8 +87,11 @@ const TOPICOS = [
   },
   {
     titulo: 'Acompanhamento de ônibus', perfis: ['administrador', 'financeiro', 'onibus'], corpo: () => [
-      lista('Primeiro, cadastre em **Ônibus → Frota** os ônibus (prefixo, placa, lugares e o vencimento do licenciamento, tacógrafo, vistoria e seguro) e em **Linhas** os trajetos com os horários e o km previstos.',
-        'Em **Acompanhamento do dia**, programe as viagens com **Nova viagem** (ao escolher a linha, os horários previstos vêm dela) ou use **Copiar programação de outro dia** para repetir a escala de ontem.',
+      lista('**Planilha diária** (o "Levantamento Transporte Funcionários"): para o dia, clique em **Copiar de (último dia)** e altere só o que mudou — passageiros por dia, última vistoria, lavagens, atividade, rota de ida e volta, situação (liberado, manutenção, reserva, interditado ou parado) e observação. Cada célula é salva ao sair dela.',
+        'A **próxima vistoria** é a última + 30 dias: em vermelho claro quando vencida e em verde claro quando em dia. A lavagem 2 vem como lavagem 1 + 7 dias e fica amarela no dia. **Novo ônibus (nova frota)** cadastra um ônibus (e uma empresa nova, se for o caso) e já põe a linha dele na planilha.',
+        '**Disponibilidade** mostra liberados ÷ ônibus lançados por empresa e por dia, com a meta de 85%. **Imprimir planilha + disponibilidade** imprime as duas folhas juntas (A4 deitado). **Importar planilha Excel** traz o histórico da aba BASE.',
+        'Para as viagens: cadastre em **Ônibus → Frota** os ônibus (prefixo, placa, lugares e o vencimento do licenciamento, tacógrafo, vistoria e seguro) e em **Linhas** os trajetos com os horários e o km previstos.',
+        'Em **Viagens do dia**, programe as viagens com **Nova viagem** (ao escolher a linha, os horários previstos vêm dela) ou use **Copiar programação de outro dia** para repetir a escala de ontem.',
         'Quando o ônibus sair, clique em **Saída** na linha da viagem (a hora atual já vem preenchida; informe o km do hodômetro). Na chegada, clique em **Chegada** e informe o km final e os passageiros.',
         'Saída mais de 10 minutos depois do previsto conta como atraso; viagem de hoje que passou do horário e ainda não saiu aparece como **não saiu**. O km rodado, o tempo de viagem e a ocupação são calculados.',
         'Registre em **Ocorrências** atrasos, quebras, acidentes, reclamações e superlotação; acompanhe as abertas e marque como **resolvida** com a solução.'),

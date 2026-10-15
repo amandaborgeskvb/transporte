@@ -4,8 +4,9 @@ const express = require('express');
 const { tx } = require('../db');
 const { wrap, texto, data, idParam, auditar, diff, ehData, round2, hojeSP, enviarCsv, erro400, erro404, erro409 } = require('../util');
 const { exigirPerfil, ADM, FIN, ONI } = require('../workflow');
+const { calcularDisponibilidade } = require('./onibusDiario');
 const {
-  TOLERANCIA_MIN, SITUACOES, TIPOS_OCORRENCIA, DOCUMENTOS, lerHora, minutos, calculosViagem, situacaoDocumento,
+  TOLERANCIA_MIN, SITUACOES, TIPOS_OCORRENCIA, DOCUMENTOS, lerHora, minutos, calculosViagem, situacaoDocumento, situacaoVistoria, VISTORIA_DIAS,
 } = require('../onibus');
 
 const dataLocal = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : d);
@@ -31,35 +32,41 @@ function criarOnibus({ pool }) {
   // ================= Frota =================
   const formatarOnibus = (o, hoje = hojeSP()) => {
     const docs = DOCUMENTOS.map(([campo, nome]) => ({ campo, nome, vencimento: dataLocal(o[campo]), ...situacaoDocumento(dataLocal(o[campo]), hoje) }));
+    // vistoria da planilha diária: a última feita vale 30 dias (aviso 5 dias antes)
+    const vist = situacaoVistoria(dataLocal(o.ultima_vistoria), hoje);
+    if (vist.proxima) docs.push({ campo: 'ultima_vistoria', nome: `Vistoria (${VISTORIA_DIAS} dias)`, vencimento: vist.proxima, ...situacaoDocumento(vist.proxima, hoje, 5), ...(vist.vencida ? { situacao: 'vencido' } : {}) });
     return {
-      ...o, venc_licenciamento: dataLocal(o.venc_licenciamento), venc_tacografo: dataLocal(o.venc_tacografo), venc_vistoria: dataLocal(o.venc_vistoria),
+      ...o, ultima_vistoria: dataLocal(o.ultima_vistoria), venc_licenciamento: dataLocal(o.venc_licenciamento), venc_tacografo: dataLocal(o.venc_tacografo), venc_vistoria: dataLocal(o.venc_vistoria),
       venc_seguro: dataLocal(o.venc_seguro), documentos: docs,
       documentos_vencidos: docs.filter((d) => d.situacao === 'vencido').length, documentos_vencendo: docs.filter((d) => d.situacao === 'vence_logo').length,
     };
   };
   const lerOnibus = (b) => {
     const prefixo = texto(b.prefixo, 20, { obrigatorio: true, rotulo: 'Prefixo' }).toUpperCase();
-    const placa = texto(b.placa, 10, { obrigatorio: true, rotulo: 'Placa' }).toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (!/^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(placa)) throw erro400('Placa inválida (ex.: ABC1234 ou ABC1D23).');
-    const proprietario = b.proprietario === 'terceiro' ? 'terceiro' : 'proprio';
+    const placa = texto(b.placa, 10).toUpperCase().replace(/[^A-Z0-9]/g, '') || null; // opcional: na planilha o ônibus é o nº de frota
+    if (placa && !/^[A-Z]{3}\d[A-Z0-9]\d{2}$/.test(placa)) throw erro400('Placa inválida (ex.: ABC1234 ou ABC1D23).');
+    const proprietario = b.proprietario === 'proprio' || (!b.proprietario && !b.empresa) ? 'proprio' : 'terceiro';
     return {
       prefixo, placa, modelo: texto(b.modelo, 80), ano: numero(b.ano, 'Ano', { inteiro: true, max: 2100 }), capacidade: numero(b.capacidade, 'Capacidade', { inteiro: true, max: 200 }),
-      proprietario, empresa: proprietario === 'terceiro' ? texto(b.empresa, 120) : '',
+      proprietario, empresa: texto(b.empresa, 120).toUpperCase().replace(/\s+/g, ' '),
       venc_licenciamento: dataOuNulo(b.venc_licenciamento, 'Vencimento do licenciamento'), venc_tacografo: dataOuNulo(b.venc_tacografo, 'Vencimento do tacógrafo'),
       venc_vistoria: dataOuNulo(b.venc_vistoria, 'Vencimento da vistoria'), venc_seguro: dataOuNulo(b.venc_seguro, 'Vencimento do seguro'),
       observacao: texto(b.observacao, 300), ativo: b.ativo === undefined ? true : bool(b.ativo),
+      ultima_vistoria: dataOuNulo(b.ultima_vistoria, 'Última vistoria'),
     };
   };
-  const COLS_ONIBUS = ['prefixo', 'placa', 'modelo', 'ano', 'capacidade', 'proprietario', 'empresa', 'venc_licenciamento', 'venc_tacografo', 'venc_vistoria', 'venc_seguro', 'observacao', 'ativo'];
+  const COLS_ONIBUS = ['prefixo', 'placa', 'modelo', 'ano', 'capacidade', 'proprietario', 'empresa', 'venc_licenciamento', 'venc_tacografo', 'venc_vistoria', 'venc_seguro', 'observacao', 'ativo', 'ultima_vistoria'];
 
   router.get('/onibus/frota', wrap(async (_req, res) => {
-    const { rows } = await pool.query(`SELECT f.*, (SELECT count(*)::int FROM onibus_viagens v WHERE v.onibus_id = f.id) AS viagens FROM onibus_frota f ORDER BY f.ativo DESC, f.prefixo`);
+    const { rows } = await pool.query(`SELECT f.*, (SELECT count(*)::int FROM onibus_viagens v WHERE v.onibus_id = f.id) AS viagens FROM onibus_frota f ORDER BY f.ativo DESC, f.ordem, f.empresa, f.prefixo`);
     const hoje = hojeSP();
     res.json(rows.map((o) => formatarOnibus(o, hoje)));
   }));
   router.post('/onibus/frota', wrap(async (req, res) => {
     const o = lerOnibus(req.body);
-    const { rows } = await pool.query(`INSERT INTO onibus_frota (${COLS_ONIBUS.join(', ')}) VALUES (${COLS_ONIBUS.map((_, i) => `$${i + 1}`).join(', ')}) RETURNING *`, COLS_ONIBUS.map((c) => o[c]));
+    // na planilha, o ônibus novo entra no fim do grupo da empresa dele (empresa nova: no fim da planilha)
+    const ordem = (await pool.query(`SELECT COALESCE((SELECT max(ordem) + 1 FROM onibus_frota WHERE empresa = $1 AND $1 <> ''), (SELECT COALESCE(max(ordem), 0) + 100 FROM onibus_frota)) AS o`, [o.empresa])).rows[0].o;
+    const { rows } = await pool.query(`INSERT INTO onibus_frota (${COLS_ONIBUS.join(', ')}, ordem) VALUES (${COLS_ONIBUS.map((_, i) => `$${i + 1}`).join(', ')}, $${COLS_ONIBUS.length + 1}) RETURNING *`, [...COLS_ONIBUS.map((c) => o[c]), ordem]);
     await auditar(pool, req.usuario, 'criar', 'onibus_frota', rows[0].id, { prefixo: o.prefixo, placa: o.placa });
     res.status(201).json(formatarOnibus(rows[0]));
   }));
@@ -413,14 +420,40 @@ function criarOnibus({ pool }) {
     }
     const porOnibus = new Map();
     for (const v of feitas) {
-      const g = porOnibus.get(v.onibus_id) || { nome: `${v.prefixo} · ${v.placa}`, viagens: 0, km: 0, passageiros: 0 };
+      const g = porOnibus.get(v.onibus_id) || { nome: v.placa ? `${v.prefixo} · ${v.placa}` : v.prefixo, viagens: 0, km: 0, passageiros: 0 };
       g.viagens += 1; g.km = round2(g.km + (v.km_rodado || 0)); g.passageiros += v.passageiros || 0;
       porOnibus.set(v.onibus_id, g);
     }
     const tipos = Object.fromEntries(TIPOS_OCORRENCIA.map((t) => [t, { aberta: 0, resolvida: 0 }]));
     for (const o of ocorr.rows) tipos[o.tipo][o.situacao] = o.qtd;
     const comHorario = feitas.filter((v) => v.atraso_saida != null);
+    // planilha diária: disponibilidade do ano (por mês), dos últimos 7 dias (por empresa) e situação do último dia lançado
+    const ultimoDia = (await pool.query('SELECT max(data) AS d FROM onibus_diario WHERE data <= $1', [`${ano}-12-31`])).rows[0].d;
+    let diario = null;
+    if (ultimoDia) {
+      const ud = dataLocal(ultimoDia);
+      const [anoDisp, semana, dia] = await Promise.all([
+        calcularDisponibilidade(pool, `${ano}-01-01`, `${ano}-12-31`),
+        calcularDisponibilidade(pool, new Date(Date.parse(`${ud}T00:00:00Z`) - 6 * 86400000).toISOString().slice(0, 10), ud),
+        pool.query(`SELECT situacao, count(*)::int AS qtd, count(*) FILTER (WHERE ultima_vistoria IS NOT NULL AND ultima_vistoria + 30 <= data)::int AS vencidas,
+                           COALESCE(sum(passageiros), 0)::int AS passageiros FROM onibus_diario WHERE data = $1 GROUP BY 1`, [ultimoDia]),
+      ]);
+      const vazio = () => ({ liberado: 0, manutencao: 0, reserva: 0, interditado: 0, parado: 0, total: 0 });
+      const meses = Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, ...vazio() }));
+      for (const d of anoDisp.dias) {
+        const m = meses[Number(d.data.slice(5, 7)) - 1];
+        for (const k of Object.keys(vazio())) m[k] += d[k];
+      }
+      const porSit = Object.fromEntries(dia.rows.map((r) => [r.situacao, r.qtd]));
+      diario = {
+        ultimo_dia: ud, meta: semana.meta, disponibilidade_ano: anoDisp.total.disponibilidade, disponibilidade_7d: semana.total.disponibilidade,
+        empresas_7d: semana.empresas, de_7d: semana.de, meses: meses.map((m) => ({ ...m, disponibilidade: m.total ? Math.round((m.liberado * 1000) / m.total) / 10 : null })),
+        dia: { total: dia.rows.reduce((t, r) => t + r.qtd, 0), liberado: porSit.liberado || 0, manutencao: porSit.manutencao || 0, interditado: porSit.interditado || 0,
+          outros: (porSit.reserva || 0) + (porSit.parado || 0), vistorias_vencidas: dia.rows.reduce((t, r) => t + r.vencidas, 0), passageiros: dia.rows.reduce((t, r) => t + r.passageiros, 0) },
+      };
+    }
     res.json({
+      diario,
       ano, viagens: feitas.length, canceladas: itens.filter((v) => v.situacao === 'cancelada').length,
       passageiros: feitas.reduce((t, v) => t + (v.passageiros || 0), 0), km: round2(feitas.reduce((t, v) => t + (v.km_rodado || 0), 0)),
       pontualidade: comHorario.length ? Math.round((comHorario.filter((v) => v.pontual).length * 1000) / comHorario.length) / 10 : null,

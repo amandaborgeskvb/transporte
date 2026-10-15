@@ -228,3 +228,57 @@ export function miniBarras(valores, { destaque = -1 } = {}) {
   });
   return raiz;
 }
+
+// Colunas de % com linha de meta (ex.: disponibilidade por empresa). itens: [{ nome, valor (0–100), linhas: [[valor, rótulo]] }]
+// Na meta ou acima: --cls-2; abaixo: --cls-3 (a legenda diz o que cada cor é; o valor fica escrito sobre a coluna)
+export function colunasMeta(itens, { meta, aria = 'Gráfico de colunas com meta', largura, altura = 280 } = {}) {
+  if (!itens.length) return h('p', { class: 'muted vazio' }, 'Sem dados no período.');
+  const L = largura || Math.max(640, itens.length * 120);
+  const A = altura;
+  const m = { t: 24, r: 64, b: 36, l: 40 };
+  const util = A - m.t - m.b;
+  const y = (v) => m.t + util - (Math.min(v, 100) / 100) * util;
+  const banda = (L - m.l - m.r) / itens.length;
+  const larg = Math.min(56, banda * 0.5);
+  const fmtP = (v) => (v == null ? '—' : `${v.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`);
+  const raiz = svg('svg', { viewBox: `0 0 ${L} ${A}`, class: 'grafico ch-col ch-meta', role: 'img', 'aria-label': aria });
+  for (let v = 0; v <= 100; v += 25) {
+    raiz.append(svg('line', { x1: m.l, x2: L - m.r, y1: y(v), y2: y(v), class: 'grade' }),
+      Object.assign(svg('text', { x: m.l - 6, y: y(v) + 4, class: 'eixo', 'text-anchor': 'end' }), { textContent: `${v}%` }));
+  }
+  itens.forEach((it, i) => {
+    const cx = m.l + i * banda + banda / 2;
+    const g = svg('g', { class: 'ch-grupo', tabindex: 0, 'aria-label': `${it.nome}: ${fmtP(it.valor)}` });
+    g.append(svg('rect', { x: cx - banda / 2, y: m.t - 18, width: banda, height: util + 18, class: 'ch-alvo' }));
+    if (it.valor != null) {
+      const topo = y(it.valor);
+      const alt = Math.max(0.5, m.t + util - topo);
+      const r = Math.min(4, alt / 2, larg / 2);
+      const x0 = cx - larg / 2;
+      const seg = svg('path', { d: `M${x0},${topo + alt} L${x0},${topo + r} Q${x0},${topo} ${x0 + r},${topo} L${x0 + larg - r},${topo} Q${x0 + larg},${topo} ${x0 + larg},${topo + r} L${x0 + larg},${topo + alt} Z`, class: 'ch-seg' });
+      seg.style.fill = it.valor >= meta ? 'var(--cls-2)' : 'var(--cls-3)';
+      g.append(seg, Object.assign(svg('text', { x: cx, y: topo - 6, class: 'ch-total', 'text-anchor': 'middle' }), { textContent: fmtP(it.valor) }));
+    }
+    // nome no eixo: quebra em até duas linhas para caber na largura da coluna
+    const cabe = Math.max(4, Math.floor(banda / 6.4));
+    const corta = (t) => (t.length > cabe ? `${t.slice(0, cabe - 1)}…` : t);
+    let linhas = [it.nome];
+    if (it.nome.length > cabe && it.nome.includes(' ')) {
+      const p = it.nome.split(' ');
+      let i = 1;
+      while (i < p.length - 1 && p.slice(0, i + 1).join(' ').length <= cabe) i += 1;
+      linhas = [p.slice(0, i).join(' '), p.slice(i).join(' ')];
+    }
+    const rot = svg('text', { x: cx, y: A - (linhas.length > 1 ? 16 : 10), class: 'eixo', 'text-anchor': 'middle' });
+    linhas.forEach((t, j) => rot.append(Object.assign(svg('tspan', { x: cx, dy: j ? 12 : 0 }), { textContent: corta(t) })));
+    g.append(rot);
+    ligarDica(g, () => [it.nome, [[fmtP(it.valor), 'disponibilidade', it.valor == null ? null : it.valor >= meta ? 'var(--cls-2)' : 'var(--cls-3)'], ...(it.linhas || [])]]);
+    raiz.append(g);
+  });
+  // linha da meta, com o rótulo à direita
+  raiz.append(svg('line', { x1: m.l, x2: L - m.r + 4, y1: y(meta), y2: y(meta), class: 'ch-linha-meta' }),
+    Object.assign(svg('text', { x: L - m.r + 8, y: y(meta) + 4, class: 'ch-meta-rot' }), { textContent: `Meta ${meta}%` }));
+  return h('div', {},
+    legendaSeries([{ nome: `Na meta (${meta}%) ou acima`, cor: 'var(--cls-2)' }, { nome: 'Abaixo da meta', cor: 'var(--cls-3)' }]),
+    h('div', { class: 'scroll' }, raiz));
+}

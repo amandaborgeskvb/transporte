@@ -666,6 +666,37 @@ CREATE TABLE IF NOT EXISTS onibus_ocorrencias (
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS onibus_ocorrencias_data_idx ON onibus_ocorrencias (data);
+-- Frota da planilha diária: o nº de frota pode não ser placa; ordem das linhas e a última vistoria (vale 30 dias)
+ALTER TABLE onibus_frota ALTER COLUMN placa DROP NOT NULL;
+ALTER TABLE onibus_frota ADD COLUMN IF NOT EXISTS ordem INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE onibus_frota ADD COLUMN IF NOT EXISTS ultima_vistoria DATE;
+-- Planilha diária (Levantamento Transporte Funcionários): uma linha por ônibus por dia
+CREATE TABLE IF NOT EXISTS onibus_diario (
+  id               SERIAL PRIMARY KEY,
+  data             DATE NOT NULL,
+  onibus_id        INTEGER NOT NULL REFERENCES onibus_frota(id) ON DELETE CASCADE,
+  empresa          TEXT NOT NULL DEFAULT '',
+  capacidade       INTEGER CHECK (capacidade IS NULL OR capacidade BETWEEN 0 AND 300),
+  passageiros      INTEGER CHECK (passageiros IS NULL OR passageiros BETWEEN 0 AND 300),
+  ultima_vistoria  DATE,
+  lavagem_1        DATE,
+  lavagem_2        DATE,
+  atividade        TEXT NOT NULL DEFAULT '',
+  rota_ida         TEXT NOT NULL DEFAULT '',
+  rota_volta       TEXT NOT NULL DEFAULT '',
+  situacao         TEXT NOT NULL DEFAULT 'liberado' CHECK (situacao IN ('liberado','manutencao','reserva','interditado','parado')),
+  observacao       TEXT NOT NULL DEFAULT '',
+  criado_em        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (data, onibus_id)
+);
+CREATE INDEX IF NOT EXISTS onibus_diario_data_idx ON onibus_diario (data);
+-- Observação geral do dia (rodapé da planilha)
+CREATE TABLE IF NOT EXISTS onibus_diario_obs (
+  data          DATE PRIMARY KEY,
+  observacao    TEXT NOT NULL DEFAULT '',
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,
