@@ -5,13 +5,13 @@ const { tx } = require('../db');
 const { wrap, texto, data, idParam, auditar, diff, ehData, hojeSP, enviarCsv, erro400, erro404 } = require('../util');
 const { exigirPerfil, ADM, FIN, OPE } = require('../workflow');
 const { MAX_BYTES } = require('../planilha');
-const { lerPlanilhaAets, situacaoAet, marcarRenovadas, esferaDe, AVISO_DIAS, placaLimpa } = require('../aets');
+const { lerPlanilhaAets, situacaoAet, marcarRenovadas, esferaDe, AVISO_DIAS, VALIDADE_PADRAO, placaLimpa, dias } = require('../aets');
 const { somarDias } = require('../onibus');
 
 const SITUACOES = ['vencida', 'vence_logo', 'em_dia', 'sem_aet', 'encerrada'];
 const NOME = { vencida: 'Vencida', vence_logo: 'Vence em até 30 dias', em_dia: 'Em dia', sem_aet: 'Sem AET', encerrada: 'Encerrada / renovada' };
 const ORDEM = { vencida: 0, vence_logo: 1, sem_aet: 2, em_dia: 3, encerrada: 4 };
-const COLS = ['categoria', 'esfera', 'frota', 'placa', 'propriedade', 'especialidade', 'uf', 'doc_crv', 'chassi', 'renavam', 'numero', 'realizacao', 'vencimento', 'valor', 'desconto', 'observacao', 'encerrada'];
+const COLS = ['categoria', 'esfera', 'frota', 'placa', 'propriedade', 'especialidade', 'uf', 'doc_crv', 'chassi', 'renavam', 'numero', 'realizacao', 'validade_dias', 'vencimento', 'valor', 'desconto', 'observacao', 'encerrada'];
 const dataLocal = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : d);
 const bool = (v) => v === true || v === 'true' || v === 1 || v === '1' || v === 'on';
 const valorOuNulo = (v) => { if (v === '' || v == null) return null; const n = Number(String(v).replace(',', '.')); if (!Number.isFinite(n) || n < 0 || n > 1e8) throw erro400('Valor inválido.'); return Math.round(n * 100) / 100; };
@@ -26,7 +26,8 @@ function criarAets({ pool }) {
   const carregar = async () => {
     const hoje = hojeSP();
     const { rows } = await pool.query('SELECT * FROM op_aets ORDER BY categoria, vencimento NULLS FIRST, frota, placa');
-    return { hoje, itens: rows.map(fmtAet).map((a) => ({ ...a, ...situacaoAet(a, hoje) })) };
+    // desde: dias desde a realização ("Qtd Dias" da planilha); dias: até o vencimento ("Dias Faltante")
+    return { hoje, itens: rows.map(fmtAet).map((a) => ({ ...a, ...situacaoAet(a, hoje), desde: a.realizacao ? dias(a.realizacao, hoje) : null })) };
   };
 
   // Painel e lista: resumo por tipo (aba), vencimentos por mês e as AETs (com filtros)
@@ -80,8 +81,8 @@ function criarAets({ pool }) {
     const lista = itens.filter((a) => (!q.categoria || a.categoria === q.categoria) && (!SITUACOES.includes(q.situacao) || a.situacao === q.situacao))
       .sort((a, b) => a.categoria.localeCompare(b.categoria) || String(a.vencimento || '').localeCompare(String(b.vencimento || '')));
     enviarCsv(res, 'aets.csv', [
-      ['Tipo de AET', 'Esfera', 'Frota', 'Placa', 'Propriedade', 'Especialidade', 'UF', 'Nº AET', 'Data realização', 'Vencimento', 'Dias faltantes', 'Situação', 'Doc./CRV', 'Chassi', 'RENAVAM', 'R$ valor unitário', 'R$ desconto', 'Observação'],
-      ...lista.map((a) => [a.categoria, a.esfera, a.frota, a.placa, a.propriedade, a.especialidade, a.uf, a.numero, br(a.realizacao), br(a.vencimento), a.dias ?? '', NOME[a.situacao],
+      ['Tipo de AET', 'Esfera', 'Frota', 'Placa', 'Propriedade', 'Especialidade', 'UF', 'Nº AET', 'Data realização', 'Validade (dias)', 'Próxima data (vencimento)', 'Qtd dias', 'Dias faltantes', 'Situação', 'Doc./CRV', 'Chassi', 'RENAVAM', 'R$ valor unitário', 'R$ desconto', 'Observação'],
+      ...lista.map((a) => [a.categoria, a.esfera, a.frota, a.placa, a.propriedade, a.especialidade, a.uf, a.numero, br(a.realizacao), a.validade_dias ?? '', br(a.vencimento), a.desde ?? '', a.dias ?? '', NOME[a.situacao],
         a.doc_crv, a.chassi, a.renavam, a.valor ?? '', a.desconto ?? '', a.observacao]),
     ]);
   }));
@@ -94,13 +95,20 @@ function criarAets({ pool }) {
     const frota = texto(b.frota, 40);
     if (!placa && !frota) throw erro400('Informe a frota ou a placa.');
     const realizacao = b.realizacao ? data(b.realizacao, 'Data de realização') : null;
-    let vencimento = b.vencimento ? data(b.vencimento, 'Vencimento') : null;
-    if (!vencimento && realizacao) vencimento = somarDias(realizacao, 365); // AET vale 1 ano, se não informado
-    if (realizacao && vencimento && vencimento < realizacao) throw erro400('O vencimento não pode ser antes da data de realização.');
+    const informado = b.vencimento ? data(b.vencimento, 'Vencimento') : null;
+    let validade = b.validade_dias === '' || b.validade_dias == null ? null : Number(b.validade_dias);
+    if (validade != null && (!Number.isInteger(validade) || validade < 1 || validade > 3650)) throw erro400('Validade inválida: de 1 a 3650 dias.');
+    // o vencimento conta da data de realização: realização + validade (sem validade: a do vencimento informado, ou 1 ano)
+    let vencimento = informado;
+    if (realizacao) {
+      if (validade == null) validade = informado ? dias(realizacao, informado) : VALIDADE_PADRAO;
+      if (validade < 1) throw erro400('O vencimento não pode ser antes da data de realização.');
+      vencimento = somarDias(realizacao, validade);
+    } else validade = null;
     return {
       categoria, esfera: texto(b.esfera, 40) || esferaDe(categoria), frota, placa, propriedade: texto(b.propriedade, 40), especialidade: texto(b.especialidade, 80),
       uf: texto(b.uf, 12).toUpperCase(), doc_crv: texto(b.doc_crv, 30), chassi: texto(b.chassi, 30).toUpperCase(), renavam: texto(b.renavam, 20).replace(/\D/g, ''),
-      numero: texto(b.numero, 40), realizacao, vencimento, valor: valorOuNulo(b.valor), desconto: valorOuNulo(b.desconto), observacao: texto(b.observacao, 500), encerrada: bool(b.encerrada),
+      numero: texto(b.numero, 40), realizacao, validade_dias: validade, vencimento, valor: valorOuNulo(b.valor), desconto: valorOuNulo(b.desconto), observacao: texto(b.observacao, 500), encerrada: bool(b.encerrada),
     };
   };
   router.post('/operacional/aets', wrap(async (req, res) => {
@@ -166,7 +174,7 @@ function criarAets({ pool }) {
         const lote = itens.slice(i, i + 200);
         const valores = [];
         const marcas = lote.map((x, j) => {
-          valores.push(...COLS.map((c) => (c === 'observacao' ? '' : x[c] ?? (['valor', 'desconto', 'realizacao', 'vencimento'].includes(c) ? null : c === 'encerrada' ? false : ''))), !!x.uf_aet, 'importacao', x.linha, req.usuario.id);
+          valores.push(...COLS.map((c) => (c === 'observacao' ? '' : x[c] ?? (['valor', 'desconto', 'realizacao', 'vencimento', 'validade_dias'].includes(c) ? null : c === 'encerrada' ? false : ''))), !!x.uf_aet, 'importacao', x.linha, req.usuario.id);
           return `(${cols.map((_, k) => `$${j * cols.length + k + 1}`).join(', ')})`;
         });
         await db.query(`INSERT INTO op_aets (${cols.join(', ')}) VALUES ${marcas.join(', ')}`, valores);

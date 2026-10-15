@@ -33,12 +33,29 @@ function camposAet(a) {
     { nome: 'especialidade', rotulo: 'Especialidade', valor: a.especialidade || '', max: 80, dica: 'Caminhão Canavieiro, Vinhaça, Prancha…' },
     { nome: 'numero', rotulo: 'Nº da AET', valor: a.numero || '', max: 40 },
     { nome: 'realizacao', rotulo: 'Data de realização', tipo: 'date', valor: a.realizacao || '' },
-    { nome: 'vencimento', rotulo: 'Vencimento (próxima data)', tipo: 'date', valor: a.vencimento || '', dica: 'Em branco: realização + 1 ano' },
+    { nome: 'validade_dias', rotulo: 'Validade (dias)', tipo: 'number', passo: '1', min: '1', max: '3650', valor: a.validade_dias ?? 365, dica: 'Conta da data de realização (365 = 1 ano; prancha: 89, 59…)' },
+    { nome: 'vencimento', rotulo: 'Vencimento (próxima data)', tipo: 'date', valor: a.vencimento || '', dica: 'Calculado: realização + validade' },
     { nome: 'valor', rotulo: 'R$ valor unitário', tipo: 'number', passo: '0.01', min: '0', valor: a.valor ?? '' },
     { nome: 'desconto', rotulo: 'R$ desconto', tipo: 'number', passo: '0.01', min: '0', valor: a.desconto ?? '' },
     { nome: 'observacao', rotulo: 'Observação', tipo: 'textarea', max: 500, cheio: true, valor: a.observacao || '' },
     a.id ? { nome: 'encerrada', rotulo: 'Encerrada (renovada ou não precisa mais — sai dos alertas)', tipo: 'checkbox', valor: a.encerrada, cheio: true } : null,
   ].filter(Boolean);
+}
+// o vencimento conta da data de realização: mostra realização + validade enquanto digita (como "=J7+365" na planilha)
+const somarDias = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+function vencimentoAoVivo() {
+  const dlg = document.getElementById('dlg');
+  const [real, val, venc] = ['realizacao', 'validade_dias', 'vencimento'].map((n) => dlg.querySelector(`[name=${n}]`));
+  venc.readOnly = true;
+  venc.tabIndex = -1;
+  const atualizar = () => {
+    const n = Number(val.value);
+    if (real.value && Number.isInteger(n) && n > 0) venc.value = somarDias(real.value, n);
+    else if (real.value) venc.value = '';
+  };
+  real.addEventListener('input', atualizar);
+  val.addEventListener('input', atualizar);
+  atualizar();
 }
 async function formAet(a = {}, categorias = []) {
   const prom = dialogo({
@@ -47,6 +64,7 @@ async function formAet(a = {}, categorias = []) {
     confirmar: a.id ? 'Salvar' : 'Lançar AET',
     aoSalvar: (x) => (a.id ? put(`/operacional/aets/${a.id}`, x) : post('/operacional/aets', x)),
   });
+  vencimentoAoVivo();
   // sugestões dos tipos já cadastrados
   const dlg = document.getElementById('dlg');
   const lista = h('datalist', { id: 'aet-categorias' }, categorias.map((c) => h('option', { value: c })));
@@ -55,12 +73,13 @@ async function formAet(a = {}, categorias = []) {
   return prom;
 }
 function renovar(a) {
-  return dialogo({
+  const prom = dialogo({
     titulo: `Renovar AET — ${veiculo(a)}`,
     descricao: `${a.categoria}${a.vencimento ? ` · a atual vence em ${dataBR(a.vencimento)}` : ''}. A nova AET entra com os dados do veículo; a atual fica no histórico como renovada.`,
     campos: [
       { nome: 'realizacao', rotulo: 'Data de realização', tipo: 'date', valor: new Date().toLocaleDateString('sv-SE'), obrigatorio: true },
-      { nome: 'vencimento', rotulo: 'Vencimento', tipo: 'date', dica: 'Em branco: realização + 1 ano' },
+      { nome: 'validade_dias', rotulo: 'Validade (dias)', tipo: 'number', passo: '1', min: '1', max: '3650', obrigatorio: true, valor: a.validade_dias ?? 365, dica: a.validade_dias ? 'A mesma da AET atual' : '365 = 1 ano' },
+      { nome: 'vencimento', rotulo: 'Vencimento (próxima data)', tipo: 'date', dica: 'Calculado: realização + validade' },
       { nome: 'numero', rotulo: 'Nº da AET', max: 40 },
       { nome: 'uf', rotulo: 'UF', valor: a.uf || '', max: 12 },
       { nome: 'valor', rotulo: 'R$ valor unitário', tipo: 'number', passo: '0.01', min: '0', valor: a.valor ?? '' },
@@ -69,6 +88,8 @@ function renovar(a) {
     confirmar: 'Renovar',
     aoSalvar: (x) => post(`/operacional/aets/${a.id}/renovar`, x),
   });
+  vencimentoAoVivo();
+  return prom;
 }
 async function importar() {
   let arquivo = null;
@@ -195,12 +216,12 @@ export default async function aets({ query, ir, recarregarPagina }) {
         d.itens.length > LIMITE ? h('span', { class: 'muted' }, ` · mostrando ${fmt(LIMITE)} de ${fmt(d.itens.length)}: escolha um tipo ou um mês para ver o resto`) : null),
       h('div', { class: 'card' }, tabela([
         { t: 'Situação', f: (a) => h('div', { class: 'aet-sit' }, badge(a.situacao), h('span', { class: `aet-prazo aet-c-${a.situacao}` }, prazo(a))) },
-        { t: 'Vencimento', cls: 'nowrap', f: (a) => (a.vencimento ? h('strong', {}, dataBR(a.vencimento)) : '—') },
+        { t: 'Realização', cls: 'nowrap', f: (a) => (a.realizacao ? [dataBR(a.realizacao), h('div', { class: 'muted pequeno' }, a.desde > 0 ? `há ${fmt(a.desde)} dia${a.desde === 1 ? '' : 's'}` : a.desde === 0 ? 'hoje' : '')] : '—') },
+        { t: 'Vencimento', cls: 'nowrap', f: (a) => (a.vencimento ? [h('strong', {}, dataBR(a.vencimento)), a.validade_dias ? h('div', { class: 'muted pequeno' }, `validade ${fmt(a.validade_dias)} dias`) : null] : '—') },
         { t: 'Veículo', f: (a) => [h('strong', {}, a.frota || '—'), h('div', { class: 'muted pequeno' }, [a.placa, a.especialidade].filter(Boolean).join(' · '))] },
         { t: 'Tipo de AET', f: (a) => [a.categoria, a.esfera ? h('div', { class: 'muted pequeno' }, a.esfera) : null] },
         { t: 'UF', f: (a) => a.uf || '—' },
         { t: 'Nº AET', f: (a) => a.numero || '—' },
-        { t: 'Realização', cls: 'nowrap', f: (a) => dataBR(a.realizacao) },
         { t: '', f: (a) => h('div', { class: 'oni-acoes' },
           a.situacao === 'encerrada' ? null : botao(a.vencimento ? 'Renovar' : 'Lançar', async () => { if (await renovar(a)) { toast('AET renovada.'); recarregarPagina(); } }, { pequeno: true, tom: a.situacao === 'em_dia' ? 'sec' : '', icone: 'mais' }),
           (() => { const b = botao('', () => excluir(a), { pequeno: true, tom: 'sec', icone: 'lixeira' }); b.title = 'Excluir'; b.setAttribute('aria-label', `Excluir AET ${veiculo(a)}`); return b; })()) },

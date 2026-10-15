@@ -5,6 +5,7 @@ const { lerData } = require('./treino');
 const { semAcento, somarDias } = require('./onibus');
 const { ErroHttp } = require('./util');
 
+const VALIDADE_PADRAO = 365; // AET sem validade informada: 1 ano a partir da realização
 const AVISO_DIAS = 30; // "vence logo": até 30 dias antes do vencimento
 const RENOVACAO_DIAS = 90; // AET nova (mesmo veículo e tipo) feita até 90 dias antes do vencimento da anterior = renovação
 const norm = (t) => semAcento(String(t ?? '')).toUpperCase().replace(/[º°]/g, '').replace(/\s+/g, ' ').trim();
@@ -76,7 +77,10 @@ function lerPlanilhaAets(buf) {
       const frota = v(l, k.frota, 40);
       const placa = placaLimpa(v(l, k.placa, 20));
       const realizacao = k.realizacao >= 0 ? dataDe(l[k.realizacao]) : null;
-      const vencimento = k.vencimento >= 0 ? dataDe(l[k.vencimento]) : null;
+      // vencimento conta da data de realização: Próxima Data = Data Realiz. + validade (365 dias, ou 89, 59… na prancha)
+      let vencimento = k.vencimento >= 0 ? dataDe(l[k.vencimento]) : null;
+      if (realizacao && !vencimento) vencimento = somarDias(realizacao, VALIDADE_PADRAO);
+      const validade = realizacao && vencimento ? dias(realizacao, vencimento) : null;
       if (frota || placa) {
         veiculo = {
           frota, placa, propriedade: v(l, k.propriedade, 40), especialidade: v(l, k.especialidade, 80), uf: v(l, k.uf, 10).toUpperCase(),
@@ -92,7 +96,7 @@ function lerPlanilhaAets(buf) {
       } else if (!veiculo || (!realizacao && !vencimento)) continue; // linha vazia ou de totais
       if (/^[A-Z]{3}\d/.test(veiculo.especialidade.toUpperCase()) && !veiculo.especialidade.includes(' ')) veiculo.especialidade = ''; // placa digitada na coluna errada
       brutas.push({
-        ...veiculo, numero: v(l, k.numero, 40), realizacao, vencimento,
+        ...veiculo, numero: v(l, k.numero, 40), realizacao, vencimento, validade_dias: validade > 0 ? validade : null,
         uf: (k.uf >= 0 && l[k.uf] ? v(l, k.uf, 12).toUpperCase().replace(/\s+/g, ' ') : veiculo.uf), uf_aet: ufDaAet, linha: i + 1,
       });
     }
@@ -133,4 +137,4 @@ function marcarRenovadas(itens) {
   return itens;
 }
 
-module.exports = { lerPlanilhaAets, situacaoAet, marcarRenovadas, esferaDe, AVISO_DIAS, RENOVACAO_DIAS, placaLimpa };
+module.exports = { lerPlanilhaAets, situacaoAet, marcarRenovadas, esferaDe, AVISO_DIAS, RENOVACAO_DIAS, VALIDADE_PADRAO, placaLimpa, dias };

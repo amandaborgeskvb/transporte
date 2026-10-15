@@ -81,6 +81,8 @@ test('importar a planilha: prévia, aplicar, painel e filtros', async () => {
   assert.equal(canav[0].placa, 'TST2B22');
   assert.equal(canav.find((a) => a.situacao === 'sem_aet').frota, '90003');
   assert.equal(canav.find((a) => a.situacao === 'vence_logo').dias, 10);
+  assert.equal(canav.find((a) => a.situacao === 'vence_logo').validade_dias, 200); // Próxima Data − Data Realiz.
+  assert.equal(canav.find((a) => a.placa === 'TST2B22').desde, 400); // "Qtd Dias": desde a realização
   assert.equal((await ope.get('/api/operacional/aets?situacao=pendentes')).corpo.itens.length, 3);
   assert.equal((await ope.get(`/api/operacional/aets?mes=${mais(10).slice(0, 7)}`)).corpo.itens.some((a) => a.vencimento === mais(10)), true);
   assert.equal((await ope.get('/api/operacional/aets?q=tst4d44')).corpo.itens.length, 1);
@@ -113,6 +115,15 @@ test('lançar, renovar, encerrar e excluir AET', async () => {
   r = await ope.put(`/api/operacional/aets/${r.corpo.id}`, { encerrada: true, observacao: 'veículo vendido' });
   assert.equal(r.corpo.encerrada, true);
   assert.equal(r.corpo.observacao, 'veículo vendido');
+  // validade própria (ex.: prancha 89 dias): o vencimento conta da realização e a renovação mantém a validade
+  r = await ope.post('/api/operacional/aets', { categoria: 'AET PRANCHA', frota: '92000', realizacao: mais(-80), validade_dias: 89 });
+  assert.equal(r.corpo.vencimento, mais(9));
+  r = await ope.put(`/api/operacional/aets/${r.corpo.id}`, { realizacao: mais(-70) }); // mudar a realização muda o vencimento
+  assert.equal(r.corpo.vencimento, mais(19));
+  r = await ope.post(`/api/operacional/aets/${r.corpo.id}/renovar`, { realizacao: mais(0) });
+  assert.equal(r.corpo.validade_dias, 89);
+  assert.equal(r.corpo.vencimento, mais(89));
+  assert.equal((await ope.post('/api/operacional/aets', { categoria: 'AET PRANCHA', frota: '1', realizacao: mais(0), validade_dias: 0 })).status, 400);
   assert.equal((await ope.del(`/api/operacional/aets/${aet.id}`)).status, 204);
   lista = (await ope.get('/api/operacional/aets?categoria=AET%20TESTE&situacao=todas')).corpo.itens;
   assert.equal(lista.length, 1);

@@ -895,6 +895,9 @@ CREATE TABLE IF NOT EXISTS op_aets (
   CHECK (frota <> '' OR placa <> '')
 );
 CREATE INDEX IF NOT EXISTS op_aets_cat_idx ON op_aets (categoria, vencimento);
+-- validade da AET em dias: o vencimento conta da data de realização (realização + validade)
+ALTER TABLE op_aets ADD COLUMN IF NOT EXISTS validade_dias INTEGER;
+UPDATE op_aets SET validade_dias = vencimento - realizacao WHERE validade_dias IS NULL AND realizacao IS NOT NULL AND vencimento > realizacao;
 
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,
