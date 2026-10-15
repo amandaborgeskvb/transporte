@@ -5,7 +5,7 @@ import { get, post, put, del, enviarArquivo } from '../api.js';
 import {
   h, dataBR, hojeISO, tabela, botao, cabecalhoPagina, barraComandos, barraFiltros, secao, kpi, toast, confirmar, dialogo, icone, badgeTom,
 } from '../ui.js';
-import { colunasEmpilhadas, colunasMeta, legendaSeries, barrasPrevisto } from '../charts.js';
+import { colunasEmpilhadas, colunasMeta, legendaSeries, unidadesPrevisto } from '../charts.js';
 
 const BASE = [['Ônibus']];
 const LOGO = '/img/crv-industrial-azul.png?v=2';
@@ -209,7 +209,7 @@ async function planilha({ query, ir, recarregarPagina }) {
   const areaAtv = h('div', {});
   const desenharAtividades = () => {
     const at = contarAtividades(linhas, d.atividades);
-    areaAtv.replaceChildren(h('p', { class: 'muted pequeno' }, resumoAtividades(at)), graficoAtividades(at));
+    areaAtv.replaceChildren(graficoAtividades(at));
   };
 
   // ---------- Resumo (legenda com as contagens) ----------
@@ -430,28 +430,40 @@ function classificarAtividade(texto, atividades) {
   }
   return melhor?.id ?? null;
 }
+// Liberados com ATIVIDADE reconhecida contam na atividade; o resto (não liberados e sem atividade) é Manutenção
 function contarAtividades(linhas, atividades) {
   const lista = [...atividades].sort((a, b) => a.ordem - b.ordem || a.id - b.id);
-  const por = new Map(lista.map((a) => [a.id, { id: a.id, nome: a.nome, previsto: a.previsto, em_atividade: 0, fora: 0 }]));
-  const outros = { id: null, nome: 'Outros', previsto: null, em_atividade: 0, fora: 0 };
+  const por = new Map(lista.map((a) => [a.id, { id: a.id, nome: a.nome, previsto: a.previsto, em_atividade: 0 }]));
+  const outros = { nome: 'Manutenção', qtd: 0, nao_liberados: 0, sem_atividade: 0 };
   for (const l of linhas) {
+    if (l.situacao !== 'liberado') { outros.qtd += 1; outros.nao_liberados += 1; continue; }
     const id = classificarAtividade(l.atividade, lista);
-    const g = id ? por.get(id) : outros;
-    if (l.situacao === 'liberado') g.em_atividade += 1; else g.fora += 1;
+    if (!id) { outros.qtd += 1; outros.sem_atividade += 1; continue; }
+    por.get(id).em_atividade += 1;
   }
-  return { atividades: [...por.values()], outros };
+  const ativs = [...por.values()];
+  const previsto = ativs.reduce((t, a) => t + a.previsto, 0);
+  const atendidos = ativs.reduce((t, a) => t + Math.min(a.em_atividade, a.previsto), 0);
+  return {
+    atividades: ativs, outros,
+    totais: { previsto, em_atividade: ativs.reduce((t, a) => t + a.em_atividade, 0), atendidos, faltam: previsto - atendidos, abaixo: ativs.filter((a) => a.em_atividade < a.previsto).length },
+  };
 }
+// Um ônibus por frota prevista: cheio = em atividade, tracejado = falta; embaixo, a Manutenção
 function graficoAtividades(at) {
-  const itens = at.atividades.map((a) => ({ nome: a.nome, valor: a.em_atividade, fora: a.fora, previsto: a.previsto }));
-  if (at.outros.em_atividade + at.outros.fora) itens.push({ nome: 'Outros (motoristas, manutenção…)', valor: at.outros.em_atividade, fora: at.outros.fora, previsto: null });
-  return barrasPrevisto(itens, { vazioMsg: 'Nenhuma atividade cadastrada.', rotuloValor: 'liberados na atividade', rotuloFora: 'na atividade, não liberados', rotuloForaCurto: 'não lib.' });
+  const t = at.totais;
+  const o = at.outros;
+  const detalhe = [o.nao_liberados ? `${fmt(o.nao_liberados)} não liberado(s)` : '', o.sem_atividade ? `${fmt(o.sem_atividade)} sem atividade reconhecida` : ''].filter(Boolean).join(' · ');
+  return h('div', {},
+    h('div', { class: 'oni-un-topo' },
+      h('span', {}, h('b', {}, `${fmt(t.atendidos)}/${fmt(t.previsto)}`), 'frotas previstas em atividade'),
+      h('span', {}, h('b', {}, fmt(t.faltam)), t.faltam === 1 ? 'falta' : 'faltam'),
+      h('span', {}, h('b', {}, fmt(o.qtd)), 'em manutenção')),
+    unidadesPrevisto(at.atividades.map((a) => ({ nome: a.nome, valor: a.em_atividade, previsto: a.previsto })), {
+      extra: { nome: 'Manutenção', valor: o.qtd, detalhe: detalhe || 'fora de operação' },
+    }));
 }
-const resumoAtividades = (at) => {
-  const prev = at.atividades.reduce((t, a) => t + a.previsto, 0);
-  const real = at.atividades.reduce((t, a) => t + Math.min(a.em_atividade, a.previsto), 0);
-  const abaixo = at.atividades.filter((a) => a.em_atividade < a.previsto).length;
-  return `${fmt(real)} de ${fmt(prev)} previstos atendidos${abaixo ? ` · ${abaixo} atividade(s) abaixo do previsto` : ' · todas no previsto'}`;
-};
+const resumoAtividades = (at) => (at.totais.abaixo ? `${at.totais.abaixo} atividade(s) abaixo do previsto` : 'Todas as atividades no previsto');
 
 // curto: títulos abreviados para a folha impressa (a tabela divide a largura com o gráfico)
 const CURTO = { liberado: 'Lib.', manutencao: 'Manut.', reserva: 'Res.', interditado: 'Interd.', parado: 'Parado' };
@@ -488,8 +500,8 @@ async function disponibilidadePagina({ query, ir, recarregarPagina }) {
     secao('Disponibilidade por empresa', null, graficoDisponibilidade(p, { largura: 1100 })),
     h('div', { class: 'grade-2' },
       secao('Situação da frota por dia', null, legendaSeries(SERIES_SIT), graficoDias(p, { largura: Math.max(560, p.dias.length * 40) })),
-      secao(`Frotas por atividade — ${dataBR(p.atividades.data)}`, h('span', { class: 'muted pequeno' }, 'previsto × em atividade'),
-        h('p', { class: 'muted pequeno' }, resumoAtividades(p.atividades)), graficoAtividades(p.atividades))),
+      secao(`Frotas por atividade — ${dataBR(p.atividades.data)}`, h('span', { class: 'muted pequeno' }, resumoAtividades(p.atividades)),
+        graficoAtividades(p.atividades))),
     secao('Tabela', null, tabelaDisponibilidade(p)),
     await secaoAtividades(recarregarPagina),
   ];
@@ -527,7 +539,7 @@ async function secaoAtividades(recarregar) {
       return b;
     } },
   ], lista, { vazioMsg: 'Nenhuma atividade cadastrada.', aoClicar: (a) => editar(a) }),
-  h('p', { class: 'muted pequeno' }, `Total previsto: ${fmt(lista.filter((a) => a.ativo).reduce((t, a) => t + a.previsto, 0))} frotas. Clique numa linha para mudar o previsto ou as palavras.`));
+  h('p', { class: 'muted pequeno' }, `Total previsto: ${fmt(lista.filter((a) => a.ativo).reduce((t, a) => t + a.previsto, 0))} frotas. Clique numa linha para mudar o previsto ou as palavras. Os ônibus não liberados e os sem atividade reconhecida contam em Manutenção.`));
   return secao('Atividades — frotas previstas', botao('Nova atividade', () => editar(), { tom: 'sec', icone: 'mais', pequeno: true }), area);
 }
 

@@ -711,7 +711,7 @@ BEGIN
       ativo     BOOLEAN NOT NULL DEFAULT true
     );
     INSERT INTO onibus_atividades (nome, previsto, palavras, ordem) VALUES
-      ('Frentes (CTT)', 6, 'FRENTE', 10),
+      ('Frentes (CTT)', 6, 'FRENTE, MOTORISTA', 10),
       ('Irrigação Localizada', 1, 'LOCALIZADA', 20),
       ('Irrigação Convencional', 1, 'IRRIGACAO, IRRIGA', 30),
       ('Herbicida (Tratos)', 4, 'HERBICIDA, TRATOS', 40),
@@ -721,6 +721,8 @@ BEGIN
       ('Indústria Ituiutaba', 2, 'INDUSTRIA+ITUIUTABA', 80);
   END IF;
 END $$;
+-- os motoristas contam nas Frentes (CTT) — só muda quem ainda está com a palavra original
+UPDATE onibus_atividades SET palavras = 'FRENTE, MOTORISTA' WHERE nome = 'Frentes (CTT)' AND palavras = 'FRENTE';
 -- Quando o RESUMO do dia foi alterado pela última vez (digitação, inclusão, exclusão, observação, importação)
 ALTER TABLE onibus_diario_obs ADD COLUMN IF NOT EXISTS alterado_em TIMESTAMPTZ;
 -- BASE: o RESUMO de cada dia como foi salvo (botão "Salvar na BASE"); a disponibilidade sai daqui

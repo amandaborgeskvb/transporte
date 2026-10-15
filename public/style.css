@@ -848,29 +848,44 @@ html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
 .oni-folha .oni-ftab th { font-size: 5.8pt; padding: .6mm .6mm; }
 .oni-folha .oni-fcab { margin-bottom: 2mm; }
 .oni-folha .oni-fcab h1 { font-size: 14pt; margin-bottom: 1mm; }
-/* previsto × em atividade (atividades da frota) */
-.ch-prev { display: grid; gap: 6px; }
-.ch-prev .ch-linha { display: grid; grid-template-columns: minmax(110px, 170px) 1fr minmax(70px, auto); gap: 10px; align-items: center; font-size: .82rem; outline: none; }
-.ch-prev .ch-linha:focus-visible { box-shadow: 0 0 0 2px var(--marca); border-radius: 4px; }
-.ch-prev .nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--txt); }
-.ch-prev .ch-trilho { position: relative; height: 14px; background: var(--trilho); border-radius: 4px; }
-.ch-prev .ch-trilho i { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 4px; }
-.ch-prev .ch-trilho i.ch-prev-f { background: var(--cls-sem); border-radius: 0 4px 4px 0; border-left: 2px solid var(--card); }
-.ch-prev .ch-prev-m { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--txt); border-radius: 1px; }
-.ch-prev .valor { font-variant-numeric: tabular-nums; font-weight: 650; color: var(--txt); white-space: nowrap; }
-.ch-prev .valor small { display: block; font-weight: 400; color: var(--muted); font-size: .72rem; }
-.oni-folha .ch-prev { gap: 1.1mm; }
-.oni-folha .ch-prev .ch-linha { font-size: 6.6pt; grid-template-columns: 30mm 1fr 15mm; gap: 2mm; }
-.oni-folha .ch-prev .ch-trilho { height: 3mm; }
-.oni-folha .ch-prev .valor small { font-size: 5.6pt; }
 .oni-fgrade.tres { grid-template-columns: .85fr 1fr 1fr; gap: 3mm; }
 .oni-folha { --trilho: #e8ecf2; }
 .oni-folha .oni-fgraf .legenda { gap: 2mm 3mm; }
-.oni-folha .ch-prev .ch-linha { grid-template-columns: 24mm 1fr 11mm; gap: 1.5mm; }
-/* coluna do valor com largura fixa: todos os trilhos do mesmo tamanho */
-.ch-prev .ch-linha { grid-template-columns: minmax(110px, 170px) 1fr 64px; }
-.ch-prev .valor { text-align: right; }
-.oni-folha .ch-prev .ch-linha { grid-template-columns: 24mm 1fr 10mm; }
-.oni-folha .ch-prev .valor small { font-size: 5.2pt; }
-.oni-folha .ch-prev .valor { min-width: 0; }
-.oni-folha .ch-prev .ch-linha { padding: 0; }
+/* gráfico de unidades: um ônibus por frota prevista */
+.ch-un { display: grid; gap: 4px; }
+.ch-un-leg { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: .78rem; color: var(--muted); margin-bottom: 6px; }
+.ch-un-leg > span { display: inline-flex; align-items: center; gap: 5px; }
+.ch-un-linha { display: grid; grid-template-columns: minmax(120px, 170px) 1fr 38px 84px; gap: 10px; align-items: center; padding: 3px 4px; border-radius: 6px; outline: none; font-size: .84rem; }
+.ch-un-linha:hover, .ch-un-linha:focus-visible { background: var(--hover); }
+.ch-un-linha.extra { border-top: 1px dashed var(--linha); margin-top: 4px; padding-top: 7px; }
+.ch-un-nome { color: var(--txt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ch-un-vagas { display: flex; flex-wrap: wrap; gap: 3px; }
+.ch-un-v { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 22px; border-radius: 5px; }
+.ch-un-v .ico { width: 16px; height: 16px; }
+.ch-un-v.ok { background: var(--cls-2); color: #fff; }
+.ch-un-v.acima { background: var(--cls-1); color: #fff; }
+.ch-un-v.falta { border: 1.5px dashed var(--cls-3); color: var(--cls-3); background: color-mix(in srgb, var(--cls-3) 8%, transparent); }
+.ch-un-v.manut { background: var(--cls-sem); color: var(--txt); }
+.ch-un-leg .ch-un-v { width: 18px; height: 16px; border-radius: 4px; }
+.ch-un-leg .ch-un-v .ico { width: 12px; height: 12px; }
+.ch-un-num { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; color: var(--txt); }
+.ch-un-st { font-size: .78rem; font-weight: 650; padding: 2px 8px; border-radius: 99px; text-align: center; white-space: nowrap; }
+.ch-un-st.ok { background: var(--ok-bg); color: var(--ok); }
+.ch-un-st.falta { background: var(--warn-bg); color: var(--warn); }
+.ch-un-st.acima { background: color-mix(in srgb, var(--cls-1) 14%, var(--card)); color: var(--txt); }
+.ch-un-st.manut { background: var(--card-2); color: var(--muted); }
+.oni-un-topo { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.oni-un-topo > span { padding: 4px 10px; border-radius: 8px; background: var(--card-2); font-size: .82rem; color: var(--muted); }
+.oni-un-topo b { color: var(--txt); font-size: 1.05rem; margin-right: 4px; }
+/* folha impressa */
+.oni-folha { --ok: #1f7a3a; --ok-bg: #e2f3d9; --warn: #a15c07; --warn-bg: #fdefc9; }
+.oni-folha .ch-un { gap: .4mm; }
+.oni-folha .ch-un-leg { font-size: 6pt; gap: 1mm 3mm; margin-bottom: 1mm; }
+.oni-folha .ch-un-linha { grid-template-columns: 26mm 1fr 6mm 13mm; gap: 1.5mm; font-size: 6.5pt; padding: .3mm 0; }
+.oni-folha .ch-un-v { width: 4.2mm; height: 3.8mm; border-radius: .8mm; }
+.oni-folha .ch-un-v .ico { width: 2.9mm; height: 2.9mm; }
+.oni-folha .ch-un-leg .ch-un-v { width: 3.4mm; height: 3mm; }
+.oni-folha .ch-un-st { font-size: 5.6pt; padding: .2mm 1.2mm; }
+.oni-folha .oni-un-topo { gap: 1.5mm; margin-bottom: 1.2mm; }
+.oni-folha .oni-un-topo > span { font-size: 6.2pt; padding: .5mm 1.5mm; }
+.oni-folha .oni-un-topo b { font-size: 8pt; }

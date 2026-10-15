@@ -259,28 +259,52 @@ function gerarPdfOnibus({ resumo = null, disp = null, emitidoPor = '', agora = n
     const aw = L * 0.36;
     caixa(ax, dy, aw, dh, `Frotas por atividade — ${br(at?.data)}`);
     if (at) {
-      legenda(ax + 8, dy + 20, [['Liberados no previsto ou acima', COR.meta_ok], ['Abaixo do previsto', COR.meta_baixo]]);
-      legenda(ax + 8, dy + 29, [['Na atividade, não liberados', COR.outros], ['Previsto (traço)', TINTA]]);
-      const itens = at.atividades.map((a) => ({ nome: a.nome, valor: a.em_atividade, fora: a.fora, previsto: a.previsto }));
-      if (at.outros.em_atividade + at.outros.fora) itens.push({ nome: 'Outros', valor: at.outros.em_atividade, fora: at.outros.fora, previsto: null });
-      const maxA = Math.max(1, ...itens.map((i) => Math.max(i.valor + i.fora, i.previsto || 0)));
-      const nomeW = 78;
-      const valW = 34;
-      const trilhoX = ax + 8 + nomeW;
-      const trilhoW = aw - 16 - nomeW - valW;
-      const passoY = Math.min(15, (dh - 48 - 8) / Math.max(1, itens.length));
-      itens.forEach((i, k) => {
-        const yy = dy + 46 + k * passoY;
-        doc.font('Helvetica').fontSize(6.6).fillColor(TINTA).text(corte(i.nome, nomeW - 4), ax + 8, yy + 1, { width: nomeW - 4, lineBreak: false });
-        doc.roundedRect(trilhoX, yy, trilhoW, 8, 2).fill('#e8ecf2');
-        const w1 = (trilhoW * i.valor) / maxA;
-        const w2 = (trilhoW * i.fora) / maxA;
-        if (i.valor) doc.roundedRect(trilhoX, yy, w1, 8, 2).fill(i.previsto == null ? COR.outros : i.valor >= i.previsto ? COR.meta_ok : COR.meta_baixo);
-        if (i.fora) doc.rect(trilhoX + w1 + (i.valor ? 1 : 0), yy, w2, 8).fill(COR.outros);
-        if (i.previsto != null) { const mx = trilhoX + (trilhoW * i.previsto) / maxA; doc.rect(mx - 0.8, yy - 2, 1.6, 12).fill(TINTA); }
-        doc.font('Helvetica-Bold').fontSize(6.8).fillColor(i.previsto != null && i.valor < i.previsto ? '#b4232a' : TINTA)
-          .text(i.previsto == null ? n(i.valor) : `${n(i.valor)} / ${n(i.previsto)}`, trilhoX + trilhoW + 4, yy + 1, { width: valW - 4, lineBreak: false });
-      });
+      // um ônibus por frota prevista: cheio = em atividade, tracejado = falta, azul = a mais; embaixo, a Manutenção
+      const t = at.totais;
+      doc.font('Helvetica').fontSize(6.6).fillColor(MUDA)
+        .text(`${n(t.atendidos)}/${n(t.previsto)} frotas previstas em atividade · ${t.faltam === 1 ? 'falta' : 'faltam'} ${n(t.faltam)} · ${n(at.outros.qtd)} em manutenção`, ax + 8, dy + 19, { width: aw - 16, align: 'center' });
+      const onibus = (x, y, tipo) => {
+        const w = 9.5;
+        const hh = 7.5;
+        if (tipo === 'falta') {
+          doc.roundedRect(x, y, w, hh, 1.5).lineWidth(0.7).dash(1.6, { space: 1.1 }).strokeColor(COR.meta_baixo).stroke().undash();
+          return;
+        }
+        doc.roundedRect(x, y, w, hh, 1.5).fill(tipo === 'ok' ? COR.meta_ok : tipo === 'acima' ? '#2a78d6' : COR.outros);
+        doc.rect(x + 1.6, y + 1.5, w - 3.2, 2).fill('#ffffff'); // janelas
+      };
+      let lx = ax + 8;
+      for (const [tipo, txt] of [['ok', 'em atividade'], ['falta', 'falta (previsto)'], ['acima', 'a mais'], ['manut', 'manutenção']]) {
+        onibus(lx, dy + 29, tipo);
+        doc.font('Helvetica').fontSize(6.2).fillColor(MUDA).text(txt, lx + 12, dy + 30, { lineBreak: false });
+        lx += 16 + doc.widthOfString(txt) + 6;
+      }
+      const itens = at.atividades.map((a) => ({ nome: a.nome, valor: a.em_atividade, previsto: a.previsto }));
+      const nomeW = 72;
+      const statW = 34;
+      const numW = 18;
+      const vagasX = ax + 8 + nomeW;
+      const vagasW = aw - 16 - nomeW - numW - statW;
+      const passoY = Math.min(13.5, (dh - 44 - 18) / Math.max(1, itens.length + 1));
+      const linha = (it, k, extra) => {
+        const yy = dy + 42 + k * passoY + (extra ? 4 : 0);
+        if (extra) doc.moveTo(ax + 8, yy - 3).lineTo(ax + aw - 8, yy - 3).lineWidth(0.4).dash(2, { space: 2 }).strokeColor('#c9cdd4').stroke().undash();
+        doc.font('Helvetica').fontSize(6.6).fillColor(TINTA).text(corte(it.nome, nomeW - 4), ax + 8, yy + 1, { width: nomeW - 4, lineBreak: false });
+        const total = extra ? it.valor : Math.max(it.previsto, it.valor);
+        const cabe = Math.max(1, Math.floor(vagasW / 11.5));
+        for (let i = 0; i < Math.min(total, cabe); i++) {
+          onibus(vagasX + i * 11.5, yy, extra ? 'manut' : i >= it.previsto ? 'acima' : i < it.valor ? 'ok' : 'falta');
+        }
+        doc.font('Helvetica-Bold').fontSize(7).fillColor(TINTA).text(extra ? n(it.valor) : `${n(it.valor)}/${n(it.previsto)}`, vagasX + vagasW, yy + 0.5, { width: numW, align: 'right', lineBreak: false });
+        const [txt, fundo, cor] = extra ? [`${n(it.valor)} ${it.valor === 1 ? 'frota' : 'frotas'}`, '#eef0f3', MUDA]
+          : it.valor < it.previsto ? [`faltam ${n(it.previsto - it.valor)}`, '#fdefc9', '#a15c07']
+            : it.valor > it.previsto ? [`${n(it.valor - it.previsto)} a mais`, '#dbe9fb', TINTA] : ['completo', '#e2f3d9', '#1f7a3a'];
+        const sx2 = vagasX + vagasW + numW + 3;
+        doc.roundedRect(sx2, yy - 0.5, statW - 3, 8.5, 4).fill(fundo);
+        doc.font('Helvetica-Bold').fontSize(5.6).fillColor(cor).text(txt, sx2, yy + 1.4, { width: statW - 3, align: 'center', lineBreak: false });
+      };
+      itens.forEach((it, k) => linha(it, k, false));
+      linha({ nome: 'Manutenção', valor: at.outros.qtd }, itens.length, true);
     }
 
     // --- Tabela por empresa

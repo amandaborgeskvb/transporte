@@ -312,13 +312,19 @@ test('atividades: previsto × em atividade pela coluna ATIVIDADE, com o previsto
   assert.equal(nome('MANOBRA INDUSTRIA - IPIAÇU'), 'Indústria Ipiaçu');
   assert.equal(nome('CAPINÓPOLIS- INDUSTRIA'), 'Indústria Capinópolis');
   assert.equal(nome('ITUIUTABA - INDUSTRIA'), 'Indústria Ituiutaba');
-  assert.equal(nome('MOTORISTAS- BASE'), 'Outros');
+  assert.equal(nome('MOTORISTAS- BASE'), 'Frentes (CTT)'); // motoristas entram no quadro do CTT
+  assert.equal(nome('MANUTENÇÃO - MOTOR'), 'Outros');
+  assert.equal(lista[0].palavras, 'FRENTE, MOTORISTA');
 
   // D1 na BASE: 50001 FRENTE 2 (liberado), 50002 MANUTENÇÃO (manutenção), 60001 sem atividade
   let p = (await oni.get(`/api/onibus/disponibilidade?de=${D1}&ate=${D1}`)).corpo;
   assert.equal(p.atividades.data, D1);
   const frentes = () => p.atividades.atividades.find((a) => a.nome === 'Frentes (CTT)');
   assert.deepEqual([frentes().em_atividade, frentes().previsto], [1, 6]);
+  // o resto é Manutenção: os não liberados e os liberados sem atividade reconhecida
+  assert.deepEqual(p.atividades.outros, { nome: 'Manutenção', qtd: 2, nao_liberados: 1, sem_atividade: 1 });
+  assert.equal(p.atividades.totais.previsto, 23);
+  assert.equal(p.atividades.totais.faltam, 22);
   // na prévia do RESUMO (D2), muda conforme a atividade é alterada
   const d2 = (await oni.get(`/api/onibus/diario?data=${D2}`)).corpo;
   assert.ok(d2.atividades.length >= 8);

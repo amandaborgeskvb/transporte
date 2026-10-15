@@ -113,17 +113,25 @@ function classificarAtividade(texto, atividades) {
   }
   return melhor?.id ?? null;
 }
-// Ônibus por atividade num dia: previsto × em atividade (liberados) e os que estão na atividade mas não liberados; na ordem do cadastro
+// Ônibus por atividade num dia: previsto × em atividade (liberados cuja ATIVIDADE é reconhecida), na ordem do cadastro.
+// O resto é "Manutenção": os não liberados (manutenção, interditado, reserva, parado) e os liberados sem atividade reconhecida.
 function contarAtividades(linhas, atividades) {
   const lista = [...atividades].filter((a) => a.ativo !== false).sort((a, b) => a.ordem - b.ordem || a.id - b.id);
-  const por = new Map(lista.map((a) => [a.id, { id: a.id, nome: a.nome, previsto: a.previsto, em_atividade: 0, fora: 0 }]));
-  const outros = { id: null, nome: 'Outros', previsto: null, em_atividade: 0, fora: 0 };
+  const por = new Map(lista.map((a) => [a.id, { id: a.id, nome: a.nome, previsto: a.previsto, em_atividade: 0 }]));
+  const outros = { nome: 'Manutenção', qtd: 0, nao_liberados: 0, sem_atividade: 0 };
   for (const l of linhas) {
+    if (l.situacao !== 'liberado') { outros.qtd += 1; outros.nao_liberados += 1; continue; }
     const id = classificarAtividade(l.atividade, lista);
-    const g = id ? por.get(id) : outros;
-    if (l.situacao === 'liberado') g.em_atividade += 1; else g.fora += 1;
+    if (!id) { outros.qtd += 1; outros.sem_atividade += 1; continue; }
+    por.get(id).em_atividade += 1;
   }
-  return { atividades: [...por.values()], outros };
+  const ativs = [...por.values()];
+  const previsto = ativs.reduce((t, a) => t + a.previsto, 0);
+  const atendidos = ativs.reduce((t, a) => t + Math.min(a.em_atividade, a.previsto), 0);
+  return {
+    atividades: ativs, outros,
+    totais: { previsto, em_atividade: ativs.reduce((t, a) => t + a.em_atividade, 0), atendidos, faltam: previsto - atendidos, abaixo: ativs.filter((a) => a.em_atividade < a.previsto).length },
+  };
 }
 
 // Disponibilidade = ônibus-dia liberados ÷ ônibus-dia lançados (%)
