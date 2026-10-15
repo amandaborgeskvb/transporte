@@ -23,7 +23,7 @@ const mesmaVisao = (v, query) => {
   return chaves.length === f.length && f.every(([k, val]) => query[k] === val);
 };
 
-export async function lista({ query, usuario, ir }) {
+export async function lista({ query, usuario, ir, recarregarPagina }) {
   const c = await cadastros();
   const qs = new URLSearchParams(query).toString();
   const viagens = await get(`/viagens${qs ? `?${qs}` : ''}`);
@@ -57,6 +57,15 @@ export async function lista({ query, usuario, ir }) {
     { t: 'Despesas', num: true, f: (v) => brl(v.despesas_aprovadas) },
     { t: 'Saldo', num: true, f: (v) => (v.reembolso_devido ? h('span', { class: 'neg' }, `Reembolso ${brl(v.reembolso_devido)}`) : v.saldo_devolver ? `Devolver ${brl(v.saldo_devolver)}` : '—') },
   ];
+  // excluir a solicitação direto na lista (quem solicitou, enquanto programada; o administrador também a cancelada)
+  if (viagens.some((v) => v.pode_excluir)) {
+    colunas.push({ t: '', f: (v) => {
+      if (!v.pode_excluir) return null;
+      const b = botao('', async () => { try { await acaoViagem(v, 'excluir', () => recarregarPagina()); } catch (e) { toast(e.message, 'erro'); } }, { pequeno: true, tom: 'sec', icone: 'lixeira' });
+      b.title = 'Excluir a solicitação'; b.setAttribute('aria-label', `Excluir a viagem ${v.numero}`);
+      return b;
+    } });
+  }
 
   return [
     cabecalhoPagina({

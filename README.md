@@ -243,6 +243,7 @@ As permissões são validadas **no servidor** (a tela apenas esconde o que o per
 | Cadastrar / editar viagem (até ser realizada) | ✔ | | | ✔ (para qualquer funcionário) |
 | Registrar viagem como realizada / não realizada | ✔ | | ✔ | ✔ |
 | Cancelar viagem | ✔ | ✔ | | ✔ |
+| Excluir a solicitação de viagem (lixeira na Programação de viagens; sem pagamento registrado) | a própria, enquanto programada | | | ✔ (programada ou cancelada) |
 | Solicitar adiantamento e reembolso | ✔ | | ✔ | ✔ |
 | Registrar pagamento de adiantamento e reembolso | | | ✔ | ✔ |
 | Lançar despesas e anexar comprovantes | ✔ | | ✔ | ✔ |

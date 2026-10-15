@@ -86,7 +86,11 @@ function criarViagens({ pool }) {
   router.get('/viagens', wrap(async (req, res) => {
     const { where, params } = filtrosViagem(req.query, req.usuario);
     const { rows } = await pool.query(`${SELECT_VIAGEM} WHERE ${where} ORDER BY v.data_saida DESC, v.id DESC LIMIT 1000`, params);
-    res.json(rows.map(enriquecer));
+    // pode_excluir: a lixeira da lista (mesma regra da tela da viagem; com pagamento registrado não exclui)
+    res.json(rows.map((r) => {
+      const v = enriquecer(r);
+      return { ...v, pode_excluir: acoesViagem(req.usuario, r).includes('excluir') && !(Number(v.adiantamento_pago) > 0) && !(Number(v.reembolso_pago) > 0) };
+    }));
   }));
 
   router.post('/viagens', wrap(async (req, res) => {
@@ -140,7 +144,8 @@ function criarViagens({ pool }) {
     }));
     res.json({
       ...viagem,
-      acoes: [...acoesViagem(req.usuario, viagem),
+      // com pagamento registrado a viagem não é excluída (só cancelada): o botão nem aparece
+      acoes: [...acoesViagem(req.usuario, viagem).filter((a) => a !== 'excluir' || !(Number(viagem.adiantamento_pago) > 0 || Number(viagem.reembolso_pago) > 0)),
         ...(['administrador', 'financeiro'].includes(req.usuario.perfil) && viagem.desconto_sugerido > 0 ? ['gerar_desconto'] : [])],
       descontos: descontos.rows.map(({ documento, ...r }) => ({ ...r, formulario: `${documento.codigo} · v${documento.versao}` })),
       adiantamentos: porEntidade('adiantamento', adiantamentos.rows, acoesAdiantamento),
@@ -230,7 +235,7 @@ function criarViagens({ pool }) {
     const id = idParam(req);
     await tx(pool, async (db) => {
       const v = await carregarViagem(db, id, req.usuario, { travar: true });
-      if (!acoesViagem(req.usuario, v).includes('excluir')) throw erro403('Só o administrador pode excluir viagens programadas ou canceladas.');
+      if (!acoesViagem(req.usuario, v).includes('excluir')) throw erro403('Só quem solicitou (viagem programada) ou o administrador pode excluir a viagem.');
       const pagos = await db.query(
         `SELECT (SELECT COUNT(*) FROM adiantamentos WHERE viagem_id=$1 AND situacao='pago')
               + (SELECT COUNT(*) FROM reembolsos WHERE viagem_id=$1 AND situacao='reembolsado') AS n`, [id]);

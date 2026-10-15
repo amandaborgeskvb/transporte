@@ -44,7 +44,7 @@ export async function acaoViagem(viagem, acao, depois) {
     }).then((s) => s && ok('Viagem registrada como realizada.', depois)());
   }
   if (acao === 'excluir') {
-    if (await confirmar('Excluir viagem', `Excluir definitivamente a viagem ${viagem.numero}? Esta ação não pode ser desfeita.`, { rotulo: 'Excluir', perigo: true })) {
+    if (await confirmar('Excluir solicitação de viagem', `Excluir a viagem ${viagem.numero}${viagem.destino ? ` (${viagem.destino})` : ''}? Ela sai da programação, junto com os adiantamentos e despesas ainda não pagos. Não dá para desfazer (fica registrado na Auditoria).`, { rotulo: 'Excluir', perigo: true })) {
       await del(`/viagens/${viagem.id}`);
       toast('Viagem excluída.');
       depois?.('excluida');

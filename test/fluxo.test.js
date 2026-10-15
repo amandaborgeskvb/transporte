@@ -217,6 +217,15 @@ test('cancelar, excluir e proteção de viagens com pagamento', async () => {
   assert.equal((await ana.del(`/api/viagens/${v}`)).status, 403); // só o administrador exclui
   assert.equal((await admin.del(`/api/viagens/${v}`)).status, 204);
   assert.equal((await admin.del(`/api/viagens/${ids.v}`)).status, 403); // realizada: não exclui
+  // quem solicitou exclui a própria solicitação enquanto programada (a lista mostra a lixeira só para ela)
+  const p = (await novaViagem(ana, { destino: 'Recife' })).corpo.id;
+  const listaAna = (await ana.get('/api/viagens')).corpo;
+  assert.equal(listaAna.find((x) => x.id === p).pode_excluir, true);
+  assert.equal(listaAna.find((x) => x.id === ids.v)?.pode_excluir ?? false, false);
+  assert.equal((await bruno.del(`/api/viagens/${p}`)).status, 404); // de outra pessoa: nem enxerga
+  assert.equal((await carla.del(`/api/viagens/${p}`)).status, 403); // aprovador não exclui
+  assert.equal((await ana.del(`/api/viagens/${p}`)).status, 204);
+  assert.equal((await ana.get(`/api/viagens/${p}`)).status, 404);
 });
 
 test('dashboard, pendências, relatórios e CSV', async () => {
