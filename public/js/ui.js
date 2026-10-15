@@ -385,7 +385,7 @@ const EVENTOS = {
   'copiar:onibus_viagem': 'copiou a programação de ônibus de outro dia',
   'iniciar_dia:onibus_diario': 'começou a planilha diária de ônibus', 'incluir:onibus_diario': 'incluiu ônibus na planilha diária',
   'editar:onibus_diario': 'alterou a planilha diária de ônibus', 'excluir:onibus_diario': 'tirou um ônibus da planilha diária',
-  'importar:onibus_diario': 'importou a planilha do acompanhamento diário de ônibus',
+  'importar:onibus_diario': 'importou a planilha do acompanhamento diário de ônibus', 'salvar_base:onibus_diario': 'salvou o RESUMO de ônibus na BASE',
   'importar:importacao_funcionarios': 'importou funcionários de arquivos do ERP',
   'emitir:autorizacao_desconto': 'emitiu a autorização de desconto', 'editar:autorizacao_desconto': 'editou a autorização de desconto',
   'assinar:autorizacao_desconto': 'registrou a assinatura da autorização de desconto', 'concluir:autorizacao_desconto': 'concluiu o desconto em folha',

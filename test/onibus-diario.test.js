@@ -104,6 +104,54 @@ test('o dia seguinte começa copiando o anterior; incluir e tirar ônibus', asyn
   assert.equal((await oni.post('/api/onibus/diario', { data: D2, todos: true })).corpo.incluidos, 0);
 });
 
+test('Salvar na BASE: o RESUMO só vai para a BASE e para a disponibilidade ao salvar', async () => {
+  // nada salvo ainda: o RESUMO está pendente e a BASE vazia
+  let d = (await oni.get(`/api/onibus/diario?data=${D1}`)).corpo;
+  assert.equal(d.pendente, true);
+  assert.equal(d.base, null);
+  assert.equal((await oni.get(`/api/onibus/disponibilidade?de=${D1}&ate=${D2}`)).corpo.total.total, 0);
+  assert.equal((await oni.get(`/api/onibus/base?de=${D1}&ate=${D2}`)).corpo.resumo.registros, 0);
+  // a prévia (RESUMO de um dia como está agora) já conta na disponibilidade da tela do RESUMO
+  assert.equal((await oni.get(`/api/onibus/disponibilidade?de=${D1}&ate=${D2}&previa=${D1}`)).corpo.total.total, 3);
+  assert.equal((await oni.post('/api/onibus/diario/salvar', { data: '2026-01-01' })).status, 400); // dia vazio
+
+  let r = await oni.post('/api/onibus/diario/salvar', { data: D1 });
+  assert.equal(r.status, 200, JSON.stringify(r.corpo));
+  assert.equal(r.corpo.base.linhas, 3);
+  assert.equal(r.corpo.base.salvo_por, 'oni');
+  await oni.post('/api/onibus/diario/salvar', { data: D2 });
+  d = (await oni.get(`/api/onibus/diario?data=${D1}`)).corpo;
+  assert.equal(d.pendente, false);
+  assert.equal(d.base.linhas, 3);
+
+  // alterar depois de salvar: fica pendente e a BASE continua com a versão salva até salvar de novo
+  const a = d.linhas.find((l) => l.prefixo === '50001');
+  await oni.put(`/api/onibus/diario/${a.id}`, { ...a, passageiros: 10 });
+  d = (await oni.get(`/api/onibus/diario?data=${D1}`)).corpo;
+  assert.equal(d.pendente, true);
+  const naBase = () => oni.get(`/api/onibus/base?de=${D1}&ate=${D1}&frota=50001`).then((x) => x.corpo.itens[0].passageiros);
+  assert.equal(await naBase(), 42);
+  await oni.put(`/api/onibus/diario/${a.id}`, { ...a, passageiros: 42 });
+  r = await oni.post('/api/onibus/diario/salvar', { data: D1 });
+  assert.equal(r.corpo.pendente, false);
+  assert.equal(await naBase(), 42);
+  // a observação também conta como alteração
+  await oni.put(`/api/onibus/diario-obs/${D1}`, { observacao: 'Nova obs.' });
+  assert.equal((await oni.get(`/api/onibus/diario?data=${D1}`)).corpo.pendente, true);
+  await oni.put(`/api/onibus/diario-obs/${D1}`, { observacao: 'As manobras estão sendo feitas normalmente!' });
+  await oni.post('/api/onibus/diario/salvar', { data: D1 });
+  assert.equal((await oni.get(`/api/onibus/diario?data=${D1}`)).corpo.pendente, false);
+  // RESUMO de um dia que só está na BASE abre com o que foi salvo (sem ficar pendente)
+  const b = d.linhas.find((l) => l.prefixo === '60001');
+  await oni.del(`/api/onibus/diario/${b.id}`);
+  assert.equal((await oni.get(`/api/onibus/diario?data=${D1}`)).corpo.pendente, true);
+  await oni.post('/api/onibus/diario/salvar', { data: D1 });
+  assert.equal((await oni.get(`/api/onibus/base?de=${D1}&ate=${D1}`)).corpo.resumo.registros, 2);
+  await oni.post('/api/onibus/diario', { data: D1, onibus_id: b.onibus_id });
+  await oni.post('/api/onibus/diario/salvar', { data: D1 });
+  assert.equal((await oni.get(`/api/onibus/base?de=${D1}&ate=${D1}`)).corpo.resumo.registros, 3);
+});
+
 test('disponibilidade por empresa e por dia (meta 85%)', async () => {
   const p = (await oni.get(`/api/onibus/disponibilidade?de=${D1}&ate=${D2}`)).corpo;
   assert.equal(p.meta, 85);
@@ -143,17 +191,20 @@ test('importar a planilha do Excel (aba BASE): prévia, novas, alteradas e ônib
   assert.equal(r.corpo.alteradas, 1); // 50001 em 04/05: atividade e rotas mudaram
   assert.deepEqual(r.corpo.onibus_novos, ['ABC-1D23', '70001']);
   assert.equal(r.corpo.aplicado, false);
-  assert.equal((await oni.get(`/api/onibus/diario?data=${D0}`)).corpo.linhas.length, 0); // a prévia não grava
+  assert.equal((await oni.get(`/api/onibus/base?de=${D0}&ate=${D0}`)).corpo.itens.length, 0); // a prévia não grava
 
   r = await importar(oni, buf, true);
   assert.equal(r.status, 201);
-  const d0 = (await oni.get(`/api/onibus/diario?data=${D0}`)).corpo;
+  // a aba BASE vai direto para a BASE (os dias ficam como salvos)
+  const d0 = { linhas: (await oni.get(`/api/onibus/base?de=${D0}&ate=${D0}`)).corpo.itens.reverse() };
+  d0.linhas.sort((x, y) => x.ordem - y.ordem);
   assert.deepEqual(d0.linhas.map((l) => [l.empresa, l.prefixo, l.passageiros, l.situacao]), [
     ['VIAÇÃO ALFA', '50001', 40, 'liberado'], ['VIAÇÃO GAMA', 'ABC-1D23', 15, 'manutencao'], ['VIAÇÃO GAMA', '70001', 0, 'reserva']]);
   // sem "VISTORIADO", a última vistoria sai do vencimento − 30 dias
   assert.equal(d0.linhas[1].ultima_vistoria, '2026-04-20');
   assert.equal(d0.linhas[1].rota_ida, '');
-  const d1 = (await oni.get(`/api/onibus/diario?data=${D1}`)).corpo.linhas.find((l) => l.prefixo === '50001');
+  assert.equal((await oni.get(`/api/onibus/diario?data=${D0}`)).corpo.base.origem, 'importacao');
+  const d1 = (await oni.get(`/api/onibus/base?de=${D1}&ate=${D1}&frota=50001`)).corpo.itens[0];
   assert.equal(d1.atividade, 'FRENTE 2');
   assert.equal(d1.rota_volta, '');
   assert.equal(d1.passageiros, 42);
@@ -202,6 +253,11 @@ test('importar a aba RESUMO para o dia escolhido: ordem, totais ignorados, obs. 
   assert.equal(d.observacao, 'As manobras estão sendo feitas normalmente!');
   // reimportar não muda nada; sem data, usa a do cabeçalho da planilha
   assert.equal((await importar(oni, buf, false, `aba=resumo&data=${D3}`)).corpo.sem_alteracao, 3);
+  // a aba RESUMO vai para o RESUMO: fica pendente até salvar na BASE
+  assert.equal(d.pendente, true);
+  assert.equal((await oni.get(`/api/onibus/base?de=${D3}&ate=${D3}`)).corpo.resumo.registros, 0);
+  await oni.post('/api/onibus/diario/salvar', { data: D3 });
+  assert.equal((await oni.get(`/api/onibus/base?de=${D3}&ate=${D3}`)).corpo.resumo.registros, 3);
   assert.equal((await importar(oni, buf, false, 'aba=resumo')).corpo.dia, '2026-05-09');
   assert.equal((await importar(oni, criarXlsx([{ nome: 'RESUMO', linhas: [['A', 'B']] }]), false, 'aba=resumo')).status, 400);
 });

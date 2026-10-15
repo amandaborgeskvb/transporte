@@ -813,3 +813,12 @@ html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
 .oni-folha.oni-fdisp .oni-fgraf { padding: 1.5mm 3mm; margin-bottom: 2.5mm; }
 .oni-folha.oni-fdisp .oni-fgrade td, .oni-folha.oni-fdisp .oni-fgrade th { padding: .7mm 1.2mm; }
 @media print { .oni-folha.oni-fdisp { break-inside: avoid; } }
+/* RESUMO: salvar na BASE */
+.oni-barra-salvar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: -4px 0 12px; }
+.oni-barra-salvar.fim { margin: 4px 0 16px; }
+.oni-status { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; font-size: .86rem; background: var(--card-2); color: var(--muted); }
+.oni-status.salvo { background: var(--ok-bg); color: var(--ok); font-weight: 600; }
+.oni-status.pendente { background: var(--oni-aviso); color: var(--txt); font-weight: 600; }
+.oni-status.pendente::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #c98500; }
+.oni-salvar { display: inline-flex; align-items: center; gap: 6px; }
+.oni-salvar:disabled { opacity: .6; cursor: default; }

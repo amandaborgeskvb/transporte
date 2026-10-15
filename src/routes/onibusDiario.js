@@ -1,6 +1,7 @@
-// Ônibus — planilha diária (Levantamento Transporte Funcionários) e disponibilidade da frota.
+// Ônibus — RESUMO (a planilha do dia, onibus_diario), BASE (o RESUMO de cada dia como foi salvo, onibus_base) e disponibilidade.
 // Uma linha por ônibus por dia: passageiros, vistoria (vale 30 dias), lavagens, atividade, rota de ida e volta,
 // situação (liberado, manutenção, reserva, interditado, parado) e observação; mais a observação geral do dia.
+// O RESUMO é gravado a cada célula (nada se perde); só vai para a BASE quando alguém clica em "Salvar na BASE".
 const express = require('express');
 const { tx } = require('../db');
 const { wrap, texto, data, idParam, auditar, ehData, hojeSP, enviarCsv, erro400, erro404, erro409 } = require('../util');
@@ -56,11 +57,15 @@ function resumir(linhas) {
 }
 
 // Disponibilidade por empresa e por dia num período
-async function calcularDisponibilidade(db, de, ate) {
+// Fonte: a BASE (o que foi salvo). Com "previa", o dia indicado vem do RESUMO (como está agora, salvo ou não).
+async function calcularDisponibilidade(db, de, ate, { previa = null } = {}) {
   const { rows } = await db.query(
     `SELECT d.data, d.empresa, d.situacao, count(*)::int AS qtd, min(f.ordem) AS ordem
-       FROM onibus_diario d JOIN onibus_frota f ON f.id = d.onibus_id
-      WHERE d.data BETWEEN $1 AND $2 GROUP BY 1, 2, 3`, [de, ate]);
+       FROM (SELECT data, onibus_id, empresa, situacao FROM onibus_base WHERE data BETWEEN $1 AND $2 AND data IS DISTINCT FROM $3::date
+             UNION ALL
+             SELECT data, onibus_id, empresa, situacao FROM onibus_diario WHERE data = $3::date AND data BETWEEN $1 AND $2) d
+       JOIN onibus_frota f ON f.id = d.onibus_id
+      GROUP BY 1, 2, 3`, [de, ate, previa]);
   const vazio = () => Object.fromEntries(SITUACOES_DIARIO.map((s) => [s, 0]));
   const empresas = new Map();
   const dias = new Map();
@@ -158,6 +163,12 @@ function criarOnibusDiario({ pool }) {
   router.use('/onibus', exigirPerfil(ADM, FIN, ONI));
 
   const SELECT = `SELECT d.*, f.prefixo, f.placa, f.ordem, f.ativo FROM onibus_diario d JOIN onibus_frota f ON f.id = d.onibus_id`;
+  const SELECT_BASE = `SELECT d.*, f.prefixo, f.placa, f.ordem, f.ativo FROM onibus_base d JOIN onibus_frota f ON f.id = d.onibus_id`;
+  // o RESUMO do dia mudou (para saber se há alterações ainda não salvas na BASE)
+  const marcarAlterado = (db, dia) => db.query(
+    'INSERT INTO onibus_diario_obs (data, alterado_em) VALUES ($1, now()) ON CONFLICT (data) DO UPDATE SET alterado_em = now()', [dia]);
+  // dias lançados (no RESUMO ou na BASE)
+  const DIAS = '(SELECT data FROM onibus_diario UNION SELECT data FROM onibus_base)';
   const ORDEM = 'ORDER BY f.ordem, d.empresa, f.prefixo, d.id';
   const buscar = async (db, id) => {
     const l = (await db.query(`${SELECT} WHERE d.id = $1`, [id])).rows[0];
@@ -166,7 +177,8 @@ function criarOnibusDiario({ pool }) {
   };
   // a vistoria mais recente lançada vai para o cadastro do ônibus (alerta de vencimento na frota)
   const sincronizarVistoria = (db, onibusId) => db.query(
-    `UPDATE onibus_frota SET ultima_vistoria = (SELECT ultima_vistoria FROM onibus_diario WHERE onibus_id = $1 AND ultima_vistoria IS NOT NULL ORDER BY data DESC LIMIT 1)
+    `UPDATE onibus_frota SET ultima_vistoria = (SELECT ultima_vistoria FROM (SELECT data, ultima_vistoria FROM onibus_diario WHERE onibus_id = $1
+        UNION ALL SELECT data, ultima_vistoria FROM onibus_base WHERE onibus_id = $1) x WHERE ultima_vistoria IS NOT NULL ORDER BY data DESC LIMIT 1)
       WHERE id = $1`, [onibusId]);
 
   // Linha nova de um ônibus num dia: parte da última linha dele (ou do cadastro)
@@ -184,23 +196,29 @@ function criarOnibusDiario({ pool }) {
   router.get('/onibus/diario', wrap(async (req, res) => {
     const hoje = hojeSP();
     const dia = ehData(req.query.data) ? req.query.data : hoje;
-    const [linhas, obs, ant, prox, faltam, sug, empresas] = await Promise.all([
+    const [linhas, obs, ant, prox, faltam, sug, empresas, salvo] = await Promise.all([
       pool.query(`${SELECT} WHERE d.data = $1 ${ORDEM}`, [dia]),
-      pool.query('SELECT observacao FROM onibus_diario_obs WHERE data = $1', [dia]),
-      pool.query('SELECT max(data) AS d FROM onibus_diario WHERE data < $1', [dia]),
-      pool.query('SELECT min(data) AS d FROM onibus_diario WHERE data > $1', [dia]),
+      pool.query('SELECT observacao, alterado_em FROM onibus_diario_obs WHERE data = $1', [dia]),
+      pool.query(`SELECT max(data) AS d FROM ${DIAS} x WHERE data < $1`, [dia]),
+      pool.query(`SELECT min(data) AS d FROM ${DIAS} x WHERE data > $1`, [dia]),
       pool.query('SELECT id, prefixo, placa, empresa, capacidade FROM onibus_frota f WHERE ativo AND NOT EXISTS (SELECT 1 FROM onibus_diario d WHERE d.onibus_id = f.id AND d.data = $1) ORDER BY ordem, empresa, prefixo', [dia]),
       pool.query(`SELECT 'atividade' AS campo, atividade AS valor FROM onibus_diario WHERE data > $1::date - 120 AND atividade <> '' GROUP BY 2
                   UNION SELECT 'rota', rota_ida FROM onibus_diario WHERE data > $1::date - 120 AND rota_ida <> '' GROUP BY 2
                   UNION SELECT 'rota', rota_volta FROM onibus_diario WHERE data > $1::date - 120 AND rota_volta <> '' GROUP BY 2`, [dia]),
       pool.query("SELECT DISTINCT empresa FROM onibus_frota WHERE empresa <> '' ORDER BY 1"),
+      pool.query('SELECT linhas, salvo_em, salvo_por_nome, origem FROM onibus_base_dias WHERE data = $1', [dia]),
     ]);
     const itens = linhas.rows.map(formatar);
+    const b = salvo.rows[0];
+    const alterado = obs.rows[0]?.alterado_em || null;
     const lista = (campo) => [...new Set(sug.rows.filter((r) => r.campo === campo).map((r) => r.valor))].sort().slice(0, 400);
     res.json({
       data: dia, hoje, anterior: dataLocal(ant.rows[0].d), proximo: dataLocal(prox.rows[0].d), linhas: itens, resumo: resumir(itens),
       observacao: obs.rows[0]?.observacao || '', fora_do_dia: faltam.rows, empresas: empresas.rows.map((r) => r.empresa),
       sugestoes: { atividades: lista('atividade'), rotas: lista('rota') }, vistoria_dias: VISTORIA_DIAS, lavagem_dias: LAVAGEM_DIAS, meta: META_DISPONIBILIDADE,
+      // BASE: quando este dia foi salvo e se o RESUMO mudou depois disso
+      base: b ? { linhas: b.linhas, salvo_em: b.salvo_em, salvo_por: b.salvo_por_nome, origem: b.origem } : null,
+      alterado_em: alterado, pendente: itens.length > 0 && (!b || (alterado && new Date(alterado) > new Date(b.salvo_em))),
     });
   }));
 
@@ -208,12 +226,15 @@ function criarOnibusDiario({ pool }) {
   router.post('/onibus/diario/iniciar', wrap(async (req, res) => {
     const dia = data(req.body.data, 'Data');
     const n = await tx(pool, async (db) => {
-      const de = req.body.de ? data(req.body.de, 'Copiar de') : dataLocal((await db.query('SELECT max(data) AS d FROM onibus_diario WHERE data < $1', [dia])).rows[0].d);
+      const de = req.body.de ? data(req.body.de, 'Copiar de') : dataLocal((await db.query(`SELECT max(data) AS d FROM ${DIAS} x WHERE data < $1`, [dia])).rows[0].d);
       let qtd = 0;
       if (de) {
+        // copia o RESUMO daquele dia; se ele só existe na BASE (ex.: histórico importado), copia da BASE
+        const temResumo = (await db.query('SELECT 1 FROM onibus_diario WHERE data = $1 LIMIT 1', [de])).rowCount;
+        const origem = temResumo ? 'onibus_diario' : 'onibus_base';
         const r = await db.query(
           `INSERT INTO onibus_diario (data, onibus_id, empresa, ${CAMPOS.join(', ')})
-           SELECT $2, d.onibus_id, d.empresa, ${CAMPOS.map((c) => `d.${c}`).join(', ')} FROM onibus_diario d JOIN onibus_frota f ON f.id = d.onibus_id AND f.ativo
+           SELECT $2, d.onibus_id, d.empresa, ${CAMPOS.map((c) => `d.${c}`).join(', ')} FROM ${origem} d JOIN onibus_frota f ON f.id = d.onibus_id AND (f.ativo OR $1::date = $2::date)
             WHERE d.data = $1 ON CONFLICT (data, onibus_id) DO NOTHING`, [de, dia]);
         qtd = r.rowCount;
       } else {
@@ -221,9 +242,12 @@ function criarOnibusDiario({ pool }) {
         for (const o of (await db.query('SELECT * FROM onibus_frota WHERE ativo ORDER BY ordem, prefixo')).rows) if (await novaLinha(db, dia, o)) qtd += 1;
       }
       if (de) {
-        const obs = (await db.query('SELECT observacao FROM onibus_diario_obs WHERE data = $1', [de])).rows[0];
-        if (obs?.observacao) await db.query('INSERT INTO onibus_diario_obs (data, observacao) VALUES ($1, $2) ON CONFLICT (data) DO NOTHING', [dia, obs.observacao]);
+        const obs = (await db.query(`SELECT observacao FROM onibus_diario_obs WHERE data = $1 AND observacao <> ''
+                                     UNION ALL SELECT observacao FROM onibus_base_dias WHERE data = $1 AND observacao <> '' LIMIT 1`, [de])).rows[0];
+        if (obs?.observacao) await db.query("INSERT INTO onibus_diario_obs (data, observacao) VALUES ($1, $2) ON CONFLICT (data) DO UPDATE SET observacao = EXCLUDED.observacao WHERE onibus_diario_obs.observacao = ''", [dia, obs.observacao]);
       }
+      // reabrir um dia que está na BASE não é uma alteração; começar um dia novo é
+      if (de !== dia) await marcarAlterado(db, dia);
       await auditar(db, req.usuario, 'iniciar_dia', 'onibus_diario', null, { data: dia, de, linhas: qtd });
       return qtd;
     });
@@ -241,6 +265,7 @@ function criarOnibusDiario({ pool }) {
       const criados = [];
       for (const o of onibus) { const id = await novaLinha(db, dia, o); if (id) criados.push(id); }
       if (!criados.length && !bool(req.body.todos)) throw erro409('Este ônibus já está na planilha do dia.');
+      if (criados.length) await marcarAlterado(db, dia);
       await auditar(db, req.usuario, 'incluir', 'onibus_diario', criados[0] || null, { data: dia, onibus: onibus.map((o) => o.prefixo).join(', ') });
       return criados;
     });
@@ -258,6 +283,7 @@ function criarOnibusDiario({ pool }) {
       const mudou = {};
       for (const c of CAMPOS) { const a = dataLocal(antes[c]) ?? ''; if (String(a) !== String(x[c] ?? '')) mudou[c] = { de: a, para: x[c] }; }
       if (mudou.ultima_vistoria) await sincronizarVistoria(db, antes.onibus_id);
+      if (Object.keys(mudou).length) await marcarAlterado(db, dataLocal(antes.data));
       if (Object.keys(mudou).length) await auditar(db, req.usuario, 'editar', 'onibus_diario', id, { data: dataLocal(antes.data), ...mudou });
       return buscar(db, id);
     });
@@ -269,6 +295,7 @@ function criarOnibusDiario({ pool }) {
     const { rows } = await pool.query('DELETE FROM onibus_diario WHERE id = $1 RETURNING data, onibus_id', [id]);
     if (!rows[0]) throw erro404('Linha não encontrada.');
     await sincronizarVistoria(pool, rows[0].onibus_id);
+    await marcarAlterado(pool, dataLocal(rows[0].data));
     await auditar(pool, req.usuario, 'excluir', 'onibus_diario', id, { data: dataLocal(rows[0].data) });
     res.status(204).end();
   }));
@@ -277,9 +304,31 @@ function criarOnibusDiario({ pool }) {
   router.put('/onibus/diario-obs/:data', wrap(async (req, res) => {
     const dia = data(req.params.data, 'Data');
     const observacao = texto(req.body.observacao, 1000);
-    await pool.query(`INSERT INTO onibus_diario_obs (data, observacao) VALUES ($1, $2)
-                      ON CONFLICT (data) DO UPDATE SET observacao = EXCLUDED.observacao, atualizado_em = now()`, [dia, observacao]);
+    await pool.query(`INSERT INTO onibus_diario_obs (data, observacao, alterado_em) VALUES ($1, $2, now())
+                      ON CONFLICT (data) DO UPDATE SET observacao = EXCLUDED.observacao, atualizado_em = now(),
+                        alterado_em = CASE WHEN onibus_diario_obs.observacao IS DISTINCT FROM EXCLUDED.observacao THEN now() ELSE onibus_diario_obs.alterado_em END`, [dia, observacao]);
     res.json({ data: dia, observacao });
+  }));
+
+  // POST /onibus/diario/salvar {data} — "Salvar na BASE": o RESUMO do dia, como está agora, passa a ser o registro do dia na BASE
+  router.post('/onibus/diario/salvar', wrap(async (req, res) => {
+    const dia = data(req.body.data, 'Data');
+    const salvo = await tx(pool, async (db) => {
+      const qtd = (await db.query('SELECT count(*)::int AS n FROM onibus_diario WHERE data = $1', [dia])).rows[0].n;
+      if (!qtd) throw erro400('O RESUMO deste dia está vazio: nada para salvar.');
+      await db.query('DELETE FROM onibus_base WHERE data = $1', [dia]);
+      await db.query(`INSERT INTO onibus_base (data, onibus_id, empresa, ${CAMPOS.join(', ')})
+                      SELECT data, onibus_id, empresa, ${CAMPOS.join(', ')} FROM onibus_diario WHERE data = $1`, [dia]);
+      const obs = (await db.query('SELECT observacao FROM onibus_diario_obs WHERE data = $1', [dia])).rows[0]?.observacao || '';
+      const { rows } = await db.query(
+        `INSERT INTO onibus_base_dias (data, linhas, observacao, salvo_em, salvo_por, salvo_por_nome, origem) VALUES ($1, $2, $3, now(), $4, $5, 'resumo')
+         ON CONFLICT (data) DO UPDATE SET linhas = EXCLUDED.linhas, observacao = EXCLUDED.observacao, salvo_em = now(), salvo_por = EXCLUDED.salvo_por,
+           salvo_por_nome = EXCLUDED.salvo_por_nome, origem = 'resumo' RETURNING linhas, salvo_em, salvo_por_nome`,
+        [dia, qtd, obs, req.usuario.id, req.usuario.nome || req.usuario.login || '']);
+      await auditar(db, req.usuario, 'salvar_base', 'onibus_diario', null, { data: dia, linhas: qtd });
+      return rows[0];
+    });
+    res.json({ data: dia, base: { linhas: salvo.linhas, salvo_em: salvo.salvo_em, salvo_por: salvo.salvo_por_nome, origem: 'resumo' }, pendente: false });
   }));
 
   // GET /onibus/disponibilidade?de&ate (padrão: da segunda-feira da semana até hoje)
@@ -287,7 +336,7 @@ function criarOnibusDiario({ pool }) {
     const ate = ehData(req.query.ate) ? req.query.ate : hojeSP();
     const de = ehData(req.query.de) ? req.query.de : segunda(ate);
     if (de > ate) throw erro400('O início do período é depois do fim.');
-    res.json(await calcularDisponibilidade(pool, de, ate));
+    res.json(await calcularDisponibilidade(pool, de, ate, { previa: ehData(req.query.previa) ? req.query.previa : null }));
   }));
 
   // GET /onibus/base — a BASE: todas as linhas de todos os dias (o RESUMO de cada dia fica guardado aqui), com filtros e páginas
@@ -310,11 +359,11 @@ function criarOnibusDiario({ pool }) {
     const POR_PAGINA = 300;
     const pagina = Math.max(1, Number.parseInt(q.pagina, 10) || 1);
     const [linhas, tot, empresas] = await Promise.all([
-      pool.query(`${SELECT} WHERE ${where} ORDER BY d.data DESC, f.ordem, d.empresa, f.prefixo LIMIT ${POR_PAGINA} OFFSET ${(pagina - 1) * POR_PAGINA}`, params),
+      pool.query(`${SELECT_BASE} WHERE ${where} ORDER BY d.data DESC, f.ordem, d.empresa, f.prefixo LIMIT ${POR_PAGINA} OFFSET ${(pagina - 1) * POR_PAGINA}`, params),
       pool.query(`SELECT count(*)::int AS registros, count(DISTINCT d.data)::int AS dias, count(*) FILTER (WHERE d.situacao = 'liberado')::int AS liberados,
                          COALESCE(sum(d.passageiros), 0)::int AS passageiros, min(d.data) AS de, max(d.data) AS ate
-                    FROM onibus_diario d JOIN onibus_frota f ON f.id = d.onibus_id WHERE ${where}`, params),
-      pool.query("SELECT DISTINCT empresa FROM onibus_diario WHERE empresa <> '' ORDER BY 1"),
+                    FROM onibus_base d JOIN onibus_frota f ON f.id = d.onibus_id WHERE ${where}`, params),
+      pool.query("SELECT DISTINCT empresa FROM onibus_base WHERE empresa <> '' ORDER BY 1"),
     ]);
     const t = tot.rows[0];
     res.json({
@@ -324,11 +373,11 @@ function criarOnibusDiario({ pool }) {
     });
   }));
 
-  // GET /onibus/diario.csv?de&ate — o mesmo layout da aba BASE
+  // GET /onibus/diario.csv?de&ate[&fonte=resumo] — o mesmo layout da aba BASE (da BASE; com fonte=resumo, do RESUMO)
   router.get('/onibus/diario.csv', wrap(async (req, res) => {
     const ate = ehData(req.query.ate) ? req.query.ate : hojeSP();
     const de = ehData(req.query.de) ? req.query.de : ate;
-    const { rows } = await pool.query(`${SELECT} WHERE d.data BETWEEN $1 AND $2 ORDER BY d.data, f.ordem, d.empresa, f.prefixo`, [de, ate]);
+    const { rows } = await pool.query(`${req.query.fonte === 'resumo' ? SELECT : SELECT_BASE} WHERE d.data BETWEEN $1 AND $2 ORDER BY d.data, f.ordem, d.empresa, f.prefixo`, [de, ate]);
     const br = (d) => (d ? d.split('-').reverse().join('/') : '');
     enviarCsv(res, `acompanhamento-onibus-${de}-a-${ate}.csv`, [
       ['DATA', 'EMPRESA', 'FROTA', 'N° TOTAL PASSAGEIROS', 'N° TOTAL PASSAGEIROS POR DIA', 'VISTORIADO', 'VENCIMENTO', 'LAVAGEM_1', 'LAVAGEM_2', 'ATIVIDADE', 'ROTA/IDA', 'ROTA/VOLTA', 'Situação', 'OBSERVAÇÃO'],
@@ -337,14 +386,16 @@ function criarOnibusDiario({ pool }) {
     ]);
   }));
 
-  // POST /onibus/diario/importar?data=AAAA-MM-DD&aplicar=1 (corpo: o .xlsx) — a aba RESUMO vira a planilha do dia escolhido
-  // (o dia fica igual à aba, com a "Obs." do rodapé); com aba=base, traz o histórico da aba BASE (cada linha no dia dela).
+  // POST /onibus/diario/importar?data=AAAA-MM-DD&aplicar=1 (corpo: o .xlsx) — a aba RESUMO vira o RESUMO do dia escolhido
+  // (o dia fica igual à aba, com a "Obs." do rodapé; para ir à BASE, Salvar); com aba=base, traz o histórico direto para a BASE.
   // Cada linha é achada por data + frota: só entram as novas e só mudam as alteradas; ônibus que não existem são cadastrados.
   router.post('/onibus/diario/importar', express.raw({ type: 'application/octet-stream', limit: 30 * 1024 * 1024 }), wrap(async (req, res) => {
     if (!Buffer.isBuffer(req.body) || !req.body.length) throw erro400('Envie a planilha (.xlsx).');
     if (!(req.body[0] === 0x50 && req.body[1] === 0x4b)) throw erro400('Envie a planilha em .xlsx.');
     if (req.body.length > Math.max(MAX_BYTES, 30 * 1024 * 1024)) throw erro400('Arquivo grande demais.');
     const modo = req.query.aba === 'base' ? 'base' : 'resumo';
+    // a aba RESUMO vai para o RESUMO do dia (depois é só conferir e clicar em Salvar na BASE); a aba BASE vai direto para a BASE
+    const T = modo === 'base' ? 'onibus_base' : 'onibus_diario';
     const diaEscolhido = ehData(req.query.data) ? req.query.data : null;
     let lido = lerPlanilhaDiario(req.body, { modo, data: diaEscolhido || '0000-00-00' });
     // RESUMO sem dia escolhido: o da planilha (ou hoje)
@@ -366,7 +417,7 @@ function criarOnibusDiario({ pool }) {
       const novosOnibus = [...ultimo.keys()].filter((p) => !frota.has(p));
       const existentes = new Map();
       if (frota.size) {
-        for (const e of (await db.query('SELECT d.*, f.prefixo FROM onibus_diario d JOIN onibus_frota f ON f.id = d.onibus_id WHERE d.data BETWEEN $1 AND $2',
+        for (const e of (await db.query(`SELECT d.*, f.prefixo FROM ${T} d JOIN onibus_frota f ON f.id = d.onibus_id WHERE d.data BETWEEN $1 AND $2`,
           [registros.reduce((m, r) => (r.data < m ? r.data : m), ultimoDia), ultimoDia])).rows) existentes.set(`${dataLocal(e.data)}|${e.prefixo}`, e);
       }
       const igual = (e, r) => ['empresa', ...CAMPOS].every((c) => String(dataLocal(e[c]) ?? '') === String(r[c] ?? ''));
@@ -402,18 +453,28 @@ function criarOnibusDiario({ pool }) {
           const linha = { ...r, onibus_id: frota.get(r.prefixo).id };
           return `(${cols.map((c) => { valores.push(linha[c] ?? (['atividade', 'rota_ida', 'rota_volta', 'observacao', 'empresa'].includes(c) ? '' : null)); return `$${valores.length}`; }).join(', ')})`;
         });
-        await db.query(`INSERT INTO onibus_diario (${cols.join(', ')}) VALUES ${tuplas.join(', ')}
-                        ON CONFLICT (data, onibus_id) DO UPDATE SET ${['empresa', ...CAMPOS].map((c) => `${c} = EXCLUDED.${c}`).join(', ')}, atualizado_em = now()`, valores);
+        await db.query(`INSERT INTO ${T} (${cols.join(', ')}) VALUES ${tuplas.join(', ')}
+                        ON CONFLICT (data, onibus_id) DO UPDATE SET ${['empresa', ...CAMPOS].map((c) => `${c} = EXCLUDED.${c}`).join(', ')}${modo === 'base' ? '' : ', atualizado_em = now()'}`, valores);
       }
       if (retirar.length) await db.query('DELETE FROM onibus_diario WHERE id = ANY($1::int[])', [retirar.map((e) => e.id)]);
+      if (modo === 'base') {
+        // cada dia importado fica registrado como salvo na BASE (origem: importação)
+        await db.query(`INSERT INTO onibus_base_dias (data, linhas, salvo_em, salvo_por, salvo_por_nome, origem)
+                        SELECT data, count(*), now(), $2, $3, 'importacao' FROM onibus_base WHERE data = ANY($1::date[]) GROUP BY data
+                        ON CONFLICT (data) DO UPDATE SET linhas = EXCLUDED.linhas, salvo_em = now(), salvo_por = EXCLUDED.salvo_por,
+                          salvo_por_nome = EXCLUDED.salvo_por_nome, origem = 'importacao'`,
+        [[...new Set(lote.map((x) => x.data))], req.usuario.id, req.usuario.nome || req.usuario.login || '']);
+      }
       if (modo === 'resumo') {
+        if (lote.length || retirar.length || lido.observacao_dia) await marcarAlterado(db, ultimoDia);
         await db.query('UPDATE onibus_frota SET ativo = true WHERE id = ANY($1::int[])', [registros.map((x) => frota.get(x.prefixo).id)]);
         if (lido.observacao_dia) {
           await db.query(`INSERT INTO onibus_diario_obs (data, observacao) VALUES ($1, $2)
                           ON CONFLICT (data) DO UPDATE SET observacao = EXCLUDED.observacao, atualizado_em = now()`, [ultimoDia, lido.observacao_dia]);
         }
       }
-      await db.query(`UPDATE onibus_frota f SET ultima_vistoria = (SELECT ultima_vistoria FROM onibus_diario d WHERE d.onibus_id = f.id AND d.ultima_vistoria IS NOT NULL ORDER BY data DESC LIMIT 1)`);
+      await db.query(`UPDATE onibus_frota f SET ultima_vistoria = (SELECT ultima_vistoria FROM (SELECT onibus_id, data, ultima_vistoria FROM onibus_diario
+        UNION ALL SELECT onibus_id, data, ultima_vistoria FROM onibus_base) d WHERE d.onibus_id = f.id AND d.ultima_vistoria IS NOT NULL ORDER BY data DESC LIMIT 1)`);
       await auditar(db, req.usuario, 'importar', 'onibus_diario', null, { arquivo: texto(req.query.nome, 150) || 'planilha.xlsx', aba: lido.aba, dia: out.dia, novas: out.novas, alteradas: out.alteradas, onibus_novos: novosOnibus.length });
       return out;
     });

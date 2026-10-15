@@ -42,8 +42,12 @@ async function planilha({ query, ir, recarregarPagina }) {
   // o RESUMO de hoje começa sozinho com o do último dia lançado (depois é só alterar o que mudou)
   if (d.data === d.hoje && !d.linhas.length && d.anterior) {
     const r0 = await post('/onibus/diario/iniciar', { data: d.hoje, de: d.anterior });
-    toast(`RESUMO de hoje começou com os ${r0.linhas} ônibus de ${dataBR(d.anterior)}. Altere o que mudou.`);
+    toast(`RESUMO de hoje começou com os ${r0.linhas} ônibus de ${dataBR(d.anterior)}. Altere o que mudou e clique em Salvar na BASE.`);
     d = await get(`/onibus/diario?data=${d.hoje}`);
+  } else if (!d.linhas.length && d.base) {
+    // dia que só está na BASE (ex.: histórico importado): o RESUMO abre com o que foi salvo
+    await post('/onibus/diario/iniciar', { data: d.data, de: d.data });
+    d = await get(`/onibus/diario?data=${d.data}`);
   }
   const irDia = (iso) => ir('#/onibus/resumo', iso === d.hoje ? {} : { data: iso });
   const linhas = d.linhas;
@@ -97,7 +101,7 @@ async function planilha({ query, ir, recarregarPagina }) {
     let params = null;
     const ok = await dialogo({
       titulo: 'Importar a aba RESUMO (Excel)',
-      descricao: 'Envie o "Acompanhamento Diário - Ônibus" (.xlsx). A aba RESUMO (empresa, frota, passageiros, última e próxima vistoria, lavagens, atividade, rotas, situação e a "Obs." do rodapé) vira o RESUMO do dia escolhido, na mesma ordem e com os mesmos dados, e fica guardada na BASE. Ônibus que não existem são cadastrados.',
+      descricao: 'Envie o "Acompanhamento Diário - Ônibus" (.xlsx). A aba RESUMO (empresa, frota, passageiros, última e próxima vistoria, lavagens, atividade, rotas, situação e a "Obs." do rodapé) vira o RESUMO do dia escolhido, na mesma ordem e com os mesmos dados; depois é só conferir e clicar em Salvar na BASE. Ônibus que não existem são cadastrados.',
       campos: [
         { nome: 'arquivo', rotulo: 'Planilha (.xlsx)', tipo: 'file', accept: '.xlsx', obrigatorio: true, cheio: true },
         { nome: 'data', rotulo: 'Dia do RESUMO', tipo: 'date', valor: d.data, obrigatorio: true },
@@ -125,9 +129,48 @@ async function planilha({ query, ir, recarregarPagina }) {
     if (!p.novas && !p.alteradas && !p.retiradas?.length) { await confirmar('Nada a importar', h('div', {}, lista, h('p', { class: 'muted' }, 'O RESUMO já está igual ao da planilha.')), { rotulo: 'OK' }); return; }
     if (!(await confirmar('Confirmar importação', lista, { rotulo: 'Importar' }))) return;
     const r = await enviarArquivo('/onibus/diario/importar', arquivo, { ...params, aplicar: 1 });
-    toast(`Importado: ${fmt(r.novas)} nova(s) e ${fmt(r.alteradas)} alterada(s).`);
+    toast(`Importado no RESUMO: ${fmt(r.novas)} nova(s) e ${fmt(r.alteradas)} alterada(s). Confira e clique em Salvar na BASE.`);
     ir('#/onibus/resumo', r.dia && r.dia !== d.hoje ? { data: r.dia } : {});
   };
+
+  // ---------- Salvar na BASE ----------
+  // O RESUMO é gravado a cada célula (nada se perde), mas só vai para a BASE (e para a Disponibilidade) ao clicar em Salvar
+  let pendente = d.pendente;
+  let base = d.base;
+  const hora = (t) => new Date(t).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  const status = h('span', { class: 'oni-status', role: 'status' });
+  const botaoSalvar = h('button', { type: 'button', class: 'oni-salvar' }, icone('ok'), 'Salvar na BASE');
+  const botaoSalvar2 = h('button', { type: 'button', class: 'oni-salvar' }, icone('ok'), 'Salvar RESUMO na BASE');
+  const quem = (x) => (x.origem === 'migracao' ? 'já estava no sistema antes do botão Salvar' : `${hora(x.salvo_em)}${x.salvo_por ? ` por ${x.salvo_por}` : ''}${x.origem === 'importacao' ? ' (importação da aba BASE)' : ''}`);
+  const desenharStatus = () => {
+    status.className = `oni-status ${pendente ? 'pendente' : base ? 'salvo' : ''}`;
+    status.replaceChildren(pendente
+      ? (base ? `Alterações ainda não salvas na BASE (último salvamento: ${quem(base)})` : 'RESUMO deste dia ainda não salvo na BASE')
+      : base ? (base.origem === 'migracao' ? `Na BASE (${quem(base)})` : `Salvo na BASE em ${quem(base)}`) : 'Sem alterações');
+    for (const b of [botaoSalvar, botaoSalvar2]) { b.disabled = !pendente; b.classList.toggle('sec', !pendente); }
+  };
+  const marcarPendente = () => { pendente = true; desenharStatus(); };
+  const salvarBase = async () => {
+    for (const b of [botaoSalvar, botaoSalvar2]) b.disabled = true;
+    try {
+      await fila; // espera as células que ainda estão sendo gravadas
+      const r1 = await post('/onibus/diario/salvar', { data: d.data });
+      base = r1.base;
+      pendente = false;
+      toast(`RESUMO de ${dataBR(d.data)} salvo na BASE (${r1.base.linhas} ônibus).`);
+      atualizarDisponibilidade();
+    } catch (e) {
+      toast(e.message, 'erro');
+    }
+    desenharStatus();
+  };
+  botaoSalvar.addEventListener('click', salvarBase);
+  botaoSalvar2.addEventListener('click', salvarBase);
+  // aviso ao fechar a aba com alterações não salvas na BASE
+  const aoSair = (e) => { if (pendente && document.body.contains(status)) { e.preventDefault(); e.returnValue = ''; } };
+  window.addEventListener('beforeunload', aoSair);
+  window.addEventListener('hashchange', () => window.removeEventListener('beforeunload', aoSair), { once: true });
+  let fila = Promise.resolve(); // gravações das células em andamento (todas as linhas)
 
   // ---------- Editar o ônibus (empresa, nº de frota, placa) ----------
   const editarOnibus = async (l) => {
@@ -154,9 +197,9 @@ async function planilha({ query, ir, recarregarPagina }) {
     clearTimeout(timerDisp);
     timerDisp = setTimeout(async () => {
       try {
-        const p = await get(`/onibus/disponibilidade?de=${segunda(d.data)}&ate=${d.data}`);
+        const p = await get(`/onibus/disponibilidade?de=${segunda(d.data)}&ate=${d.data}&previa=${d.data}`);
         areaDisp.replaceChildren(
-          h('p', { class: 'muted pequeno' }, `Semana de ${dataBR(p.de)} a ${dataBR(p.ate)} · geral `, h('strong', {}, pct(p.total.disponibilidade)), ` (meta ${p.meta}%) — atualiza sozinha a cada alteração do RESUMO.`),
+          h('p', { class: 'muted pequeno' }, `Semana de ${dataBR(p.de)} a ${dataBR(p.ate)} · geral `, h('strong', {}, pct(p.total.disponibilidade)), ` (meta ${p.meta}%) — prévia com o RESUMO como está agora; os outros dias vêm da BASE. Ela muda a cada alteração; na aba Disponibilidade entra quando o RESUMO é salvo na BASE.`),
           graficoDisponibilidade(p, { largura: 1100, altura: 240 }));
       } catch { /* a disponibilidade volta na próxima alteração */ }
     }, 500);
@@ -217,7 +260,6 @@ async function planilha({ query, ir, recarregarPagina }) {
     const tr = h('tr', { 'data-id': l.id });
     const campos = {};
     const autos = [];
-    let fila = Promise.resolve();
     const valores = () => Object.fromEntries(Object.entries(campos).map(([k, el]) => [k, el.value]));
     const aplicar = (novo) => {
       Object.assign(l, novo);
@@ -233,6 +275,7 @@ async function planilha({ query, ir, recarregarPagina }) {
         tr.classList.remove('erro');
         try {
           aplicar(await put(`/onibus/diario/${l.id}`, valores()));
+          marcarPendente();
           tr.classList.add('salvo');
           setTimeout(() => tr.classList.remove('salvo'), 700);
         } catch (e) {
@@ -282,6 +325,7 @@ async function planilha({ query, ir, recarregarPagina }) {
       botaoIcone('Tirar do RESUMO do dia', 'lixeira', async () => {
         if (!(await confirmar('Tirar do RESUMO', `${l.empresa} · frota ${l.prefixo} · ${dataBR(d.data)}. Nos próximos dias ele não vem mais (dá para incluir de novo em "Incluir ônibus").`, { rotulo: 'Tirar', perigo: true }))) return;
         await del(`/onibus/diario/${l.id}`);
+        marcarPendente();
         linhas.splice(linhas.indexOf(l), 1);
         tr.remove();
         desenharTotais();
@@ -299,15 +343,17 @@ async function planilha({ query, ir, recarregarPagina }) {
   desenharTotais();
 
   const obs = h('textarea', { rows: 2, maxlength: 1000, placeholder: 'Ex.: As manobras estão sendo feitas normalmente.', 'aria-label': 'Observação do dia' }, d.observacao);
-  obs.addEventListener('change', async () => { try { await put(`/onibus/diario-obs/${d.data}`, { observacao: obs.value }); toast('Observação salva.'); } catch (e) { toast(e.message, 'erro'); } });
+  obs.addEventListener('change', async () => { try { await put(`/onibus/diario-obs/${d.data}`, { observacao: obs.value }); marcarPendente(); } catch (e) { toast(e.message, 'erro'); } });
+  desenharStatus();
 
   const vazioDia = !linhas.length;
   return [
     cabecalhoPagina({
       migalhas: [...BASE, ['RESUMO']], titulo: 'RESUMO',
       sub: `Levantamento Transporte Funcionários · ${porExtenso(d.data)}${d.data === d.hoje ? ' (hoje)' : ''}`,
-      acoes: [h('a', { class: 'btn sec', href: `#/onibus/imprimir?data=${d.data}` }, icone('impressora'), 'Imprimir RESUMO + disponibilidade')],
+      acoes: [h('a', { class: 'btn sec', href: `#/onibus/imprimir?data=${d.data}` }, icone('impressora'), 'Imprimir RESUMO + disponibilidade'), vazioDia ? null : botaoSalvar],
     }),
+    vazioDia ? null : h('div', { class: 'oni-barra-salvar' }, status),
     h('div', { class: 'oni-dia-nav' },
       botao('Dia anterior', () => irDia(somarDias(d.data, -1)), { tom: 'sec', icone: 'voltar' }),
       h('input', { type: 'date', value: d.data, 'aria-label': 'Dia do RESUMO', onchange: (e) => e.target.value && irDia(e.target.value) }),
@@ -319,7 +365,7 @@ async function planilha({ query, ir, recarregarPagina }) {
       { texto: 'Novo ônibus (nova frota)', icone: 'mais', tom: 'primario', aoClicar: novaFrota },
       { texto: 'Incluir ônibus', icone: 'onibus', aoClicar: incluir },
       'sep',
-      { texto: 'Exportar (Excel)', icone: 'baixar', aoClicar: () => { location.href = `/api/onibus/diario.csv?de=${d.data}&ate=${d.data}`; } },
+      { texto: 'Exportar (Excel)', icone: 'baixar', aoClicar: () => { location.href = `/api/onibus/diario.csv?de=${d.data}&ate=${d.data}&fonte=resumo`; } },
       { texto: 'Importar aba RESUMO (Excel)', icone: 'upload', aoClicar: importar },
     ]),
     listas,
@@ -337,6 +383,7 @@ async function planilha({ query, ir, recarregarPagina }) {
           h('thead', {}, h('tr', {}, COLS.map((c) => h('th', { class: `${c.auto ? 'auto' : ''} ${c.cls || ''}` }, c.t)), h('th', {}, ''))), corpo)),
         h('p', { class: 'muted pequeno' }, `Cada célula é salva ao sair dela (Enter desce para a linha de baixo). Próxima vistoria = última + ${d.vistoria_dias} dias: vermelho = vencida, verde = em dia. Lavagem 2 = lavagem 1 + ${d.lavagem_dias} dias; em amarelo quando chegou o dia. Passageiros aceita soma (ex.: 50 + 45).`),
         secao('Obs. do dia', null, obs),
+        h('div', { class: 'oni-barra-salvar fim' }, botaoSalvar2, h('span', { class: 'muted pequeno' }, 'Tudo o que foi digitado e alterado no dia vai para a BASE (e para a Disponibilidade) ao salvar. Pode salvar quantas vezes quiser: a BASE fica com a última versão do dia.')),
         secao('Disponibilidade da semana', h('a', { href: `#/onibus/disponibilidade?ate=${d.data}` }, 'Abrir Disponibilidade'), areaDisp),
       ],
   ];
@@ -374,7 +421,7 @@ async function disponibilidadePagina({ query, ir }) {
   return [
     cabecalhoPagina({
       migalhas: [...BASE, ['Disponibilidade']], titulo: 'Disponibilidade da frota',
-      sub: `Disponibilidade Semanal Transporte Pessoal · Período: ${dataBR(p.de)} a ${dataBR(p.ate)}`,
+      sub: `Disponibilidade Semanal Transporte Pessoal · Período: ${dataBR(p.de)} a ${dataBR(p.ate)} · dias salvos na BASE`,
       acoes: [h('a', { class: 'btn', href: `#/onibus/imprimir?data=${p.ate}&de=${p.de}&ate=${p.ate}` }, icone('impressora'), 'Imprimir RESUMO + disponibilidade')],
     }),
     barraFiltros([{ nome: 'de', rotulo: 'Período de', tipo: 'date' }, { nome: 'ate', rotulo: 'até', tipo: 'date' }], { de: p.de, ate: p.ate }, (v) => ir('#/onibus/disponibilidade', v)),
@@ -445,7 +492,7 @@ async function imprimir({ query, ir }) {
   const dia = query.data || hojeISO();
   const ate = query.ate || dia;
   const de = query.de || segunda(ate);
-  const [d, p] = await Promise.all([get(`/onibus/diario?data=${dia}`), get(`/onibus/disponibilidade?de=${de}&ate=${ate}`)]);
+  const [d, p] = await Promise.all([get(`/onibus/diario?data=${dia}`), get(`/onibus/disponibilidade?de=${de}&ate=${ate}&previa=${dia}`)]);
   const mostrar = { planilha: query.so !== 'disponibilidade', disponibilidade: query.so !== 'planilha' };
   const campo = (nome, rotulo, valor) => h('label', {}, rotulo, h('input', { type: 'date', name: nome, value: valor }));
   const form = h('form', { class: 'filtros' }, campo('data', 'RESUMO do dia', d.data), campo('de', 'Disponibilidade de', p.de), campo('ate', 'até', p.ate),
@@ -505,7 +552,7 @@ async function basePagina({ query, ir, recarregarPagina }) {
   return [
     cabecalhoPagina({
       migalhas: [...BASE, ['BASE']], titulo: 'BASE',
-      sub: 'Todos os dias do RESUMO guardados, como a aba BASE da planilha: cada alteração do RESUMO de um dia fica registrada aqui.',
+      sub: 'Todos os dias guardados, como a aba BASE da planilha: o RESUMO de cada dia entra aqui quando é salvo (botão Salvar na BASE).',
       acoes: [
         h('a', { class: 'btn sec', href: csv, download: '' }, icone('baixar'), 'Exportar (Excel)'),
         botao('Importar aba BASE (Excel)', importarBase, { tom: 'sec', icone: 'upload' }),
@@ -540,7 +587,7 @@ async function basePagina({ query, ir, recarregarPagina }) {
       { t: 'Situação', f: (l) => h('span', { class: `oni-cel sit-${l.situacao}` }, nomeSit(l.situacao)) },
       { t: '∆ %', num: true, f: (l) => (l.situacao === 'liberado' ? '100%' : '0%') },
       { t: 'Obs.', cls: 'oni-txt', f: (l) => l.observacao },
-    ], b.itens, { vazioMsg: 'Nada na BASE com esses filtros. O RESUMO de cada dia entra aqui sozinho; o histórico antigo vem em "Importar aba BASE".' })),
+    ], b.itens, { vazioMsg: 'Nada na BASE com esses filtros. O RESUMO de cada dia entra aqui ao clicar em "Salvar na BASE"; o histórico antigo vem em "Importar aba BASE".' })),
     paginas,
   ];
 }

@@ -697,6 +697,47 @@ CREATE TABLE IF NOT EXISTS onibus_diario_obs (
   observacao    TEXT NOT NULL DEFAULT '',
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Quando o RESUMO do dia foi alterado pela última vez (digitação, inclusão, exclusão, observação, importação)
+ALTER TABLE onibus_diario_obs ADD COLUMN IF NOT EXISTS alterado_em TIMESTAMPTZ;
+-- BASE: o RESUMO de cada dia como foi salvo (botão "Salvar na BASE"); a disponibilidade sai daqui
+DO $$
+BEGIN
+  IF to_regclass('public.onibus_base') IS NULL THEN
+    CREATE TABLE onibus_base (
+      id               SERIAL PRIMARY KEY,
+      data             DATE NOT NULL,
+      onibus_id        INTEGER NOT NULL REFERENCES onibus_frota(id) ON DELETE CASCADE,
+      empresa          TEXT NOT NULL DEFAULT '',
+      capacidade       INTEGER CHECK (capacidade IS NULL OR capacidade BETWEEN 0 AND 300),
+      passageiros      INTEGER CHECK (passageiros IS NULL OR passageiros BETWEEN 0 AND 300),
+      ultima_vistoria  DATE,
+      lavagem_1        DATE,
+      lavagem_2        DATE,
+      atividade        TEXT NOT NULL DEFAULT '',
+      rota_ida         TEXT NOT NULL DEFAULT '',
+      rota_volta       TEXT NOT NULL DEFAULT '',
+      situacao         TEXT NOT NULL DEFAULT 'liberado' CHECK (situacao IN ('liberado','manutencao','reserva','interditado','parado')),
+      observacao       TEXT NOT NULL DEFAULT '',
+      UNIQUE (data, onibus_id)
+    );
+    CREATE INDEX onibus_base_data_idx ON onibus_base (data);
+    CREATE TABLE onibus_base_dias (
+      data            DATE PRIMARY KEY,
+      linhas          INTEGER NOT NULL DEFAULT 0,
+      observacao      TEXT NOT NULL DEFAULT '',
+      salvo_em        TIMESTAMPTZ NOT NULL DEFAULT now(),
+      salvo_por       INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+      salvo_por_nome  TEXT NOT NULL DEFAULT '',
+      origem          TEXT NOT NULL DEFAULT 'resumo'
+    );
+    -- uma vez só: os dias já lançados antes do botão Salvar entram na BASE como salvos
+    INSERT INTO onibus_base (data, onibus_id, empresa, capacidade, passageiros, ultima_vistoria, lavagem_1, lavagem_2, atividade, rota_ida, rota_volta, situacao, observacao)
+      SELECT data, onibus_id, empresa, capacidade, passageiros, ultima_vistoria, lavagem_1, lavagem_2, atividade, rota_ida, rota_volta, situacao, observacao FROM onibus_diario;
+    INSERT INTO onibus_base_dias (data, linhas, observacao, salvo_por_nome, origem)
+      SELECT d.data, count(*), COALESCE(max(o.observacao), ''), 'migração', 'migracao'
+        FROM onibus_diario d LEFT JOIN onibus_diario_obs o ON o.data = d.data GROUP BY d.data;
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,

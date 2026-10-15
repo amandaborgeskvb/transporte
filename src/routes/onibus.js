@@ -430,7 +430,7 @@ function criarOnibus({ pool }) {
     for (const o of ocorr.rows) tipos[o.tipo][o.situacao] = o.qtd;
     const comHorario = feitas.filter((v) => v.atraso_saida != null);
     // planilha diária: disponibilidade do ano (por mês), dos últimos 7 dias (por empresa) e situação do último dia lançado
-    const ultimoDia = (await pool.query('SELECT max(data) AS d FROM onibus_diario WHERE data <= $1', [`${ano}-12-31`])).rows[0].d;
+    const ultimoDia = (await pool.query('SELECT max(data) AS d FROM onibus_base WHERE data <= $1', [`${ano}-12-31`])).rows[0].d;
     let diario = null;
     if (ultimoDia) {
       const ud = dataLocal(ultimoDia);
@@ -438,7 +438,7 @@ function criarOnibus({ pool }) {
         calcularDisponibilidade(pool, `${ano}-01-01`, `${ano}-12-31`),
         calcularDisponibilidade(pool, new Date(Date.parse(`${ud}T00:00:00Z`) - 6 * 86400000).toISOString().slice(0, 10), ud),
         pool.query(`SELECT situacao, count(*)::int AS qtd, count(*) FILTER (WHERE ultima_vistoria IS NOT NULL AND ultima_vistoria + 30 <= data)::int AS vencidas,
-                           COALESCE(sum(passageiros), 0)::int AS passageiros FROM onibus_diario WHERE data = $1 GROUP BY 1`, [ultimoDia]),
+                           COALESCE(sum(passageiros), 0)::int AS passageiros FROM onibus_base WHERE data = $1 GROUP BY 1`, [ultimoDia]),
       ]);
       const vazio = () => ({ liberado: 0, manutencao: 0, reserva: 0, interditado: 0, parado: 0, total: 0 });
       const meses = Array.from({ length: 12 }, (_, i) => ({ mes: i + 1, ...vazio() }));
