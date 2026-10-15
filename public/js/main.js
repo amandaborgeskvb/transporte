@@ -119,8 +119,6 @@ const MENU = [
     rota: 'operacional', titulo: 'Controle Operacional', icone: 'caminhao', perfis: [...GESTAO, 'operacional'],
     filhos: [
       { href: '#/operacional/painel', titulo: 'Painel de vencimentos', prefixo: true },
-      { href: '#/operacional/veiculos', titulo: 'Veículos', prefixo: true },
-      { href: '#/operacional/documentos', titulo: 'Documentos', prefixo: true },
       { href: '#/operacional/aets', titulo: 'AETs (vencimentos)', prefixo: true },
       { href: '#/operacional/pastas', titulo: 'Pastas de documentos', prefixo: true },
       { href: '#/operacional/tipos', titulo: 'Tipos de documento', prefixo: true },
