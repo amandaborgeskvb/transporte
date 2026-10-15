@@ -13,6 +13,7 @@ import treinamento from './pages/treinamento.js';
 import treino from './pages/treino.js';
 import gratificacao from './pages/gratificacao.js';
 import onibus from './pages/onibus.js';
+import operacional from './pages/operacional.js';
 
 const raiz = document.getElementById('raiz');
 const MARCA = 'CRV Industrial';
@@ -47,6 +48,7 @@ const ROTAS = {
   gratificacao: { titulo: 'Gratificação rescisória', pagina: gratificacao, perfis: [...GESTAO, 'gratificacao'], voltar: (c) => (c.params.length > 1 ? `#/gratificacao/${c.params[0]}` : null) },
   treino: { titulo: 'Treinamento prático', pagina: treino, perfis: [...GESTAO, 'treinamento'], voltar: (c) => (c.params[0] === 'registros' && c.params.length > 1 ? '#/treino/registros' : null) },
   onibus: { titulo: 'Acompanhamento de ônibus', pagina: onibus, perfis: [...GESTAO, 'onibus'], voltar: (c) => (c.params[0] === 'imprimir' ? `#/onibus/resumo${c.query.data ? `?data=${c.query.data}` : ''}` : null) },
+  operacional: { titulo: 'Controle operacional', pagina: operacional, perfis: [...GESTAO, 'operacional'], voltar: (c) => (c.params[0] === 'veiculos' && c.params.length > 1 ? '#/operacional/veiculos' : null) },
   treinamento: { titulo: 'Guia do sistema', pagina: treinamento },
   relatorios: { titulo: 'Relatório de viagem', pagina: relatorios, perfis: VIAGEM },
   cadastros: { titulo: 'Cadastros', pagina: cadastrosPagina, perfis: ADMIN, voltar: () => '#/dashboard' },
@@ -113,6 +115,15 @@ const MENU = [
       { href: '#/onibus/base', titulo: 'BASE', prefixo: true },
     ],
   },
+  {
+    rota: 'operacional', titulo: 'Controle Operacional', icone: 'caminhao', perfis: [...GESTAO, 'operacional'],
+    filhos: [
+      { href: '#/operacional/painel', titulo: 'Painel de vencimentos', prefixo: true },
+      { href: '#/operacional/veiculos', titulo: 'Veículos', prefixo: true },
+      { href: '#/operacional/documentos', titulo: 'Documentos', prefixo: true },
+      { href: '#/operacional/tipos', titulo: 'Tipos de documento', prefixo: true },
+    ],
+  },
   { grupo: 'Configurações' },
   { rota: 'cadastros', titulo: 'Cadastros', icone: 'cadastros', perfis: ADMIN, filhos: Object.entries(TIPOS_CADASTRO).map(([k, t]) => ({ href: `#/cadastros/${k}`, titulo: t.titulo })) },
   { rota: 'importacao', titulo: 'Importação', icone: 'upload', perfis: ADMIN },
@@ -150,6 +161,7 @@ function marcarMenu(rota) {
   if (atual === '#/treino') atual = '#/treino/planilha';
   if (atual === '#/treino/imprimir') atual = '#/treino/registros';
   if (atual === '#/onibus' || atual === '#/onibus/imprimir' || atual === '#/onibus/planilha') atual = '#/onibus/resumo';
+  if (atual === '#/operacional') atual = '#/operacional/painel';
   app.querySelectorAll('.nav a').forEach((a) => {
     // sub-itens com rota própria acendem em qualquer tela da rota (lista e detalhe); os demais, só no endereço exato
     const pref = a.dataset.prefixo;
@@ -366,7 +378,7 @@ function telaLogin(aviso) {
     h('h1', {}, 'CTT - TRANSPORTE'),
     h('p', { class: 'login-desc' }, 'Controle do transporte em um só lugar.'),
     h('ul', { class: 'login-modulos' },
-      [['viagem', 'Viagens, adiantamentos e despesas'], ['carteira', 'Gratificação rescisória'], ['documento', 'Contratação'], ['calendario', 'Treinamento prático'], ['onibus', 'Acompanhamento de ônibus']]
+      [['viagem', 'Viagens, adiantamentos e despesas'], ['carteira', 'Gratificação rescisória'], ['documento', 'Contratação'], ['calendario', 'Treinamento prático'], ['onibus', 'Acompanhamento de ônibus'], ['caminhao', 'Documentação da frota']]
         .map(([ic, t]) => h('li', {}, icone(ic), t))),
     h('div', { class: 'login-empresa' },
       h('img', { src: '/img/crv-industrial-branca.png?v=2', alt: 'CRV Industrial', width: 170, height: 53 }),

@@ -95,6 +95,15 @@ const TOPICOS = [
     ],
   },
   {
+    titulo: 'Controle Operacional: documentação dos veículos', perfis: ['administrador', 'financeiro', 'operacional'], corpo: () => [
+      lista('Em **Controle Operacional → Veículos**, cadastre cada veículo **leve** (carro, caminhonete, moto…) ou **pesado** (caminhão, cavalo mecânico, carreta, ônibus…): frota, placa, modelo, ano, RENAVAM, chassi, propriedade (próprio, locado ou terceiro), setor e responsável.',
+        'Abra o veículo e use **Lançar** (ou **Renovar**) em cada documento: número, emissão e vencimento. Se o vencimento ficar em branco, ele é calculado pela validade do documento (ex.: CRLV 365 dias). Anexe o PDF ou a foto (JPG/PNG até 5 MB) no próprio lançamento ou depois, em **Anexar**. A renovação entra como um documento novo: o anterior fica no histórico.',
+        'Cada documento fica **Em dia** (verde), **Vence logo** (amarelo, dentro do aviso do documento), **Vencido** (vermelho) ou **Faltando** (cinza: obrigatório e nunca lançado). O **Painel de vencimentos** mostra os totais, o gráfico por tipo de documento e a lista de pendências; **Documentos** lista todos os vencimentos com filtros e exporta para o Excel.',
+        'Em **Tipos de documento** ficam os documentos exigidos: para leves, pesados ou ambos, se é obrigatório, a validade em dias e com quantos dias de antecedência avisar. Já vêm cadastrados CRLV, seguro, IPVA, checklist, tacógrafo, opacidade, CSV, ANTT/RNTRC, AET e CIV/CIPP; ajuste conforme a frota.'),
+      dica('Veículo vendido ou devolvido: mude a situação para **Baixado** — ele sai das pendências e o histórico de documentos fica guardado.'),
+    ],
+  },
+  {
     titulo: 'Gratificação rescisória', perfis: ['administrador', 'financeiro', 'gratificacao'], corpo: () => [
       lista('Todo mês, em **Gratificação rescisória → Valores mensais**, faça a carga do arquivo (Excel ou CSV) com **Matrícula, BPP, Produtividade e Mês** — pode ser a própria planilha (a aba GRAT abre sozinha). Sem a coluna Mês, escolha o mês de referência. Confira em **Médias (3 meses)**.',
         'Em **Ocorrências**, envie o arquivo exportado do controle de notificações (Data, Mat-Func, Penalid Notific…): a prévia mostra o que entra e reenviar não duplica. Também dá para lançar uma ocorrência à mão.',
@@ -116,7 +125,7 @@ const TOPICOS = [
 
 export default async function treinamento({ usuario }) {
   const meus = TOPICOS.filter((t) => t.perfis.includes(usuario.perfil));
-  const soUmModulo = ['treinamento', 'gratificacao', 'contratacao', 'onibus'].includes(usuario.perfil); // não usam os outros módulos
+  const soUmModulo = ['treinamento', 'gratificacao', 'contratacao', 'onibus', 'operacional'].includes(usuario.perfil); // não usam os outros módulos
   const outros = soUmModulo ? [] : TOPICOS.filter((t) => !t.perfis.includes(usuario.perfil));
   const bloco = (t, aberto) => h('details', { class: 'treino', open: aberto }, h('summary', {}, t.titulo), h('div', { class: 'treino-corpo' }, t.corpo()));
   return [

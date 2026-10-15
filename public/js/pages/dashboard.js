@@ -224,21 +224,45 @@ function moduloOnibus(p) {
   });
 }
 
+// ---------- Controle Operacional (documentação dos veículos) ----------
+function moduloOperacional(p) {
+  const d = p.documentos;
+  const series = [
+    { k: 'em_dia', nome: 'Em dia', cor: 'var(--st-ok)' }, { k: 'vence_logo', nome: 'Vence logo', cor: 'var(--st-aviso)' },
+    { k: 'faltando', nome: 'Faltando (obrigatório)', cor: 'var(--st-falta)' }, { k: 'vencido', nome: 'Vencido', cor: 'var(--st-venc)' },
+  ];
+  const corpo = () => [
+    kpis(
+      kpi('Veículos', fmt(p.veiculos.total), { icone: 'caminhao', sub: `${fmt(p.veiculos.leves)} leves · ${fmt(p.veiculos.pesados)} pesados`, link: '#/operacional/veiculos' }),
+      kpi('Documentos vencidos', fmt(d.vencidos), { icone: 'alerta', tom: d.vencidos ? 'alerta' : 'ok', link: '#/operacional/documentos?situacao=vencido' }),
+      kpi('Vencem em breve', fmt(d.vencendo), { icone: 'relogio', tom: d.vencendo ? 'alerta' : 'neutro', link: '#/operacional/documentos?situacao=vence_logo' }),
+      kpi('Obrigatórios faltando', fmt(d.faltando), { icone: 'documento', tom: d.faltando ? 'alerta' : 'ok', link: '#/operacional/documentos?situacao=faltando' })),
+    secao('Situação por tipo de documento', null, legendaSeries(series),
+      barrasEmpilhadas(p.por_tipo.map((x) => ({ nome: x.tipo, valores: { em_dia: x.em_dia, vence_logo: x.vence_logo, faltando: x.faltando, vencido: x.vencido }, total: x.em_dia + x.vence_logo + x.faltando + x.vencido })), series, { vazioMsg: 'Nenhum veículo cadastrado.' })),
+  ];
+  return cartao({
+    titulo: 'Controle Operacional', nomeIcone: 'caminhao', principal: fmt(d.vencidos + d.faltando), rotulo: `documento${d.vencidos + d.faltando === 1 ? '' : 's'} vencido${d.vencidos + d.faltando === 1 ? '' : 's'} ou faltando`,
+    linhas: [['Veículos', `${fmt(p.veiculos.total)} (${fmt(p.veiculos.leves)} leves · ${fmt(p.veiculos.pesados)} pesados)`], ['Vencem em breve', fmt(d.vencendo)], ['Veículos em dia', `${fmt(p.veiculos.em_dia)} de ${fmt(p.veiculos.total)}`]],
+    tom: d.vencidos || d.faltando ? 'atencao' : '',
+    abrir: () => abrirModal({ titulo: 'Controle Operacional', sub: 'Documentação dos veículos leves e pesados', nomeIcone: 'caminhao', corpo: corpo(), link: { href: '#/operacional/painel', rotulo: 'Abrir o painel de vencimentos' } }),
+  });
+}
+
 export default async function dashboard({ query, ir, usuario }) {
   const perfil = usuario?.perfil;
   const gestor = GESTAO.includes(perfil);
   const viagens = ['administrador', 'solicitante', 'aprovador', 'financeiro'].includes(perfil);
   // perfis de um módulo só veem o resumo do próprio módulo
-  const ve = { descontos: gestor, gratificacao: gestor || perfil === 'gratificacao', contratacao: gestor || perfil === 'contratacao', treino: gestor || perfil === 'treinamento', onibus: gestor || perfil === 'onibus' };
+  const ve = { descontos: gestor, gratificacao: gestor || perfil === 'gratificacao', contratacao: gestor || perfil === 'contratacao', treino: gestor || perfil === 'treinamento', onibus: gestor || perfil === 'onibus', operacional: gestor || perfil === 'operacional' };
   const outros = ve.gratificacao || ve.contratacao || ve.treino || ve.onibus;
   const anoAtual = new Date().getFullYear();
   const ano = /^\d{4}$/.test(query.ano || '') ? query.ano : String(anoAtual);
   const qv = new URLSearchParams(Object.fromEntries(Object.entries(query).filter(([k]) => ['de', 'ate'].includes(k)))).toString();
   const se = (cond, url) => (cond ? get(url).catch(() => null) : null);
-  const [d, pendencias, c, desc, grat, contr, trein, oni] = await Promise.all([
+  const [d, pendencias, c, desc, grat, contr, trein, oni, ope] = await Promise.all([
     viagens ? get(`/dashboard${qv ? `?${qv}` : ''}`) : null, get('/pendencias').catch(() => []), viagens ? cadastros() : null,
     se(ve.descontos, `/descontos/painel?ano=${ano}`), se(ve.gratificacao, `/gratificacao/painel?ano=${ano}`), se(ve.contratacao, `/contratacao/painel?ano=${ano}`), se(ve.treino, `/treino/relatorio?ano=${ano}`),
-    se(ve.onibus, `/onibus/painel?ano=${ano}`),
+    se(ve.onibus, `/onibus/painel?ano=${ano}`), se(ve.operacional, '/operacional/painel'),
   ]);
   const cartoes = [
     d ? moduloViagens(d, c, query) : null,
@@ -247,6 +271,7 @@ export default async function dashboard({ query, ir, usuario }) {
     contr ? moduloContratacao(contr) : null,
     trein ? moduloTreinamento(trein) : null,
     oni ? moduloOnibus(oni) : null,
+    ope ? moduloOperacional(ope) : null,
   ].filter(Boolean);
   const sub = cartoes.length > 1 ? 'Resumo de cada módulo do sistema: clique em um cartão para ver os gráficos' : 'Clique no cartão para ver os gráficos do resumo';
 

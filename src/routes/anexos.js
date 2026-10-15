@@ -112,4 +112,4 @@ function criarAnexos({ pool }) {
   return router;
 }
 
-module.exports = { criarAnexos, MAX_BYTES };
+module.exports = { criarAnexos, MAX_BYTES, detectarTipo, nomeSeguro };

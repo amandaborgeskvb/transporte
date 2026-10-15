@@ -10,18 +10,19 @@ PostgreSQL como banco. Sem etapa de build e sem frameworks de interface.
 
 | Módulo | O que faz |
 |---|---|
-| **Início (Dashboard)** | As **pendências** de cada usuário e um **cartão de resumo por módulo** (Viagens e despesas; e, para administrador e financeiro, Autorização de desconto, Gratificação rescisória, Contratação, Treinamento prático e Acompanhamento de ônibus), cada um com os números principais e um mini gráfico dos 12 meses. Ao clicar, o resumo completo abre em uma **janela (modal)** com indicadores, gráficos (colunas por mês, rosca, barras por tipo/setor/função/gestor, com os números ao passar o mouse) e o atalho para o módulo. Filtro de saída para as viagens e de ano para os demais módulos. |
+| **Início (Dashboard)** | As **pendências** de cada usuário e um **cartão de resumo por módulo** (Viagens e despesas; e, para administrador e financeiro, Autorização de desconto, Gratificação rescisória, Contratação, Treinamento prático, Acompanhamento de ônibus e Controle Operacional), cada um com os números principais e um mini gráfico dos 12 meses. Ao clicar, o resumo completo abre em uma **janela (modal)** com indicadores, gráficos (colunas por mês, rosca, barras por tipo/setor/função/gestor, com os números ao passar o mouse) e o atalho para o módulo. Filtro de saída para as viagens e de ano para os demais módulos. |
 | **Viagens** | Programação (nº automático `VG-AAAA-NNNN`, funcionário, destino, motivo, datas, descrição, valor estimado), realização e cancelamento (a viagem já nasce programada) |
 | **Adiantamentos** | Solicitado já liberado para pagamento → pago, com forma (dinheiro, depósito, transferência…), data e comprovante |
 | **Despesas** | Alimentação, combustível, hospedagem, pedágio, manutenção etc., com comprovantes e análise do financeiro |
 | **Reembolsos** | Solicitação e pagamento direto (depósito em conta, transferência, outros) |
 | **Prestação de contas** | Com a viagem realizada, o solicitante encerra a prestação: a viagem é concluída e travada (sem etapa de análise); administrador/financeiro podem reabrir, com motivo |
 | **Ônibus** | RESUMO do dia digitado (como a aba RESUMO da planilha), disponibilidade da frota atualizada sozinha e a BASE com todos os dias (veja abaixo) |
+| **Controle Operacional** | Documentação dos veículos **leves e pesados**: cadastro da frota, documentos com vencimento e arquivo (PDF/foto), painel de vencimentos e pendências (veja abaixo) |
 | **Autorizações de desconto** | Formulário padrão **RE. 0150.09** (Autorização de Desconto) emitido a partir da viagem ou avulso, com prévia ao vivo, impressão em A4 e acompanhamento até o desconto em folha |
 | **Importação** | Carga e atualização do cadastro de funcionários por até 3 arquivos do ERP (Ativos, Afastados, Demitidos), com situação, prévia, histórico e relatório |
 | **Relatórios** | Filtros por período, funcionário, setor, motivo, destino, status, categoria e prestação; exportação em CSV |
 | **Cadastros** | Funcionários, motivos de viagem, status, categorias de despesa e formas de pagamento |
-| **Usuários e perfis** | Login individual e oito perfis de acesso: Administrador, Solicitante, Aprovador e Financeiro, mais quatro **perfis de um módulo só** — **Treinamento**, **Gratificação**, **Contratação** e **Ônibus** — que veem apenas o próprio módulo (menu, telas e API) e, no Início, só o resumo dele (sem viagens, descontos, cadastros ou usuários); no menu, **Usuários e perfis** (lista e edição) e **Criar usuário** (abre direto o cadastro: nome, login, perfil, funcionário vinculado e senha inicial). A **tela de login** tem o painel da marca **CTT - TRANSPORTE** e a logo da CRV Industrial, com mostrar/ocultar senha e aviso de Caps Lock. |
+| **Usuários e perfis** | Login individual e nove perfis de acesso: Administrador, Solicitante, Aprovador e Financeiro, mais cinco **perfis de um módulo só** — **Treinamento**, **Gratificação**, **Contratação**, **Ônibus** e **Operacional** — que veem apenas o próprio módulo (menu, telas e API) e, no Início, só o resumo dele (sem viagens, descontos, cadastros ou usuários); no menu, **Usuários e perfis** (lista e edição) e **Criar usuário** (abre direto o cadastro: nome, login, perfil, funcionário vinculado e senha inicial). A **tela de login** tem o painel da marca **CTT - TRANSPORTE** e a logo da CRV Industrial, com mostrar/ocultar senha e aviso de Caps Lock. |
 | **Auditoria** | Quem fez o quê e quando (aprovações, pagamentos, alterações), por registro e por viagem |
 
 ## Identidade visual e interface
@@ -174,6 +175,20 @@ Menu **Ônibus** (administrador, financeiro e o perfil **Ônibus**) com as 3 aba
 **Imprimir RESUMO + disponibilidade**: as duas folhas juntas em A4 deitado — o RESUMO (com os indicadores do dia no topo e a **disponibilidade do dia em meia lua** com a meta) e a folha **Acompanhamento Diário Ônibus** (disponibilidade por empresa e, embaixo, três quadros do mesmo tamanho: situação da frota por dia, frotas por atividade e disponibilidade por empresa); dá para imprimir só uma delas. Ao lado de **Imprimir**, **Salvar em PDF** baixa as mesmas folhas como arquivo PDF (gerado no servidor, A4 deitado, com rodapé de quem emitiu), sem passar pela janela de impressão.
 
 No **Início**, o cartão *Ônibus* mostra a **disponibilidade dos últimos 7 dias** e abre o resumo: disponibilidade por empresa (meta 85%) e da frota por mês, liberados, passageiros e vistorias vencidas do último dia.
+
+## Controle Operacional – Transporte (documentação dos veículos)
+
+Menu **Controle Operacional** (administrador, financeiro e o perfil **Operacional**), onde fica toda a documentação dos veículos leves e pesados:
+
+| Tela | O que faz |
+|---|---|
+| **Painel de vencimentos** | Veículos (leves e pesados), documentos **vencidos**, que **vencem em breve** (dentro do aviso de cada documento), **obrigatórios faltando** e veículos em dia; gráfico da situação **por tipo de documento** (em dia, vence logo, faltando, vencido) e a lista das pendências, da mais grave para a menos grave, com atalho para o veículo. |
+| **Veículos** | Cadastro de cada veículo: tipo (**leve** ou **pesado**), categoria (caminhonete, caminhão, cavalo mecânico, carreta…), frota, placa, marca/modelo, ano, RENAVAM, chassi, combustível, propriedade (próprio, locado, terceiro), empresa, setor/frente, responsável e situação (ativo, em manutenção, reserva, baixado). Filtros por tipo, situação e pendência de documentos. Veículo **baixado** sai das pendências e guarda o histórico. |
+| **Veículo (detalhe)** | O documento **vigente de cada tipo** (o de vencimento mais distante) com a situação e o prazo, botões **Lançar / Renovar** e **Anexar**; os dados do veículo e o **histórico** de todos os documentos com os arquivos. O vencimento em branco é calculado pela validade do documento (emissão + dias). Arquivos em PDF, JPG ou PNG até 5 MB (até 10 por documento), guardados no banco. |
+| **Documentos** | Todos os vencimentos de todos os veículos, do mais próximo ao mais distante, com filtros (situação, documento, leves/pesados, período, busca) e **Exportar (Excel)**. |
+| **Tipos de documento** | Quais documentos são exigidos — para leves, pesados ou ambos —, se são obrigatórios, a validade (dias) e o aviso (dias antes). Já vêm CRLV/licenciamento, seguro, IPVA e checklist (todos), e para pesados aferição do tacógrafo (INMETRO), laudo de opacidade, inspeção de segurança veicular (CSV), ANTT/RNTRC, AET e CIV/CIPP, além do contrato de locação. |
+
+No **Início**, o cartão *Controle Operacional* mostra os documentos vencidos ou faltando e abre o resumo com os indicadores e o gráfico por tipo de documento.
 
 ## Gratificação rescisória
 

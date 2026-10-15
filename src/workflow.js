@@ -11,7 +11,8 @@ const TRE = 'treinamento';
 const GRA = 'gratificacao';
 const CON = 'contratacao';
 const ONI = 'onibus';
-const MODULO_DO_PERFIL = { [TRE]: '/treino', [GRA]: '/gratificacao', [CON]: '/contratacao', [ONI]: '/onibus' };
+const OPE = 'operacional';
+const MODULO_DO_PERFIL = { [TRE]: '/treino', [GRA]: '/gratificacao', [CON]: '/contratacao', [ONI]: '/onibus', [OPE]: '/operacional' };
 const VE_TUDO = [ADM, APR, FIN];
 
 const exigirPerfil = (...perfis) => (req, _res, next) =>
@@ -126,7 +127,7 @@ function restringirModulo(req, _res, next) {
 }
 
 module.exports = {
-  ADM, SOL, APR, FIN, TRE, GRA, CON, ONI, MODULO_DO_PERFIL, restringirModulo, VE_TUDO, TRANSICOES, STATUS_FINANCEIRO,
+  ADM, SOL, APR, FIN, TRE, GRA, CON, ONI, OPE, MODULO_DO_PERFIL, restringirModulo, VE_TUDO, TRANSICOES, STATUS_FINANCEIRO,
   exigirPerfil, escopoSql, ehDono, carregarViagem, podeTransicao, podeLancar, podeAnalisar, prestacaoAberta,
   acoesViagem, acoesAdiantamento, acoesDespesa, acoesReembolso,
 };

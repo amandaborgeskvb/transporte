@@ -2,7 +2,7 @@
 // Tabelas da v1 (viagens/despesas simples) são renomeadas para *_legado em db.js, sem perder dados.
 
 // treinamento, gratificacao, contratacao e onibus: perfis de um módulo só (veem apenas o próprio módulo e o resumo dele no Início)
-const PERFIS = ['administrador', 'solicitante', 'aprovador', 'financeiro', 'treinamento', 'gratificacao', 'contratacao', 'onibus'];
+const PERFIS = ['administrador', 'solicitante', 'aprovador', 'financeiro', 'treinamento', 'gratificacao', 'contratacao', 'onibus', 'operacional'];
 
 // Numera, na ordem de lançamento, os treinamentos ainda sem Nº DOC (ano da data do crachá ou, sem ela, do início da vigência)
 const SQL_NUMERAR_TREINO = `
@@ -764,6 +764,83 @@ BEGIN
         FROM onibus_diario d LEFT JOIN onibus_diario_obs o ON o.data = d.data GROUP BY d.data;
   END IF;
 END $$;
+
+-- ============ Controle Operacional – Transporte: documentação dos veículos leves e pesados ============
+CREATE TABLE IF NOT EXISTS op_veiculos (
+  id              SERIAL PRIMARY KEY,
+  placa           TEXT UNIQUE,
+  frota           TEXT UNIQUE,
+  tipo            TEXT NOT NULL CHECK (tipo IN ('leve','pesado')),
+  categoria       TEXT NOT NULL DEFAULT '',
+  marca_modelo    TEXT NOT NULL DEFAULT '',
+  ano             INTEGER CHECK (ano IS NULL OR ano BETWEEN 1950 AND 2100),
+  renavam         TEXT NOT NULL DEFAULT '',
+  chassi          TEXT NOT NULL DEFAULT '',
+  combustivel     TEXT NOT NULL DEFAULT '',
+  propriedade     TEXT NOT NULL DEFAULT 'proprio' CHECK (propriedade IN ('proprio','locado','terceiro')),
+  empresa         TEXT NOT NULL DEFAULT '',
+  setor           TEXT NOT NULL DEFAULT '',
+  responsavel     TEXT NOT NULL DEFAULT '',
+  situacao        TEXT NOT NULL DEFAULT 'ativo' CHECK (situacao IN ('ativo','manutencao','reserva','baixado')),
+  observacao      TEXT NOT NULL DEFAULT '',
+  criado_em       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (placa IS NOT NULL OR frota IS NOT NULL)
+);
+-- Tipos de documento: validade (dias), para quais veículos e se é obrigatório (sem ele, o veículo fica "faltando")
+DO $$
+BEGIN
+  IF to_regclass('public.op_tipos_documento') IS NULL THEN
+    CREATE TABLE op_tipos_documento (
+      id           SERIAL PRIMARY KEY,
+      nome         TEXT NOT NULL UNIQUE,
+      aplica       TEXT NOT NULL DEFAULT 'ambos' CHECK (aplica IN ('leve','pesado','ambos')),
+      obrigatorio  BOOLEAN NOT NULL DEFAULT false,
+      validade_dias INTEGER CHECK (validade_dias IS NULL OR validade_dias BETWEEN 1 AND 3650),
+      aviso_dias   INTEGER NOT NULL DEFAULT 30 CHECK (aviso_dias BETWEEN 0 AND 365),
+      ordem        INTEGER NOT NULL DEFAULT 0,
+      ativo        BOOLEAN NOT NULL DEFAULT true
+    );
+    INSERT INTO op_tipos_documento (nome, aplica, obrigatorio, validade_dias, aviso_dias, ordem) VALUES
+      ('CRLV / Licenciamento anual', 'ambos', true, 365, 30, 10),
+      ('Seguro do veículo (apólice)', 'ambos', true, 365, 30, 20),
+      ('IPVA', 'ambos', false, 365, 30, 30),
+      ('Checklist / vistoria interna', 'ambos', false, 30, 5, 40),
+      ('Aferição do tacógrafo (INMETRO)', 'pesado', true, 730, 30, 50),
+      ('Laudo de opacidade (fumaça preta)', 'pesado', true, 365, 30, 60),
+      ('Inspeção de segurança veicular (CSV)', 'pesado', false, 365, 30, 70),
+      ('ANTT / RNTRC', 'pesado', false, 1825, 60, 80),
+      ('AET – Autorização Especial de Trânsito', 'pesado', false, 365, 30, 90),
+      ('CIV / CIPP – produtos perigosos', 'pesado', false, 365, 30, 100),
+      ('Contrato de locação', 'ambos', false, NULL, 30, 110);
+  END IF;
+END $$;
+-- Documentos de cada veículo (o mais recente de cada tipo vale; os anteriores ficam no histórico)
+CREATE TABLE IF NOT EXISTS op_documentos (
+  id            SERIAL PRIMARY KEY,
+  veiculo_id    INTEGER NOT NULL REFERENCES op_veiculos(id) ON DELETE CASCADE,
+  tipo_id       INTEGER NOT NULL REFERENCES op_tipos_documento(id),
+  numero        TEXT NOT NULL DEFAULT '',
+  emissao       DATE,
+  vencimento    DATE,
+  observacao    TEXT NOT NULL DEFAULT '',
+  criado_por    INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS op_documentos_veiculo_idx ON op_documentos (veiculo_id, tipo_id);
+-- Arquivo do documento (PDF/JPG/PNG até 5 MB), guardado no banco: o disco do Render é efêmero
+CREATE TABLE IF NOT EXISTS op_arquivos (
+  id            SERIAL PRIMARY KEY,
+  documento_id  INTEGER NOT NULL REFERENCES op_documentos(id) ON DELETE CASCADE,
+  nome_arquivo  TEXT NOT NULL,
+  tipo_mime     TEXT NOT NULL,
+  tamanho       INTEGER NOT NULL,
+  conteudo      BYTEA NOT NULL,
+  enviado_por   INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS op_arquivos_doc_idx ON op_arquivos (documento_id);
 
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,

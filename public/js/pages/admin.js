@@ -5,7 +5,7 @@ import {
   resumirDetalhes, entidadeRotulo, cabecalhoPagina, vazio,
 } from '../ui.js';
 
-const PERFIS = ['administrador', 'solicitante', 'aprovador', 'financeiro', 'treinamento', 'gratificacao', 'contratacao', 'onibus'];
+const PERFIS = ['administrador', 'solicitante', 'aprovador', 'financeiro', 'treinamento', 'gratificacao', 'contratacao', 'onibus', 'operacional'];
 const DESCRICAO_PERFIL = {
   administrador: 'Acesso total: cadastros, usuários, auditoria e todas as etapas.',
   solicitante: 'Cadastra viagens, solicita adiantamentos e reembolsos, lança despesas e envia a prestação de contas — somente das próprias viagens.',
@@ -15,8 +15,9 @@ const DESCRICAO_PERFIL = {
   gratificacao: 'Só o módulo Gratificação rescisória: apuração, valores, ocorrências, relatórios, Cartão Gold e parâmetros. O Início mostra o resumo da gratificação. Não vê viagens nem os outros módulos.',
   contratacao: 'Só o módulo Contratação: fichas (RE.0150.03), resumo do dia e parâmetros. O Início mostra o resumo das contratações. Não vê viagens nem os outros módulos.',
   onibus: 'Só o módulo Ônibus: RESUMO (planilha do dia), Disponibilidade e BASE. O Início mostra o resumo dos ônibus. Não vê viagens de despesa nem os outros módulos.',
+  operacional: 'Só o módulo Controle Operacional: veículos leves e pesados, documentos, arquivos e vencimentos. O Início mostra o resumo dos vencimentos. Não vê viagens nem os outros módulos.',
 };
-const TOM_PERFIL = { administrador: 'ok', solicitante: 'mute', aprovador: 'info', financeiro: 'warn', treinamento: 'info', gratificacao: 'warn', contratacao: 'info', onibus: 'ok' };
+const TOM_PERFIL = { administrador: 'ok', solicitante: 'mute', aprovador: 'info', financeiro: 'warn', treinamento: 'info', gratificacao: 'warn', contratacao: 'info', onibus: 'ok', operacional: 'warn' };
 
 export async function usuarios({ params = [] } = {}) {
   const [dados, c] = await Promise.all([get('/usuarios'), cadastros(true)]);
