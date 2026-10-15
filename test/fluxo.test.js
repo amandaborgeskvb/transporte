@@ -216,7 +216,14 @@ test('cancelar, excluir e proteção de viagens com pagamento', async () => {
   assert.equal((await trans(ana, v, 'realizada')).status, 403); // cancelada é final
   assert.equal((await ana.del(`/api/viagens/${v}`)).status, 403); // só o administrador exclui
   assert.equal((await admin.del(`/api/viagens/${v}`)).status, 204);
-  assert.equal((await admin.del(`/api/viagens/${ids.v}`)).status, 403); // realizada: não exclui
+  assert.equal((await admin.del(`/api/viagens/${ids.v}`)).status, 409); // com pagamento registrado: não exclui (só cancela)
+  // realizada e com a prestação encerrada, sem pagamento (ex.: viagem de teste): o administrador exclui
+  const vt = (await novaViagem(ana, { destino: 'Teste realizada' })).corpo.id;
+  assert.equal((await trans(ana, vt, 'realizada', { data_realizacao: '2026-06-12' })).status, 200);
+  assert.equal((await ana.post(`/api/viagens/${vt}/prestacao`, { acao: 'enviar' })).status, 200); // encerra a prestação
+  assert.equal((await ana.del(`/api/viagens/${vt}`)).status, 403); // o solicitante só exclui a programada
+  assert.equal((await admin.get('/api/viagens')).corpo.find((x) => x.id === vt).pode_excluir, true);
+  assert.equal((await admin.del(`/api/viagens/${vt}`)).status, 204);
   // quem solicitou exclui a própria solicitação enquanto programada (a lista mostra a lixeira só para ela)
   const p = (await novaViagem(ana, { destino: 'Recife' })).corpo.id;
   const listaAna = (await ana.get('/api/viagens')).corpo;

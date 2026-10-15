@@ -235,7 +235,7 @@ function criarViagens({ pool }) {
     const id = idParam(req);
     await tx(pool, async (db) => {
       const v = await carregarViagem(db, id, req.usuario, { travar: true });
-      if (!acoesViagem(req.usuario, v).includes('excluir')) throw erro403('Só quem solicitou (viagem programada) ou o administrador pode excluir a viagem.');
+      if (!acoesViagem(req.usuario, v).includes('excluir')) throw erro403('Só o administrador ou quem solicitou (com a viagem programada) pode excluir a viagem.');
       const pagos = await db.query(
         `SELECT (SELECT COUNT(*) FROM adiantamentos WHERE viagem_id=$1 AND situacao='pago')
               + (SELECT COUNT(*) FROM reembolsos WHERE viagem_id=$1 AND situacao='reembolsado') AS n`, [id]);

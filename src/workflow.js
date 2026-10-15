@@ -80,8 +80,9 @@ function acoesViagem(u, v) {
   for (const a of Object.keys(TRANSICOES)) if (podeTransicao(a, u, v)) acoes.push(a);
 
   if (v.status_codigo === 'aprovada' && (u.perfil === ADM || (u.perfil === SOL && dono))) acoes.push('editar');
-  // excluir: o administrador (programada ou cancelada) e quem solicitou, enquanto a viagem está programada
-  if ((u.perfil === ADM && ['aprovada', 'cancelada'].includes(v.status_codigo)) || (u.perfil === SOL && dono && v.status_codigo === 'aprovada')) acoes.push('excluir');
+  // excluir: o administrador (em qualquer situação, ex.: viagem de teste) e quem solicitou, enquanto está programada.
+  // Viagem com adiantamento ou reembolso pago não é excluída (a rota recusa e a tela esconde o botão).
+  if (u.perfil === ADM || (u.perfil === SOL && dono && v.status_codigo === 'aprovada')) acoes.push('excluir');
 
   if (podeLancar(u, v)) {
     if (v.status_codigo === 'aprovada') acoes.push('solicitar_adiantamento');
