@@ -8,6 +8,7 @@ const { wrap, texto, data, idParam, auditar, ehData, hojeSP, enviarCsv, erro400,
 const { exigirPerfil, ADM, FIN, ONI } = require('../workflow');
 const { lerXlsx, MAX_BYTES } = require('../planilha');
 const { lerData } = require('../treino');
+const { gerarPdfOnibus } = require('../onibusPdf');
 const {
   VISTORIA_DIAS, LAVAGEM_DIAS, META_DISPONIBILIDADE, SITUACOES_DIARIO, NOME_SITUACAO, somarDias, semAcento, situacaoVistoria, lavagemPendente,
   lerSituacaoDiario, lerPassageiros, disponibilidade,
@@ -371,6 +372,28 @@ function criarOnibusDiario({ pool }) {
       resumo: { ...t, de: dataLocal(t.de), ate: dataLocal(t.ate), disponibilidade: disponibilidade(t.liberados, t.registros) },
       empresas: empresas.rows.map((r) => r.empresa), meta: META_DISPONIBILIDADE,
     });
+  }));
+
+  // GET /onibus/imprimir.pdf?data&de&ate[&so=planilha|disponibilidade] — "Salvar em PDF": RESUMO do dia + disponibilidade (A4 deitado)
+  router.get('/onibus/imprimir.pdf', wrap(async (req, res) => {
+    const dia = ehData(req.query.data) ? req.query.data : hojeSP();
+    const ate = ehData(req.query.ate) ? req.query.ate : dia;
+    const de = ehData(req.query.de) ? req.query.de : segunda(ate);
+    if (de > ate) throw erro400('O início do período é depois do fim.');
+    const so = ['planilha', 'disponibilidade'].includes(req.query.so) ? req.query.so : '';
+    const [linhas, obs, disp] = await Promise.all([
+      so === 'disponibilidade' ? null : pool.query(`${SELECT} WHERE d.data = $1 ${ORDEM}`, [dia]),
+      so === 'disponibilidade' ? null : pool.query('SELECT observacao FROM onibus_diario_obs WHERE data = $1', [dia]),
+      so === 'planilha' ? null : calcularDisponibilidade(pool, de, ate, { previa: dia }),
+    ]);
+    const pdf = gerarPdfOnibus({
+      resumo: linhas ? { data: dia, linhas: linhas.rows.map(formatar), observacao: obs.rows[0]?.observacao || '' } : null,
+      disp, emitidoPor: req.usuario.nome,
+    });
+    const nome = so === 'disponibilidade' ? `disponibilidade-onibus-${de}-a-${ate}` : so === 'planilha' ? `resumo-onibus-${dia}` : `resumo-e-disponibilidade-onibus-${dia}`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${nome}.pdf"`);
+    pdf.pipe(res);
   }));
 
   // GET /onibus/diario.csv?de&ate[&fonte=resumo] — o mesmo layout da aba BASE (da BASE; com fonte=resumo, do RESUMO)

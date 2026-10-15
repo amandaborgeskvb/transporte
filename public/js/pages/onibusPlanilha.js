@@ -509,7 +509,13 @@ async function imprimir({ query, ir }) {
         sub: 'A4 deitado: o RESUMO do dia em uma folha e a disponibilidade com os gráficos na outra.',
       }),
       form,
-      barraComandos([{ texto: 'Imprimir', icone: 'impressora', tom: 'primario', aoClicar: () => window.print() }])),
+      barraComandos([
+        { texto: 'Imprimir', icone: 'impressora', tom: 'primario', aoClicar: () => window.print() },
+        { texto: 'Salvar em PDF', icone: 'baixar', aoClicar: () => {
+          const q = new URLSearchParams({ data: d.data, de: p.de, ate: p.ate, ...(query.so ? { so: query.so } : {}) });
+          location.href = `/api/onibus/imprimir.pdf?${q}`;
+        } },
+      ])),
     h('div', { class: 'oni-mesa' }, mostrar.planilha ? folhaPlanilha(d) : null, mostrar.disponibilidade ? folhaDisponibilidade(p) : null),
   ];
 }

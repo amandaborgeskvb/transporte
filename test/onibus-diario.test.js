@@ -286,3 +286,15 @@ test('BASE: todos os dias com filtros e páginas; empresa nova do ônibus vale d
   assert.equal(linhaHoje.empresa, 'VIAÇÃO ÔMEGA');
   assert.equal((await oni.get(`/api/onibus/diario?data=${D2}`)).corpo.linhas.find((l) => l.prefixo === '50002').empresa, 'VIAÇÃO ALFA');
 });
+
+test('Salvar em PDF: RESUMO + disponibilidade (ou só um deles) como arquivo PDF', async () => {
+  const r = await oni.get(`/api/onibus/imprimir.pdf?data=${D1}&de=${D1}&ate=${D2}`);
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-type'), 'application/pdf');
+  assert.match(r.headers.get('content-disposition'), /resumo-e-disponibilidade-onibus-2026-05-04\.pdf/);
+  assert.equal(r.corpo.subarray(0, 5).toString(), '%PDF-');
+  const so = await oni.get(`/api/onibus/imprimir.pdf?data=${D1}&so=disponibilidade`);
+  assert.match(so.headers.get('content-disposition'), /disponibilidade-onibus-2026-05-04-a-2026-05-04\.pdf/);
+  assert.equal((await oni.get(`/api/onibus/imprimir.pdf?data=${D1}&de=${D2}&ate=${D1}`)).status, 400);
+  assert.equal((await ana.get(`/api/onibus/imprimir.pdf?data=${D1}`)).status, 403);
+});
