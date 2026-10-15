@@ -12,6 +12,7 @@ const dataLocal = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : d);
 const bool = (v) => v === true || v === 'true' || v === 1 || v === '1' || v === 'on';
 const dataOuNulo = (v, rotulo) => (v ? data(v, rotulo) : null);
 const maiusculo = (v, max) => texto(v, max).toUpperCase().replace(/\s+/g, ' ').trim();
+const MAX_ARQUIVOS = 30; // arquivos por documento (dá para mandar vários PDFs ou uma pasta de uma vez)
 const NOME_SITUACAO = { vencido: 'Vencido', vence_logo: 'Vence logo', em_dia: 'Em dia', sem_vencimento: 'Sem vencimento', faltando: 'Faltando' };
 
 function criarOperacional({ pool }) {
@@ -246,7 +247,7 @@ function criarOperacional({ pool }) {
     const criado = await tx(pool, async (db) => {
       const doc = (await db.query('SELECT id FROM op_documentos WHERE id = $1 FOR UPDATE', [id])).rows[0];
       if (!doc) throw erro404('Documento não encontrado.');
-      if ((await db.query('SELECT count(*)::int AS n FROM op_arquivos WHERE documento_id = $1', [id])).rows[0].n >= 10) throw erro400('Limite de 10 arquivos por documento.');
+      if ((await db.query('SELECT count(*)::int AS n FROM op_arquivos WHERE documento_id = $1', [id])).rows[0].n >= MAX_ARQUIVOS) throw erro400(`Limite de ${MAX_ARQUIVOS} arquivos por documento.`);
       const nome = nomeSeguro(req.query.nome || 'documento');
       const { rows } = await db.query(`INSERT INTO op_arquivos (documento_id, nome_arquivo, tipo_mime, tamanho, conteudo, enviado_por) VALUES ($1, $2, $3, $4, $5, $6)
                                        RETURNING id, documento_id, nome_arquivo, tipo_mime, tamanho, criado_em`, [id, nome, tipo, req.body.length, req.body, req.usuario.id]);

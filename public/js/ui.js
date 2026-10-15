@@ -244,7 +244,7 @@ export function campoFuncionario({ funcionarios, valor = '', rotulo = 'Funcioná
 
 // ---------- Formulários ----------
 // campos: [{ nome, rotulo, tipo: text|number|date|select|textarea|file|checkbox|password|color, valor, opcoes:[{valor,rotulo}],
-//            obrigatorio, cheio, passo, min, max, dica, accept, vazio }]
+//            obrigatorio, cheio, passo, min, max, dica, accept, vazio, multiplo (vários arquivos), pasta (uma pasta inteira) }]
 // aoSalvar(valores) pode lançar Error: a mensagem aparece no próprio formulário.
 export function formulario({ campos = [], confirmar = 'Salvar', perigo = false, aoSalvar, aoCancelar, classeGrade = '', extras = [] }) {
   const erro = h('div', { class: 'erro', role: 'alert' });
@@ -268,7 +268,7 @@ export function formulario({ campos = [], confirmar = 'Salvar', perigo = false, 
     } else {
       el = h('input', {
         type: c.tipo || 'text', name: c.nome, required: c.obrigatorio, value: c.valor ?? '',
-        step: c.passo, min: c.min, max: c.max, maxlength: c.tipo === 'text' || !c.tipo ? c.max || 150 : null, accept: c.accept,
+        step: c.passo, min: c.min, max: c.max, maxlength: c.tipo === 'text' || !c.tipo ? c.max || 150 : null, accept: c.accept, multiple: c.tipo === 'file' && (c.multiplo || c.pasta), webkitdirectory: c.tipo === 'file' && c.pasta,
         autocomplete: c.tipo === 'password' ? 'new-password' : 'off',
       });
     }
@@ -292,7 +292,7 @@ export function formulario({ campos = [], confirmar = 'Salvar', perigo = false, 
       if (c.tipo === 'funcionario') {
         if (el.textoInvalido() || (c.obrigatorio && !el.valorId())) { erro.textContent = 'Escolha um funcionário da lista (digite a matrícula ou o nome).'; el.entrada.focus(); return; }
         valores[nome] = el.valorId();
-      } else valores[nome] = c.tipo === 'checkbox' ? el.checked : c.tipo === 'file' ? el.files[0] || null : el.value;
+      } else valores[nome] = c.tipo === 'checkbox' ? el.checked : c.tipo === 'file' ? (c.multiplo || c.pasta ? [...el.files] : el.files[0] || null) : el.value;
     }
     enviar.disabled = true;
     try {

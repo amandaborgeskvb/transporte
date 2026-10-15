@@ -30,17 +30,37 @@ const SERIES = [
   { k: 'faltando', nome: 'Faltando (obrigatório)', cor: 'var(--st-falta)' }, { k: 'vencido', nome: 'Vencido', cor: 'var(--st-venc)' },
 ];
 const MAX_ARQ = 5 * 1024 * 1024;
+const ACEITOS = ['application/pdf', 'image/png', 'image/jpeg'];
 
-function validarArquivo(arquivo) {
-  if (!arquivo) return;
-  if (!['application/pdf', 'image/png', 'image/jpeg'].includes(arquivo.type)) throw new Error('Formato não aceito. Use PDF, JPG ou PNG.');
-  if (arquivo.size > MAX_ARQ) throw new Error('O arquivo excede 5 MB.');
+// Junta os arquivos escolhidos um a um e os da pasta (da pasta, só entram PDF, JPG e PNG; o resto é ignorado).
+// Lança erro antes de gravar qualquer coisa se um arquivo escolhido não for aceito ou passar de 5 MB.
+function juntarArquivos(avulsos = [], daPasta = []) {
+  const lista = [...(avulsos || []), ...(daPasta || []).filter((a) => ACEITOS.includes(a.type))];
+  const ruim = (avulsos || []).find((a) => !ACEITOS.includes(a.type));
+  if (ruim) throw new Error(`"${ruim.name}": formato não aceito. Use PDF, JPG ou PNG.`);
+  const grande = lista.find((a) => a.size > MAX_ARQ);
+  if (grande) throw new Error(`"${grande.name}" passa de 5 MB.`);
+  if (daPasta?.length && !lista.length) throw new Error('A pasta escolhida não tem PDF, JPG nem PNG.');
+  return lista.sort((a, b) => (a.webkitRelativePath || a.name).localeCompare(b.webkitRelativePath || b.name, 'pt-BR', { numeric: true }));
 }
-async function anexar(documentoId, arquivo) {
-  if (!arquivo) return;
-  validarArquivo(arquivo);
-  await enviarArquivo(`/operacional/documentos/${documentoId}/arquivos`, arquivo);
+// envia um por um; devolve quantos foram e os que falharam
+async function anexarVarios(documentoId, arquivos) {
+  let enviados = 0;
+  const falhas = [];
+  for (const a of arquivos) {
+    try { await enviarArquivo(`/operacional/documentos/${documentoId}/arquivos`, a); enviados += 1; } catch (e) { falhas.push(`${a.name}: ${e.message}`); }
+  }
+  return { enviados, falhas };
 }
+const avisarEnvio = ({ enviados, falhas }, prefixo = '') => {
+  if (falhas.length) toast(`${prefixo}${enviados ? `${enviados} arquivo(s) anexado(s); ` : ''}não foram: ${falhas.slice(0, 3).join(' · ')}${falhas.length > 3 ? '…' : ''}`, 'erro');
+  else if (enviados) toast(`${prefixo}${enviados} arquivo(s) anexado(s).`);
+  else if (prefixo) toast(prefixo.replace(/[;:,]\s*$/, '.'));
+};
+const CAMPOS_ARQUIVOS = [
+  { nome: 'arquivos', rotulo: 'Arquivos (PDF, JPG ou PNG até 5 MB cada)', tipo: 'file', accept: '.pdf,.jpg,.jpeg,.png', multiplo: true, cheio: true, dica: 'Dá para escolher vários de uma vez (Ctrl ou Shift + clique).' },
+  { nome: 'pasta', rotulo: 'Ou uma pasta inteira', tipo: 'file', pasta: true, cheio: true, dica: 'Envia todos os PDF, JPG e PNG da pasta (e das subpastas).' },
+];
 
 // ---------- Veículo: novo / editar ----------
 async function formVeiculo(v = {}, categorias = { leve: [], pesado: [] }) {
@@ -79,6 +99,7 @@ async function formVeiculo(v = {}, categorias = { leve: [], pesado: [] }) {
 // ---------- Documento: novo (ou renovação) / editar ----------
 async function formDocumento({ veiculo, tipos, doc = {}, tipoId = null }) {
   const tipoInicial = doc.tipo_id || tipoId || '';
+  let resultado = { enviados: 0, falhas: [] };
   const promessa = dialogo({
     titulo: doc.id ? `Documento — ${tipos.find((t) => t.id === doc.tipo_id)?.nome || ''}` : `Novo documento — ${nomeVeiculo(veiculo)}`,
     campos: [
@@ -87,15 +108,15 @@ async function formDocumento({ veiculo, tipos, doc = {}, tipoId = null }) {
       { nome: 'emissao', rotulo: 'Emissão / realização', tipo: 'date', valor: doc.emissao || '' },
       { nome: 'vencimento', rotulo: 'Vencimento', tipo: 'date', valor: doc.vencimento || '', dica: 'Em branco: emissão + validade do documento.' },
       { nome: 'observacao', rotulo: 'Observação', tipo: 'textarea', max: 500, cheio: true, valor: doc.observacao || '' },
-      { nome: 'arquivo', rotulo: 'Arquivo (PDF, JPG ou PNG até 5 MB)', tipo: 'file', accept: '.pdf,.jpg,.jpeg,.png', cheio: true },
+      ...CAMPOS_ARQUIVOS,
     ],
     confirmar: doc.id ? 'Salvar' : 'Lançar documento',
     aoSalvar: async (x) => {
-      const { arquivo, ...dados } = x;
-      validarArquivo(arquivo); // antes de gravar: um arquivo recusado não deixa o documento lançado pela metade
+      const { arquivos: avulsos, pasta, ...dados } = x;
+      const arquivos = juntarArquivos(avulsos, pasta); // antes de gravar: um arquivo recusado não deixa o documento lançado pela metade
       const salvo = doc.id ? await put(`/operacional/documentos/${doc.id}`, dados) : await post('/operacional/documentos', { ...dados, veiculo_id: veiculo.id });
-      // o documento já foi gravado: se o envio falhar, fecha assim mesmo e avisa (dá para anexar depois)
-      await anexar(salvo.id, arquivo).catch((e) => toast(`Documento salvo, mas o arquivo não foi anexado: ${e.message}`, 'erro'));
+      // o documento já foi gravado: se algum envio falhar, fecha assim mesmo e avisa (dá para anexar depois)
+      resultado = await anexarVarios(salvo.id, arquivos);
     },
   });
   // mostra a validade do tipo escolhido
@@ -105,7 +126,8 @@ async function formDocumento({ veiculo, tipos, doc = {}, tipoId = null }) {
   const mostrar = () => { const t = tipos.find((y) => String(y.id) === sel.value); dica.textContent = t?.validade_dias ? `Em branco: emissão + ${fmt(t.validade_dias)} dias.` : 'Este documento não tem validade padrão: informe o vencimento, se houver.'; };
   sel.addEventListener('change', mostrar);
   mostrar();
-  return promessa;
+  const ok = await promessa;
+  return ok ? resultado : null;
 }
 
 // ======================================================================
@@ -171,16 +193,22 @@ async function veiculos({ query, ir }) {
 
 async function veiculo({ params, ir, recarregarPagina }) {
   const v = await get(`/operacional/veiculos/${params[0]}`);
-  const novoDoc = async (tipoId = null) => { if (await formDocumento({ veiculo: v, tipos: v.tipos, tipoId })) { toast('Documento lançado.'); recarregarPagina(); } };
-  const editarDoc = async (doc) => { if (await formDocumento({ veiculo: v, tipos: v.tipos, doc })) { toast('Documento salvo.'); recarregarPagina(); } };
-  const anexarArquivo = (doc) => {
-    const entrada = h('input', { type: 'file', accept: '.pdf,.jpg,.jpeg,.png', hidden: true });
-    entrada.addEventListener('change', async () => {
-      try { await anexar(doc.id, entrada.files[0]); toast('Arquivo anexado.'); recarregarPagina(); } catch (e) { toast(e.message, 'erro'); }
+  const novoDoc = async (tipoId = null) => { const r = await formDocumento({ veiculo: v, tipos: v.tipos, tipoId }); if (r) { avisarEnvio(r, 'Documento lançado; '); recarregarPagina(); } };
+  const editarDoc = async (doc) => { const r = await formDocumento({ veiculo: v, tipos: v.tipos, doc }); if (r) { avisarEnvio(r, 'Documento salvo; '); recarregarPagina(); } };
+  // vários arquivos ou uma pasta inteira de uma vez
+  const anexarArquivo = async (doc) => {
+    let r = null;
+    const ok = await dialogo({
+      titulo: `Anexar — ${doc.tipo}`,
+      descricao: `${nomeVeiculo(v)}${doc.vencimento ? ` · vencimento ${dataBR(doc.vencimento)}` : ''}. Escolha um ou vários arquivos, ou uma pasta inteira.`,
+      campos: CAMPOS_ARQUIVOS, confirmar: 'Anexar',
+      aoSalvar: async (x) => {
+        const arquivos = juntarArquivos(x.arquivos, x.pasta);
+        if (!arquivos.length) throw new Error('Escolha os arquivos ou a pasta.');
+        r = await anexarVarios(doc.id, arquivos);
+      },
     });
-    document.body.append(entrada);
-    entrada.click();
-    setTimeout(() => entrada.remove(), 60000);
+    if (ok && r) { avisarEnvio(r); recarregarPagina(); }
   };
   const historico = new Map(v.historico.map((d) => [d.id, d]));
   const arquivos = (d) => (d?.arquivos || []).map((a) => h('a', { class: 'op-arq', href: `/api/operacional/arquivos/${a.id}`, target: '_blank', rel: 'noopener', title: a.nome_arquivo }, icone('clipe'), a.nome_arquivo));
