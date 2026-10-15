@@ -5,7 +5,7 @@ import { get, post, put, del, enviarArquivo } from '../api.js';
 import {
   h, dataBR, hojeISO, tabela, botao, cabecalhoPagina, barraComandos, barraFiltros, secao, kpi, toast, confirmar, dialogo, icone, badgeTom,
 } from '../ui.js';
-import { colunasEmpilhadas, colunasMeta, legendaSeries, unidadesPrevisto } from '../charts.js';
+import { colunasEmpilhadas, colunasMeta, legendaSeries, unidadesPrevisto, meiaLua } from '../charts.js';
 
 const BASE = [['Ônibus']];
 const LOGO = '/img/crv-industrial-azul.png?v=2';
@@ -222,7 +222,9 @@ async function planilha({ query, ir, recarregarPagina }) {
       h('div', { class: 'oni-legenda' }, SITUACOES.map(([k, nome]) => h('span', { class: `oni-leg sit-${k}` }, nome, h('b', {}, fmt(por[k]))))),
       h('div', { class: 'kpis compactos' },
         kpi('Ônibus no RESUMO', fmt(linhas.length), { icone: 'onibus' }),
-        kpi('Disponibilidade do dia', pct(disp), { icone: 'ok', tom: disp == null ? 'neutro' : disp >= d.meta ? 'ok' : 'alerta', sub: `liberados ÷ ônibus · meta ${d.meta}%` }),
+        h('div', { class: 'kpi oni-kpi-ml' }, h('div', { class: 'corpo' }, h('small', {}, 'Disponibilidade do dia'),
+          meiaLua(disp, { meta: d.meta, rotulo: `meta ${d.meta}%`, aria: 'Disponibilidade do dia' }),
+          h('span', { class: 'sub' }, `${fmt(por.liberado)} liberados de ${fmt(linhas.length)} ônibus`))),
         kpi('Passageiros no dia', fmt(linhas.reduce((t, l) => t + (l.passageiros || 0), 0)), { icone: 'usuarios' }),
         kpi('Vistorias vencidas', fmt(linhas.filter((l) => l.vistoria_vencida).length), { icone: 'alerta', tom: linhas.some((l) => l.vistoria_vencida) ? 'alerta' : 'ok', sub: `a vistoria vale ${d.vistoria_dias} dias` })));
   };
@@ -392,7 +394,7 @@ async function planilha({ query, ir, recarregarPagina }) {
         h('p', { class: 'muted pequeno' }, `Cada célula é salva ao sair dela (Enter desce para a linha de baixo). Próxima vistoria = última + ${d.vistoria_dias} dias: vermelho = vencida, verde = em dia. Lavagem 2 = lavagem 1 + ${d.lavagem_dias} dias; em amarelo quando chegou o dia. Passageiros aceita soma (ex.: 50 + 45).`),
         secao('Obs. do dia', null, obs),
         h('div', { class: 'oni-barra-salvar fim' }, botaoSalvar2, h('span', { class: 'muted pequeno' }, 'Tudo o que foi digitado e alterado no dia vai para a BASE (e para a Disponibilidade) ao salvar. Pode salvar quantas vezes quiser: a BASE fica com a última versão do dia.')),
-        h('div', { class: 'grade-2' },
+        h('div', { class: 'grade-2 oni-igual' },
           secao('Disponibilidade da semana', h('a', { href: `#/onibus/disponibilidade?ate=${d.data}` }, 'Abrir Disponibilidade'), areaDisp),
           secao('Frotas por atividade (hoje no RESUMO)', h('a', { href: `#/onibus/disponibilidade?ate=${d.data}` }, 'Mudar previstos'), areaAtv)),
       ],
@@ -498,7 +500,7 @@ async function disponibilidadePagina({ query, ir, recarregarPagina }) {
       kpi('Manutenção', fmt(t.manutencao), { icone: 'alerta', tom: t.manutencao ? 'alerta' : 'neutro', sub: `${fmt(t.interditado)} interditado · ${fmt(t.reserva + t.parado)} reserva/parado` }),
       kpi('Empresas abaixo da meta', fmt(p.abaixo_da_meta), { icone: 'relatorio', tom: p.abaixo_da_meta ? 'alerta' : 'ok' })),
     secao('Disponibilidade por empresa', null, graficoDisponibilidade(p, { largura: 1100 })),
-    h('div', { class: 'grade-2' },
+    h('div', { class: 'grade-2 oni-igual' },
       secao('Situação da frota por dia', null, legendaSeries(SERIES_SIT), graficoDias(p, { largura: Math.max(560, p.dias.length * 40) })),
       secao(`Frotas por atividade — ${dataBR(p.atividades.data)}`, h('span', { class: 'muted pequeno' }, resumoAtividades(p.atividades)),
         graficoAtividades(p.atividades))),
@@ -559,7 +561,8 @@ function indicadoresFolha(d, por) {
   const item = (titulo, valor, sub, tom = '') => h('div', { class: `oni-fkpi ${tom}` }, h('small', {}, titulo), h('strong', {}, valor), sub ? h('span', {}, sub) : null);
   return h('div', { class: 'oni-fkpis' },
     item('Ônibus no RESUMO', fmt(total)),
-    item('Disponibilidade do dia', pct(disp), `liberados ÷ ônibus · meta ${d.meta}%`, disp == null ? '' : disp >= d.meta ? 'ok' : 'alerta'),
+    h('div', { class: 'oni-fkpi oni-fkpi-ml' }, h('small', {}, 'Disponibilidade do dia'),
+      meiaLua(disp, { meta: d.meta, rotulo: `meta ${d.meta}%`, aria: 'Disponibilidade do dia', largura: 78 }), h('span', {}, `${fmt(por.liberado)} liberados de ${fmt(total)} ônibus`)),
     item('Passageiros no dia', fmt(d.linhas.reduce((t, l) => t + (l.passageiros || 0), 0))),
     item('Vistorias vencidas', fmt(vencidas), `a vistoria vale ${d.vistoria_dias} dias`, vencidas ? 'alerta' : 'ok'));
 }
@@ -597,13 +600,13 @@ function folhaPlanilha(d) {
 }
 function folhaDisponibilidade(p) {
   return h('article', { class: 'oni-folha oni-fdisp' },
-    cabecalhoFolha('Disponibilidade Transporte Funcionários', ['CRV Industrial - Unidade Capinópolis/MG', 'Disponibilidade Semanal Transporte Pessoal'], dataBR(p.ate)),
+    cabecalhoFolha('Acompanhamento Diário Ônibus', ['CRV Industrial - Unidade Capinópolis/MG', 'Disponibilidade Semanal Transporte Pessoal'], dataBR(p.ate)),
     h('p', { class: 'oni-fper' }, h('b', {}, `Período: ${dataBR(p.de)} - ${dataBR(p.ate)}`), ` · Disponibilidade geral: ${pct(p.total.disponibilidade)} (meta ${p.meta}%)`),
     h('div', { class: 'oni-fgraf' }, h('h2', {}, 'Disponibilidade Semanal'), graficoDisponibilidade(p, { largura: 1100, altura: 210 })),
     h('div', { class: 'oni-fgrade tres' },
       h('div', { class: 'oni-fgraf' }, h('h2', {}, 'Situação da frota por dia'), legendaSeries(SERIES_SIT), graficoDias(p, { largura: 620 })),
       h('div', { class: 'oni-fgraf' }, h('h2', {}, `Frotas por atividade — ${dataBR(p.atividades.data)}`), graficoAtividades(p.atividades)),
-      h('div', { class: 'oni-ftabdisp' }, tabelaDisponibilidade(p, { curto: true }))));
+      h('div', { class: 'oni-fgraf oni-ftabdisp' }, h('h2', {}, 'Disponibilidade por empresa'), tabelaDisponibilidade(p, { curto: true }))));
 }
 
 async function imprimir({ query, ir }) {

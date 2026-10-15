@@ -80,16 +80,36 @@ function gerarPdfOnibus({ resumo = null, disp = null, emitidoPor = '', agora = n
       const gap = 8;
       const w = (L - gap * 3) / 4;
       const y = doc.y;
+      const altK = 42;
       itens.forEach(([t, v, sub, fundo], i) => {
         const x = x0 + i * (w + gap);
-        if (fundo) doc.roundedRect(x, y, w, 30, 3).fill(fundo);
-        doc.roundedRect(x, y, w, 30, 3).lineWidth(0.6).strokeColor('#c9cdd4').stroke();
+        if (i === 1) {
+          // disponibilidade do dia: meia lua com a meta
+          doc.roundedRect(x, y, w, altK, 3).lineWidth(0.6).strokeColor('#c9cdd4').stroke();
+          doc.font('Helvetica-Bold').fontSize(6.2).fillColor(MUDA).text(t, x + 7, y + 4, { width: w - 14, lineBreak: false });
+          const cx = x + 52;
+          const cy = y + 37;
+          const r = 22;
+          const pt = (pc) => { const a = Math.PI * (1 - pc / 100); return [cx + r * Math.cos(a), cy - r * Math.sin(a)]; };
+          const arco = (de, ate) => { const [a0, b0] = pt(de); const [a1, b1] = pt(ate); return `M${a0},${b0} A${r},${r} 0 0 1 ${a1},${b1}`; };
+          doc.path(arco(0, 100)).lineWidth(7).strokeColor('#e8ecf2').stroke();
+          if (disp) doc.path(arco(0, Math.min(100, disp))).lineWidth(7).strokeColor(disp >= meta ? COR.meta_ok : COR.meta_baixo).stroke();
+          const ang = Math.PI * (1 - meta / 100);
+          doc.moveTo(cx + (r - 6) * Math.cos(ang), cy - (r - 6) * Math.sin(ang)).lineTo(cx + (r + 6) * Math.cos(ang), cy - (r + 6) * Math.sin(ang)).lineWidth(1.2).strokeColor(TINTA).stroke();
+          doc.font('Helvetica-Bold').fontSize(10).fillColor(TINTA).text(v, cx - 24, cy - 11, { width: 48, align: 'center', lineBreak: false });
+          doc.font('Helvetica').fontSize(6.2).fillColor(MUDA)
+            .text(`meta ${meta}%`, cx + r + 12, y + 18, { width: w - (cx - x) - r - 18, lineBreak: false })
+            .text(`${n(lib)} liberados de ${n(tot)} ônibus`, cx + r + 12, y + 27, { width: w - (cx - x) - r - 18, lineBreak: false });
+          return;
+        }
+        if (fundo) doc.roundedRect(x, y, w, altK, 3).fill(fundo);
+        doc.roundedRect(x, y, w, altK, 3).lineWidth(0.6).strokeColor('#c9cdd4').stroke();
         doc.font('Helvetica-Bold').fontSize(6.2).fillColor(MUDA).text(t, x + 7, y + 4, { width: w - 14, lineBreak: false });
-        doc.font('Helvetica-Bold').fontSize(13).fillColor(TINTA).text(v, x + 7, y + 13, { lineBreak: false });
+        doc.font('Helvetica-Bold').fontSize(15).fillColor(TINTA).text(v, x + 7, y + 17, { lineBreak: false });
         const larguraValor = doc.widthOfString(v);
-        if (sub) doc.font('Helvetica').fontSize(6.4).fillColor(MUDA).text(sub, x + 14 + larguraValor, y + 18, { width: w - 21 - larguraValor, lineBreak: false });
+        if (sub) doc.font('Helvetica').fontSize(6.4).fillColor(MUDA).text(sub, x + 14 + larguraValor, y + 23, { width: w - 21 - larguraValor, lineBreak: false });
       });
-      doc.y = y + 36;
+      doc.y = y + altK + 6;
     }
     const COLS = [
       ['Nº', 16, 'center'], ['EMPRESA', 80], ['FROTA', 32, 'center'], ['Nº TOTAL PASS.', 30, 'center'], ['PASS. POR DIA', 30, 'center'],
@@ -165,7 +185,7 @@ function gerarPdfOnibus({ resumo = null, disp = null, emitidoPor = '', agora = n
   // ================= 2ª folha: Disponibilidade =================
   if (disp) {
     if (resumo) doc.addPage();
-    cabecalho('Disponibilidade Transporte Funcionários', ['CRV Industrial - Unidade Capinópolis/MG', 'Disponibilidade Semanal Transporte Pessoal'], br(disp.ate));
+    cabecalho('Acompanhamento Diário Ônibus', ['CRV Industrial - Unidade Capinópolis/MG', 'Disponibilidade Semanal Transporte Pessoal'], br(disp.ate));
     doc.font('Helvetica-Bold').fontSize(9).fillColor(TINTA).text(`Período: ${br(disp.de)} - ${br(disp.ate)}`, x0, 76, { continued: true })
       .font('Helvetica').text(` · Disponibilidade geral: ${pct(disp.total.disponibilidade)} (meta ${disp.meta}%)`);
 
@@ -221,7 +241,8 @@ function gerarPdfOnibus({ resumo = null, disp = null, emitidoPor = '', agora = n
 
     // --- Situação da frota por dia (colunas empilhadas)
     const dy = by + bh + 8;
-    const dw = L * 0.28;
+    const terco = (L - 16) / 3; // os três quadros de baixo do mesmo tamanho
+    const dw = terco;
     const dh = doc.page.height - 22 - dy;
     caixa(x0, dy, dw, dh, 'Situação da frota por dia');
     legenda(x0 + 8, dy + 20, [['Liberado', COR.liberado], ['Manutenção', COR.manutencao], ['Interditado', COR.interditado]]);
@@ -256,7 +277,7 @@ function gerarPdfOnibus({ resumo = null, disp = null, emitidoPor = '', agora = n
     // --- Frotas por atividade (previsto × em atividade) no último dia do período
     const at = disp.atividades;
     const ax = x0 + dw + 8;
-    const aw = L * 0.36;
+    const aw = terco;
     caixa(ax, dy, aw, dh, `Frotas por atividade — ${br(at?.data)}`);
     if (at) {
       // um ônibus por frota prevista: cheio = em atividade, tracejado = falta, azul = a mais; embaixo, a Manutenção
@@ -307,11 +328,13 @@ function gerarPdfOnibus({ resumo = null, disp = null, emitidoPor = '', agora = n
       linha({ nome: 'Manutenção', valor: at.outros.qtd }, itens.length, true);
     }
 
-    // --- Tabela por empresa
-    const tx = ax + aw + 8;
-    const tw = x0 + L - tx;
+    // --- Tabela por empresa (no mesmo quadro dos outros dois)
+    const bx3 = ax + aw + 8;
+    caixa(bx3, dy, terco, dh, 'Disponibilidade por empresa');
+    const tx = bx3 + 6;
+    const tw = terco - 12;
     const TCOLS = [['EMPRESA', 0.3], ['LIB.', 0.08], ['MANUT.', 0.1], ['RES.', 0.08], ['INTERD.', 0.1], ['PARADO', 0.1], ['TOTAL', 0.09], ['DISP.', 0.15]];
-    let yy = dy;
+    let yy = dy + 22;
     let xx = tx;
     TCOLS.forEach(([t, f]) => { celula(xx, yy, tw * f, 14, t, { fundo: '#eef0f3', negrito: true, tam: 5.4, alinhar: t === 'EMPRESA' ? 'left' : 'right', borda: '#dbe0e8' }); xx += tw * f; });
     yy += 14;

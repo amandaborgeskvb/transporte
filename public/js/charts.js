@@ -322,3 +322,34 @@ export function unidadesPrevisto(itens, { extra = null, nomeIcone = 'onibus', un
     itens.map((it) => linha(it, 'item')),
     extra ? linha(extra, 'extra') : null);
 }
+
+// Meia lua (medidor 0–100%) com a meta: preenchido em --cls-2 quando atinge a meta e --cls-3 abaixo; o valor fica escrito no centro.
+export function meiaLua(valor, { meta = null, rotulo = '', aria = 'Medidor', largura = 150 } = {}) {
+  const L = 120;
+  const A = 70;
+  const cx = 60;
+  const cy = 62;
+  const r = 50;
+  const esp = 13;
+  const ponto = (p) => { const ang = Math.PI * (1 - p / 100); return [cx + r * Math.cos(ang), cy - r * Math.sin(ang)]; };
+  const arco = (de, ate) => { const [x0, y0] = ponto(de); const [x1, y1] = ponto(ate); return `M${x0},${y0} A${r},${r} 0 0 1 ${x1},${y1}`; };
+  const v = valor == null ? null : Math.max(0, Math.min(100, valor));
+  // largura e altura fixas (atributos): o tamanho não depende do quadro, nem na impressão
+  const raiz = svg('svg', { viewBox: `0 0 ${L} ${A}`, width: largura, height: Math.round((largura * A) / L), class: 'meia-lua', role: 'img', 'aria-label': `${aria}: ${valor == null ? 'sem dados' : `${valor.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`}${meta != null ? `, meta ${meta}%` : ''}` });
+  raiz.append(svg('path', { d: arco(0, 100), class: 'ml-trilho', 'stroke-width': esp, fill: 'none' }));
+  if (v) {
+    const p = svg('path', { d: arco(0, v), 'stroke-width': esp, fill: 'none', class: 'ml-valor' });
+    p.style.stroke = meta == null || valor >= meta ? 'var(--cls-2)' : 'var(--cls-3)';
+    raiz.append(p);
+  }
+  if (meta != null) {
+    const [xi, yi] = ponto(meta);
+    const ang = Math.PI * (1 - meta / 100);
+    const fora = [xi + (esp / 2 + 3) * Math.cos(ang), yi - (esp / 2 + 3) * Math.sin(ang)];
+    const dentro = [xi - (esp / 2 + 3) * Math.cos(ang), yi + (esp / 2 + 3) * Math.sin(ang)];
+    raiz.append(svg('line', { x1: dentro[0], y1: dentro[1], x2: fora[0], y2: fora[1], class: 'ml-meta' }));
+  }
+  raiz.append(Object.assign(svg('text', { x: cx, y: cy - 6, class: 'ml-num', 'text-anchor': 'middle' }), { textContent: valor == null ? '—' : `${valor.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` }));
+  if (rotulo) raiz.append(Object.assign(svg('text', { x: cx, y: cy + 7, class: 'ml-rot', 'text-anchor': 'middle' }), { textContent: rotulo }));
+  return raiz;
+}

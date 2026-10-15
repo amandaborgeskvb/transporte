@@ -889,3 +889,39 @@ html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
 .oni-folha .oni-un-topo { gap: 1.5mm; margin-bottom: 1.2mm; }
 .oni-folha .oni-un-topo > span { font-size: 6.2pt; padding: .5mm 1.5mm; }
 .oni-folha .oni-un-topo b { font-size: 8pt; }
+/* meia lua (disponibilidade do dia) */
+.meia-lua { display: block; flex: none; }
+.meia-lua .ml-trilho { stroke: var(--trilho); stroke-linecap: butt; }
+.meia-lua .ml-valor { stroke-linecap: butt; }
+.meia-lua .ml-meta { stroke: var(--txt); stroke-width: 2; }
+.meia-lua .ml-num { fill: var(--txt); font: 700 17px var(--fonte); }
+.meia-lua .ml-rot { fill: var(--muted); font: 500 7.5px var(--fonte); }
+/* quadros lado a lado com a mesma altura */
+.grade-2.oni-igual { align-items: stretch; }
+.grade-2.oni-igual > .card { display: flex; flex-direction: column; }
+/* meia lua nos indicadores */
+.kpi.oni-kpi-ml .corpo { display: flex; flex-direction: column; align-items: center; width: 100%; }
+.kpi.oni-kpi-ml .meia-lua { margin: 2px 0 0; }
+.oni-fkpi.oni-fkpi-ml { flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+
+/* folha da disponibilidade: os três quadros de baixo iguais */
+.oni-fgrade.tres { grid-template-columns: 1fr 1fr 1fr; align-items: stretch; }
+.oni-fgrade.tres > .oni-fgraf { margin-bottom: 0; display: flex; flex-direction: column; }
+.oni-fgrade.tres .oni-ftabdisp table { margin-top: 1mm; }
+/* tamanho fixo da meia lua (evita que o SVG estique o quadro) */
+.oni-folha .oni-fkpi.oni-fkpi-ml { padding: .6mm 2mm; gap: 0; }
+.oni-folha .oni-fkpi.oni-fkpi-ml small { width: auto; }
+/* tabela da disponibilidade dentro do quadro */
+.oni-fgrade.tres .oni-ftabdisp .scroll { overflow: hidden; }
+.oni-fgrade.tres .oni-ftabdisp table { table-layout: fixed; width: 100%; }
+.oni-folha .oni-fgrade.tres .oni-ftabdisp th, .oni-folha .oni-fgrade.tres .oni-ftabdisp td { padding: .6mm .5mm; }
+.oni-fgrade.tres .oni-ftabdisp th:first-child { width: 27%; }
+.oni-fgrade.tres .oni-ftabdisp th:last-child { width: 17%; }
+.oni-fgrade.tres .oni-ftabdisp .badge { padding: 1px 3px; }
+/* meia lua na folha: ao lado do texto (o quadro fica baixo como os outros) */
+.oni-folha .oni-fkpi.oni-fkpi-ml { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; align-items: center; justify-items: start; text-align: left; column-gap: 2.5mm; padding: .6mm 2.5mm; }
+.oni-folha .oni-fkpi.oni-fkpi-ml small { grid-column: 1 / -1; width: auto; }
+.oni-folha .oni-fkpi.oni-fkpi-ml .meia-lua { grid-row: 2; }
+.oni-folha .oni-fkpi.oni-fkpi-ml span { grid-row: 2; }
+@media print { .oni-fkpis { break-inside: avoid; } }
+.oni-folha .oni-fgrade.tres .oni-ftabdisp th { white-space: normal; word-break: break-word; line-height: 1.1; font-size: 5.6pt; }
