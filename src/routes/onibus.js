@@ -76,6 +76,8 @@ function criarOnibus({ pool }) {
     if (!antes) throw erro404('Ônibus não encontrado.');
     const o = lerOnibus(req.body);
     const { rows } = await pool.query(`UPDATE onibus_frota SET ${COLS_ONIBUS.map((c, i) => `${c} = $${i + 1}`).join(', ')}, atualizado_em = now() WHERE id = $${COLS_ONIBUS.length + 1} RETURNING *`, [...COLS_ONIBUS.map((c) => o[c]), id]);
+    // a empresa nova vale no RESUMO de hoje em diante (a BASE dos dias passados fica como foi)
+    if (o.empresa !== antes.empresa) await pool.query('UPDATE onibus_diario SET empresa = $1 WHERE onibus_id = $2 AND data >= $3', [o.empresa, id, hojeSP()]);
     await auditar(pool, req.usuario, 'editar', 'onibus_frota', id, diff(formatarOnibus(antes), o, COLS_ONIBUS));
     res.json(formatarOnibus(rows[0]));
   }));

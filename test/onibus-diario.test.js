@@ -205,3 +205,28 @@ test('importar a aba RESUMO para o dia escolhido: ordem, totais ignorados, obs. 
   assert.equal((await importar(oni, buf, false, 'aba=resumo')).corpo.dia, '2026-05-09');
   assert.equal((await importar(oni, criarXlsx([{ nome: 'RESUMO', linhas: [['A', 'B']] }]), false, 'aba=resumo')).status, 400);
 });
+
+test('BASE: todos os dias com filtros e páginas; empresa nova do ônibus vale de hoje em diante', async () => {
+  const b = (await oni.get('/api/onibus/base')).corpo;
+  assert.ok(b.resumo.registros >= 10);
+  assert.ok(b.resumo.dias >= 4);
+  assert.equal(b.itens[0].data >= b.itens[b.itens.length - 1].data, true); // mais recentes primeiro
+  assert.ok(b.empresas.includes('VIAÇÃO ALFA'));
+  let f = (await oni.get(`/api/onibus/base?empresa=${encodeURIComponent('VIAÇÃO ALFA')}&de=${D1}&ate=${D2}`)).corpo;
+  assert.deepEqual(f.itens.map((l) => [l.data, l.prefixo]), [[D2, '50001'], [D2, '50002'], [D1, '50001'], [D1, '50002']]);
+  assert.equal(f.resumo.disponibilidade, 50);
+  f = (await oni.get(`/api/onibus/base?situacao=manutencao&frota=5000&de=${D1}&ate=${D2}`)).corpo;
+  assert.equal(f.itens.length, 2);
+  assert.ok(f.itens.every((l) => l.prefixo === '50002'));
+  assert.equal((await oni.get('/api/onibus/base?q=frente%201')).corpo.itens.every((l) => /FRENTE 1/.test(l.atividade)), true);
+  assert.equal((await ana.get('/api/onibus/base')).status, 403);
+
+  // trocar a empresa no cadastro: o RESUMO de hoje em diante muda, os dias passados ficam como foram
+  const hoje = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' });
+  const o = (await oni.get('/api/onibus/frota')).corpo.find((x) => x.prefixo === '50002');
+  await oni.post('/api/onibus/diario', { data: hoje, onibus_id: o.id });
+  assert.equal((await oni.put(`/api/onibus/frota/${o.id}`, { ...o, empresa: 'Viação Ômega' })).status, 200);
+  const linhaHoje = (await oni.get(`/api/onibus/diario?data=${hoje}`)).corpo.linhas.find((l) => l.prefixo === '50002');
+  assert.equal(linhaHoje.empresa, 'VIAÇÃO ÔMEGA');
+  assert.equal((await oni.get(`/api/onibus/diario?data=${D2}`)).corpo.linhas.find((l) => l.prefixo === '50002').empresa, 'VIAÇÃO ALFA');
+});

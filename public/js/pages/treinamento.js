@@ -86,16 +86,12 @@ const TOPICOS = [
     ],
   },
   {
-    titulo: 'Acompanhamento de ônibus', perfis: ['administrador', 'financeiro', 'onibus'], corpo: () => [
-      lista('**Planilha diária** (o "Levantamento Transporte Funcionários"): para o dia, clique em **Copiar de (último dia)** e altere só o que mudou — passageiros por dia, última vistoria, lavagens, atividade, rota de ida e volta, situação (liberado, manutenção, reserva, interditado ou parado) e observação. Cada célula é salva ao sair dela.',
-        'A **próxima vistoria** é a última + 30 dias: em vermelho claro quando vencida e em verde claro quando em dia. A lavagem 2 vem como lavagem 1 + 7 dias e fica amarela no dia. **Novo ônibus (nova frota)** cadastra um ônibus (e uma empresa nova, se for o caso) e já põe a linha dele na planilha.',
-        '**Disponibilidade** mostra liberados ÷ ônibus lançados por empresa e por dia, com a meta de 85%. **Imprimir planilha + disponibilidade** imprime as duas folhas juntas (A4 deitado). **Importar aba RESUMO (Excel)** pega a aba RESUMO da planilha e coloca no dia escolhido (a aba BASE, se quiser, traz o histórico).',
-        'Para as viagens: cadastre em **Ônibus → Frota** os ônibus (prefixo, placa, lugares e o vencimento do licenciamento, tacógrafo, vistoria e seguro) e em **Linhas** os trajetos com os horários e o km previstos.',
-        'Em **Viagens do dia**, programe as viagens com **Nova viagem** (ao escolher a linha, os horários previstos vêm dela) ou use **Copiar programação de outro dia** para repetir a escala de ontem.',
-        'Quando o ônibus sair, clique em **Saída** na linha da viagem (a hora atual já vem preenchida; informe o km do hodômetro). Na chegada, clique em **Chegada** e informe o km final e os passageiros.',
-        'Saída mais de 10 minutos depois do previsto conta como atraso; viagem de hoje que passou do horário e ainda não saiu aparece como **não saiu**. O km rodado, o tempo de viagem e a ocupação são calculados.',
-        'Registre em **Ocorrências** atrasos, quebras, acidentes, reclamações e superlotação; acompanhe as abertas e marque como **resolvida** com a solução.'),
-      dica('Documentos vencidos ou que vencem em até 30 dias aparecem no acompanhamento do dia e no Início. Em **Viagens**, filtre por período, ônibus, linha ou situação e exporte para o Excel.'),
+    titulo: 'Ônibus: RESUMO, Disponibilidade e BASE', perfis: ['administrador', 'financeiro', 'onibus'], corpo: () => [
+      lista('**RESUMO** é a aba RESUMO da planilha, digital: um ônibus por linha, agrupado por empresa com TOTAL e TOTAL GERAL. Todo dia o RESUMO de hoje já abre com os dados do último dia lançado; altere só o que mudou — passageiros por dia, última vistoria, lavagens, atividade, rota de ida e volta, situação e observação. Cada célula é salva ao sair dela.',
+        'A **próxima vistoria** é a última + 30 dias: vermelho claro quando vencida e verde claro em dia. A lavagem 2 vem como lavagem 1 + 7 dias e fica amarela no dia. **Novo ônibus (nova frota)** cadastra um ônibus (e uma empresa nova, se for o caso); o lápis da linha edita empresa, frota e placa; a lixeira tira o ônibus do RESUMO.',
+        '**Disponibilidade** (liberados ÷ ônibus lançados, meta de 85%) é recalculada sozinha a cada alteração do RESUMO — por empresa e por dia, com gráficos.',
+        '**BASE** guarda todos os dias, como a aba BASE: filtre por período, empresa, frota ou situação, exporte para o Excel e clique na data para abrir o RESUMO daquele dia. O histórico antigo vem em **Importar aba BASE**.'),
+      dica('**Imprimir RESUMO + disponibilidade** imprime as duas folhas juntas (A4 deitado). **Importar aba RESUMO** traz a aba RESUMO de uma planilha do Excel para o dia escolhido.'),
     ],
   },
   {

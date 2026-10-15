@@ -290,6 +290,40 @@ function criarOnibusDiario({ pool }) {
     res.json(await calcularDisponibilidade(pool, de, ate));
   }));
 
+  // GET /onibus/base — a BASE: todas as linhas de todos os dias (o RESUMO de cada dia fica guardado aqui), com filtros e páginas
+  router.get('/onibus/base', wrap(async (req, res) => {
+    const q = req.query;
+    const params = [];
+    const cond = ['TRUE'];
+    const add = (sql, v) => { params.push(v); cond.push(sql.replace('$?', `$${params.length}`)); };
+    if (ehData(q.de)) add('d.data >= $?', q.de);
+    if (ehData(q.ate)) add('d.data <= $?', q.ate);
+    if (q.empresa) add('d.empresa = $?', String(q.empresa).slice(0, 120));
+    if (q.frota) add('f.prefixo ILIKE $?', `%${String(q.frota).slice(0, 20).replace(/[%_\\]/g, '\\$&')}%`);
+    if (SITUACOES_DIARIO.includes(q.situacao)) add('d.situacao = $?', q.situacao);
+    if (q.q) {
+      params.push(`%${String(q.q).slice(0, 80).replace(/[%_\\]/g, '\\$&')}%`);
+      const n = params.length;
+      cond.push(`(d.atividade ILIKE $${n} OR d.rota_ida ILIKE $${n} OR d.rota_volta ILIKE $${n} OR d.observacao ILIKE $${n})`);
+    }
+    const where = cond.join(' AND ');
+    const POR_PAGINA = 300;
+    const pagina = Math.max(1, Number.parseInt(q.pagina, 10) || 1);
+    const [linhas, tot, empresas] = await Promise.all([
+      pool.query(`${SELECT} WHERE ${where} ORDER BY d.data DESC, f.ordem, d.empresa, f.prefixo LIMIT ${POR_PAGINA} OFFSET ${(pagina - 1) * POR_PAGINA}`, params),
+      pool.query(`SELECT count(*)::int AS registros, count(DISTINCT d.data)::int AS dias, count(*) FILTER (WHERE d.situacao = 'liberado')::int AS liberados,
+                         COALESCE(sum(d.passageiros), 0)::int AS passageiros, min(d.data) AS de, max(d.data) AS ate
+                    FROM onibus_diario d JOIN onibus_frota f ON f.id = d.onibus_id WHERE ${where}`, params),
+      pool.query("SELECT DISTINCT empresa FROM onibus_diario WHERE empresa <> '' ORDER BY 1"),
+    ]);
+    const t = tot.rows[0];
+    res.json({
+      itens: linhas.rows.map(formatar), pagina, por_pagina: POR_PAGINA, paginas: Math.max(1, Math.ceil(t.registros / POR_PAGINA)),
+      resumo: { ...t, de: dataLocal(t.de), ate: dataLocal(t.ate), disponibilidade: disponibilidade(t.liberados, t.registros) },
+      empresas: empresas.rows.map((r) => r.empresa), meta: META_DISPONIBILIDADE,
+    });
+  }));
+
   // GET /onibus/diario.csv?de&ate — o mesmo layout da aba BASE
   router.get('/onibus/diario.csv', wrap(async (req, res) => {
     const ate = ehData(req.query.ate) ? req.query.ate : hojeSP();

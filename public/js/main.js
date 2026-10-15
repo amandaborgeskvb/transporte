@@ -46,7 +46,7 @@ const ROTAS = {
   contratacao: { titulo: 'Contratação', pagina: contratacao, perfis: [...GESTAO, 'contratacao'], voltar: (c) => (c.params[0] === 'fichas' && c.params.length > 1 ? '#/contratacao/fichas' : null) },
   gratificacao: { titulo: 'Gratificação rescisória', pagina: gratificacao, perfis: [...GESTAO, 'gratificacao'], voltar: (c) => (c.params.length > 1 ? `#/gratificacao/${c.params[0]}` : null) },
   treino: { titulo: 'Treinamento prático', pagina: treino, perfis: [...GESTAO, 'treinamento'], voltar: (c) => (c.params[0] === 'registros' && c.params.length > 1 ? '#/treino/registros' : null) },
-  onibus: { titulo: 'Acompanhamento de ônibus', pagina: onibus, perfis: [...GESTAO, 'onibus'], voltar: (c) => (c.params[0] === 'viagens' && c.params.length > 1 ? '#/onibus/dia' : c.params[0] === 'imprimir' ? `#/onibus/planilha${c.query.data ? `?data=${c.query.data}` : ''}` : null) },
+  onibus: { titulo: 'Acompanhamento de ônibus', pagina: onibus, perfis: [...GESTAO, 'onibus'], voltar: (c) => (c.params[0] === 'imprimir' ? `#/onibus/resumo${c.query.data ? `?data=${c.query.data}` : ''}` : null) },
   treinamento: { titulo: 'Guia do sistema', pagina: treinamento },
   relatorios: { titulo: 'Relatório de viagem', pagina: relatorios, perfis: VIAGEM },
   cadastros: { titulo: 'Cadastros', pagina: cadastrosPagina, perfis: ADMIN, voltar: () => '#/dashboard' },
@@ -108,13 +108,9 @@ const MENU = [
   {
     rota: 'onibus', titulo: 'Ônibus', icone: 'onibus', perfis: [...GESTAO, 'onibus'],
     filhos: [
-      { href: '#/onibus/planilha', titulo: 'Planilha diária', prefixo: true },
+      { href: '#/onibus/resumo', titulo: 'RESUMO', prefixo: true },
       { href: '#/onibus/disponibilidade', titulo: 'Disponibilidade', prefixo: true },
-      { href: '#/onibus/dia', titulo: 'Viagens do dia', prefixo: true },
-      { href: '#/onibus/viagens', titulo: 'Viagens', prefixo: true },
-      { href: '#/onibus/ocorrencias', titulo: 'Ocorrências', prefixo: true },
-      { href: '#/onibus/frota', titulo: 'Frota', prefixo: true },
-      { href: '#/onibus/linhas', titulo: 'Linhas', prefixo: true },
+      { href: '#/onibus/base', titulo: 'BASE', prefixo: true },
     ],
   },
   { grupo: 'Configurações' },
@@ -153,8 +149,7 @@ function marcarMenu(rota) {
   if (atual === '#/contratacao' || atual === '#/contratacao/imprimir') atual = '#/contratacao/fichas';
   if (atual === '#/treino') atual = '#/treino/planilha';
   if (atual === '#/treino/imprimir') atual = '#/treino/registros';
-  if (atual === '#/onibus' || atual === '#/onibus/imprimir') atual = '#/onibus/planilha';
-  if (atual === '#/onibus/viagens/novo') atual = '#/onibus/dia';
+  if (atual === '#/onibus' || atual === '#/onibus/imprimir' || atual === '#/onibus/planilha') atual = '#/onibus/resumo';
   app.querySelectorAll('.nav a').forEach((a) => {
     // sub-itens com rota própria acendem em qualquer tela da rota (lista e detalhe); os demais, só no endereço exato
     const pref = a.dataset.prefixo;

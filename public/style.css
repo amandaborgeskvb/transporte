@@ -768,8 +768,8 @@ html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
 .oni-ftab th { background: #000676; color: #fff; font-size: 6pt; padding: .8mm .8mm; border: 1px solid #000676; line-height: 1.1; }
 .oni-ftab { font-size: 7.2pt; }
 .oni-ftab td { border: 1px solid #9aa0aa; padding: .35mm .8mm; line-height: 1.15; }
-.oni-ftab td:first-child { white-space: nowrap; }
-.oni-ftab td:nth-child(9), .oni-ftab td:nth-child(10), .oni-ftab td:nth-child(11) { max-width: 46mm; }
+.oni-ftab td:nth-child(2) { white-space: nowrap; }
+.oni-ftab td:nth-child(10), .oni-ftab td:nth-child(11), .oni-ftab td:nth-child(12) { max-width: 46mm; }
 .oni-ftab td.c { text-align: center; white-space: nowrap; }
 .oni-ftab tr.oni-total td { background: #d9d9d9; font-weight: 700; }
 .oni-ftab tr.oni-total.geral td { background: #bfbfbf; }
@@ -795,8 +795,14 @@ html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
 }
 .oni-pl tr.oni-total td.oni-num, .oni-pl tr.oni-total td.oni-frota { text-align: center; }
 .oni-ftab th { white-space: normal; }
-.oni-ftab th:nth-child(n+3):nth-child(-n+8) { width: 13mm; }
+.oni-ftab th:nth-child(n+4):nth-child(-n+9) { width: 13mm; }
 .oni-folha td, .oni-folha th { font-size: inherit; letter-spacing: 0; }
 .oni-fleg { font-size: 7.4pt; }
 .oni-fgrade td, .oni-fgrade th { padding: 1mm 1.5mm; }
 .oni-fgrade td:first-child { white-space: nowrap; }
+
+.oni-pl td.oni-n { text-align: center; color: var(--muted); min-width: 34px; }
+.oni-paginas { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin: 8px 0; font-size: .86rem; color: var(--muted); }
+.oni-cel { display: inline-block; padding: 2px 8px; border-radius: 4px; color: var(--txt); }
+.oni-basetab td { white-space: nowrap; }
+.oni-basetab td.oni-txt { white-space: normal; min-width: 170px; max-width: 280px; }

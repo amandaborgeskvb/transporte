@@ -14,7 +14,7 @@ const DESCRICAO_PERFIL = {
   treinamento: 'Só o módulo Treinamento prático: planilha, treinamentos, C.I. do crachá, relatório, PDF e parâmetros. O Início mostra o resumo dos treinamentos. Não vê viagens nem os outros módulos.',
   gratificacao: 'Só o módulo Gratificação rescisória: apuração, valores, ocorrências, relatórios, Cartão Gold e parâmetros. O Início mostra o resumo da gratificação. Não vê viagens nem os outros módulos.',
   contratacao: 'Só o módulo Contratação: fichas (RE.0150.03), resumo do dia e parâmetros. O Início mostra o resumo das contratações. Não vê viagens nem os outros módulos.',
-  onibus: 'Só o módulo Ônibus: planilha diária, disponibilidade, viagens do dia (saída e chegada), ocorrências, frota e linhas. O Início mostra o resumo dos ônibus. Não vê viagens de despesa nem os outros módulos.',
+  onibus: 'Só o módulo Ônibus: RESUMO (planilha do dia), Disponibilidade e BASE. O Início mostra o resumo dos ônibus. Não vê viagens de despesa nem os outros módulos.',
 };
 const TOM_PERFIL = { administrador: 'ok', solicitante: 'mute', aprovador: 'info', financeiro: 'warn', treinamento: 'info', gratificacao: 'warn', contratacao: 'info', onibus: 'ok' };
 
