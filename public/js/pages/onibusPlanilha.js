@@ -449,6 +449,18 @@ function cabecalhoFolha(titulo, linhas, dataTxt) {
     h('div', {}, h('h1', {}, titulo), ...linhas.map((t) => h('p', {}, t))),
     h('div', { class: 'oni-fcab-dir' }, h('img', { src: LOGO, alt: 'CRV Industrial' }), h('p', {}, dataTxt)));
 }
+// Os indicadores da tela do RESUMO, logo abaixo do cabeçalho da folha impressa
+function indicadoresFolha(d, por) {
+  const total = d.linhas.length;
+  const disp = total ? Math.round((por.liberado * 1000) / total) / 10 : null;
+  const vencidas = d.linhas.filter((l) => l.vistoria_vencida).length;
+  const item = (titulo, valor, sub, tom = '') => h('div', { class: `oni-fkpi ${tom}` }, h('small', {}, titulo), h('strong', {}, valor), sub ? h('span', {}, sub) : null);
+  return h('div', { class: 'oni-fkpis' },
+    item('Ônibus no RESUMO', fmt(total)),
+    item('Disponibilidade do dia', pct(disp), `liberados ÷ ônibus · meta ${d.meta}%`, disp == null ? '' : disp >= d.meta ? 'ok' : 'alerta'),
+    item('Passageiros no dia', fmt(d.linhas.reduce((t, l) => t + (l.passageiros || 0), 0))),
+    item('Vistorias vencidas', fmt(vencidas), `a vistoria vale ${d.vistoria_dias} dias`, vencidas ? 'alerta' : 'ok'));
+}
 function folhaPlanilha(d) {
   const grupos = agrupar(d.linhas);
   const por = Object.fromEntries(SITUACOES.map(([k]) => [k, 0]));
@@ -472,6 +484,7 @@ function folhaPlanilha(d) {
     h('td', { class: 'c' }, fmt(d.linhas.reduce((t, l) => t + (l.passageiros || 0), 0))), h('td', { colspan: 9 })));
   return h('article', { class: 'oni-folha' },
     cabecalhoFolha('Levantamento Transporte Funcionários', ['CRV Industrial - Unidade Capinópolis/MG', 'Departamento de Produção Agrícola'], dataBR(d.data)),
+    indicadoresFolha(d, por),
     d.linhas.length ? h('table', { class: 'oni-ftab' },
       h('thead', {}, h('tr', {}, ['Nº', 'EMPRESA', 'FROTA', 'Nº TOTAL PASS.', 'PASS. POR DIA', 'ÚLTIMA VISTORIA', 'PRÓXIMA VISTORIA', 'LAVAGEM 1', 'LAVAGEM 2', 'ATIVIDADE', 'ROTA/IDA', 'ROTA/VOLTA', 'SITUAÇÃO', 'OBS.'].map((t) => h('th', {}, t)))),
       h('tbody', {}, linhasTab)) : h('p', {}, 'RESUMO do dia não lançado.'),

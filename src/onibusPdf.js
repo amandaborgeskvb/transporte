@@ -64,6 +64,33 @@ function gerarPdfOnibus({ resumo = null, disp = null, emitidoPor = '', agora = n
   // ================= 1ª folha: RESUMO =================
   if (resumo) {
     cabecalho('Levantamento Transporte Funcionários', ['CRV Industrial - Unidade Capinópolis/MG', 'Departamento de Produção Agrícola'], br(resumo.data));
+    // indicadores do RESUMO (os mesmos da tela), logo abaixo do cabeçalho
+    {
+      const tot = resumo.linhas.length;
+      const lib = resumo.linhas.filter((l) => l.situacao === 'liberado').length;
+      const disp = tot ? Math.round((lib * 1000) / tot) / 10 : null;
+      const venc = resumo.linhas.filter((l) => l.vistoria_vencida).length;
+      const meta = resumo.meta ?? 85;
+      const itens = [
+        ['ÔNIBUS NO RESUMO', n(tot), '', null],
+        ['DISPONIBILIDADE DO DIA', pct(disp), `liberados ÷ ônibus · meta ${meta}%`, disp == null ? null : disp >= meta ? FUNDO.ok : FUNDO.aviso],
+        ['PASSAGEIROS NO DIA', n(resumo.linhas.reduce((t, l) => t + (l.passageiros || 0), 0)), '', null],
+        ['VISTORIAS VENCIDAS', n(venc), `a vistoria vale ${resumo.vistoria_dias ?? 30} dias`, venc ? FUNDO.aviso : FUNDO.ok],
+      ];
+      const gap = 8;
+      const w = (L - gap * 3) / 4;
+      const y = doc.y;
+      itens.forEach(([t, v, sub, fundo], i) => {
+        const x = x0 + i * (w + gap);
+        if (fundo) doc.roundedRect(x, y, w, 30, 3).fill(fundo);
+        doc.roundedRect(x, y, w, 30, 3).lineWidth(0.6).strokeColor('#c9cdd4').stroke();
+        doc.font('Helvetica-Bold').fontSize(6.2).fillColor(MUDA).text(t, x + 7, y + 4, { width: w - 14, lineBreak: false });
+        doc.font('Helvetica-Bold').fontSize(13).fillColor(TINTA).text(v, x + 7, y + 13, { lineBreak: false });
+        const larguraValor = doc.widthOfString(v);
+        if (sub) doc.font('Helvetica').fontSize(6.4).fillColor(MUDA).text(sub, x + 14 + larguraValor, y + 18, { width: w - 21 - larguraValor, lineBreak: false });
+      });
+      doc.y = y + 36;
+    }
     const COLS = [
       ['Nº', 16, 'center'], ['EMPRESA', 80], ['FROTA', 32, 'center'], ['Nº TOTAL PASS.', 30, 'center'], ['PASS. POR DIA', 30, 'center'],
       ['ÚLTIMA VISTORIA', 44, 'center'], ['PRÓXIMA VISTORIA', 44, 'center'], ['LAVAGEM 1', 42, 'center'], ['LAVAGEM 2', 42, 'center'],

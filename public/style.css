@@ -830,3 +830,21 @@ html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
 .oni-folha .oni-ftabdisp td { padding: .7mm .9mm; }
 .oni-ftabdisp td:first-child { white-space: normal; max-width: 34mm; }
 .oni-ftabdisp .badge { padding: 1px 6px; font-size: 7pt; }
+/* indicadores do RESUMO na folha impressa */
+.oni-fkpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; margin: 0 0 2.5mm; }
+.oni-fkpi { border: 1px solid #c9cdd4; border-radius: 1.5mm; padding: 1.2mm 3mm; display: flex; align-items: baseline; gap: 2.5mm; flex-wrap: wrap; }
+.oni-fkpi small { width: 100%; font-size: 6.4pt; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: .03em; }
+.oni-fkpi strong { font-size: 13pt; line-height: 1.05; }
+.oni-fkpi span { font-size: 6.6pt; color: #555; }
+.oni-fkpi.ok { background: #dcf2e3; }
+.oni-fkpi.alerta { background: #fff1b8; }
+/* RESUMO impresso com os indicadores: tudo em uma folha, mesmo com as margens do navegador */
+.oni-fkpis { gap: 2.5mm; margin-bottom: 2mm; align-items: stretch; }
+.oni-fkpi { padding: .7mm 2.5mm; row-gap: 0; }
+.oni-fkpi small { font-size: 5.8pt; }
+.oni-fkpi strong { font-size: 11pt; }
+.oni-folha .oni-ftab { font-size: 6.6pt; }
+.oni-folha .oni-ftab td { padding: .2mm .7mm; line-height: 1.1; }
+.oni-folha .oni-ftab th { font-size: 5.8pt; padding: .6mm .6mm; }
+.oni-folha .oni-fcab { margin-bottom: 2mm; }
+.oni-folha .oni-fcab h1 { font-size: 14pt; margin-bottom: 1mm; }

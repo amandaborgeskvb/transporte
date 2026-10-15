@@ -387,7 +387,7 @@ function criarOnibusDiario({ pool }) {
       so === 'planilha' ? null : calcularDisponibilidade(pool, de, ate, { previa: dia }),
     ]);
     const pdf = gerarPdfOnibus({
-      resumo: linhas ? { data: dia, linhas: linhas.rows.map(formatar), observacao: obs.rows[0]?.observacao || '' } : null,
+      resumo: linhas ? { data: dia, linhas: linhas.rows.map(formatar), observacao: obs.rows[0]?.observacao || '', meta: META_DISPONIBILIDADE, vistoria_dias: VISTORIA_DIAS } : null,
       disp, emitidoPor: req.usuario.nome,
     });
     const nome = so === 'disponibilidade' ? `disponibilidade-onibus-${de}-a-${ate}` : so === 'planilha' ? `resumo-onibus-${dia}` : `resumo-e-disponibilidade-onibus-${dia}`;
