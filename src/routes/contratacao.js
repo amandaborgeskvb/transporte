@@ -354,6 +354,19 @@ function criarContratacao({ pool }) {
     res.json({ ok: true });
   }));
 
+  // excluir várias fichas de uma vez (marcadas na lista)
+  router.post('/contratacao/fichas/excluir', wrap(async (req, res) => {
+    const ids = [...new Set((Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+    if (!ids.length) throw erro400('Marque as fichas que quer excluir.');
+    if (ids.length > 500) throw erro400('No máximo 500 fichas por vez.');
+    const excluidas = await tx(pool, async (db) => {
+      const { rows } = await db.query('DELETE FROM contr_fichas WHERE id = ANY($1) RETURNING id, nome, data', [ids]);
+      for (const r of rows) await auditar(db, req.usuario, 'excluir', 'contr_ficha', r.id, { nome: r.nome, data: dataLocal(r.data) });
+      return rows.length;
+    });
+    res.json({ excluidas });
+  }));
+
   router.delete('/contratacao/fichas/:id', wrap(async (req, res) => {
     const id = idParam(req);
     const { rows } = await pool.query('DELETE FROM contr_fichas WHERE id = $1 RETURNING nome, data', [id]);

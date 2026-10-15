@@ -139,3 +139,23 @@ test('parâmetros: cadastrar, editar e excluir função, departamento e gerênci
   assert.equal((await davi.del(`/api/contratacao/gerencias/${g.corpo.id}`)).status, 204);
   assert.equal((await ana.post('/api/contratacao/gerencias', { codigo: 41, nome: 'x' })).status, 403);
 });
+
+test('fichas salvas: excluir uma ou várias de uma vez', async () => {
+  const base = { data: '2026-05-10', nome: 'CANDIDATO TESTE', funcao: 'FUNCAO X', depto_codigo: '999', depto_descricao: 'SETOR X', turno: 'matutino', salario: '1500' };
+  const ids = [];
+  for (const n of ['A', 'B', 'C']) {
+    const r = await davi.post('/api/contratacao/fichas', { ...base, nome: `CANDIDATO ${n}` });
+    assert.equal(r.status, 201, JSON.stringify(r.corpo));
+    ids.push(r.corpo.id);
+  }
+  const salvas = (await davi.get('/api/contratacao/fichas?q=CANDIDATO')).corpo.itens.map((f) => f.id);
+  for (const id of ids) assert.ok(salvas.includes(id)); // ficam no registro
+  assert.equal((await ana.post('/api/contratacao/fichas/excluir', { ids })).status, 403);
+  assert.equal((await davi.post('/api/contratacao/fichas/excluir', { ids: [] })).status, 400);
+  const r = await davi.post('/api/contratacao/fichas/excluir', { ids: [ids[0], ids[1], 999999] });
+  assert.equal(r.corpo.excluidas, 2);
+  assert.equal((await davi.get(`/api/contratacao/fichas/${ids[0]}`)).status, 404);
+  assert.equal((await davi.del(`/api/contratacao/fichas/${ids[2]}`)).status, 204);
+  const aud = (await (await t.logado('admin')).get('/api/auditoria?entidade=contr_ficha')).corpo;
+  assert.ok(aud.filter((a) => a.acao === 'excluir').length >= 3); // exclusões ficam na auditoria
+});

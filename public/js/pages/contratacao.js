@@ -52,14 +52,44 @@ const mesa = (fichas, doc) => ajustarEscala(h('div', { class: 're-mesa' }, ficha
 // ======================================================================
 // Lista de fichas
 // ======================================================================
-async function listaFichas({ query, ir }) {
+async function listaFichas({ query, ir, recarregarPagina }) {
   const qs = new URLSearchParams(query).toString();
   const [{ itens, total }, p] = await Promise.all([get(`/contratacao/fichas${qs ? `?${qs}` : ''}`), get('/contratacao/parametros')]);
   const hoje = itens.filter((f) => f.data === hojeISO()).length;
+  // excluir: uma ficha (lixeira da linha) ou as marcadas
+  const marcadas = new Set();
+  const excluir = async (lista) => {
+    const desc = lista.length === 1 ? `${lista[0].nome} · ${dataBR(lista[0].data)}` : `${fmt(lista.length)} fichas marcadas: ${lista.slice(0, 5).map((f) => f.nome).join(', ')}${lista.length > 5 ? '…' : ''}`;
+    if (!(await confirmar(lista.length === 1 ? 'Excluir ficha' : 'Excluir fichas', h('div', {}, h('p', {}, desc), h('p', { class: 'muted' }, 'O registro sai do sistema (fica anotado na Auditoria). Não dá para desfazer.')), { rotulo: 'Excluir', perigo: true }))) return;
+    if (lista.length === 1) await del(`/contratacao/fichas/${lista[0].id}`);
+    else await post('/contratacao/fichas/excluir', { ids: lista.map((f) => f.id) });
+    toast(lista.length === 1 ? 'Ficha excluída.' : `${fmt(lista.length)} fichas excluídas.`);
+    recarregarPagina();
+  };
+  const contador = h('strong', {});
+  const barraSel = h('div', { class: 'rf-barra-sel', hidden: true }, contador,
+    botao('Excluir marcadas', () => excluir(itens.filter((f) => marcadas.has(f.id))), { tom: 'perigo', pequeno: true, icone: 'lixeira' }),
+    botao('Desmarcar', () => { marcadas.clear(); atualizarSel(); }, { tom: 'sec', pequeno: true }));
+  const caixas = new Map();
+  const atualizarSel = () => {
+    for (const [id, c] of caixas) c.checked = marcadas.has(id);
+    marcarTodas.checked = itens.length > 0 && marcadas.size === itens.length;
+    marcarTodas.indeterminate = marcadas.size > 0 && marcadas.size < itens.length;
+    barraSel.hidden = !marcadas.size;
+    contador.textContent = `${fmt(marcadas.size)} ficha${marcadas.size === 1 ? '' : 's'} marcada${marcadas.size === 1 ? '' : 's'}`;
+  };
+  const caixa = (f) => {
+    const c = h('input', { type: 'checkbox', 'aria-label': `Marcar ${f.nome}`, onclick: (e) => e.stopPropagation(),
+      onchange: (e) => { if (e.target.checked) marcadas.add(f.id); else marcadas.delete(f.id); atualizarSel(); } });
+    caixas.set(f.id, c);
+    return c;
+  };
+  const marcarTodas = h('input', { type: 'checkbox', 'aria-label': 'Marcar todas as fichas da lista',
+    onchange: (e) => { if (e.target.checked) itens.forEach((f) => marcadas.add(f.id)); else marcadas.clear(); atualizarSel(); } });
   return [
     cabecalhoPagina({
       migalhas: [...BASE, ['Fichas de contratação']], titulo: 'Fichas de contratação',
-      sub: `Ficha de Informe de Contratação (RE.0150.03) · ${fmt(total)} ficha${total === 1 ? '' : 's'}${total > itens.length ? ` (mostrando ${fmt(itens.length)})` : ''}`,
+      sub: `Ficha de Informe de Contratação (RE.0150.03) · ${fmt(total)} ficha${total === 1 ? '' : 's'} salva${total === 1 ? '' : 's'}${total > itens.length ? ` (mostrando ${fmt(itens.length)})` : ''}`,
       acoes: [
         h('a', { class: 'btn sec', href: `/api/contratacao/fichas.csv${qs ? `?${qs}` : ''}`, download: '' }, icone('baixar'), 'Exportar (mala direta)'),
         h('a', { class: 'btn sec', href: `#/contratacao/imprimir${qs ? `?${qs}` : ''}` }, icone('impressora'), 'Imprimir fichas'),
@@ -74,7 +104,9 @@ async function listaFichas({ query, ir }) {
       { nome: 'depto', rotulo: 'Departamento', placeholder: 'Código ou parte do nome', lista: p.departamentos.map((d) => `${deptoFmt(d.codigo)} - ${d.descricao}`) },
       { nome: 'q', rotulo: 'Busca', placeholder: 'Nome, função, departamento, cidade ou gestor' },
     ], query, (v) => ir('#/contratacao/fichas', v)),
+    barraSel,
     h('div', { class: 'card' }, tabela([
+      { t: marcarTodas, cls: 'rf-sel', f: (f) => caixa(f) },
       { t: 'Data', cls: 'nowrap', f: (f) => dataBR(f.data) },
       { t: 'Candidato', f: (f) => [h('strong', {}, f.nome), h('div', { class: 'muted pequeno' }, [f.cidade, f.celular1 || f.telefone].filter(Boolean).join(' · '))] },
       { t: 'Função', f: (f) => f.funcao },
@@ -82,6 +114,11 @@ async function listaFichas({ query, ir }) {
       { t: 'Turno', f: (f) => TURNOS.find(([k]) => k === f.turno)?.[1] || '—' },
       { t: 'Salário', num: true, f: (f) => (f.salario === null ? '—' : brl(f.salario)) },
       { t: 'Gestor', f: (f) => f.gestor || '—' },
+      { t: '', f: (f) => {
+        const b = botao('', () => excluir([f]), { pequeno: true, tom: 'sec', icone: 'lixeira' });
+        b.title = 'Excluir ficha'; b.setAttribute('aria-label', `Excluir a ficha de ${f.nome}`);
+        return b;
+      } },
     ], itens, { vazioMsg: 'Nenhuma ficha. Use "Nova ficha" ou importe a planilha em Parâmetros.', aoClicar: (f) => ir(`#/contratacao/fichas/${f.id}`) })),
   ];
 }
@@ -89,8 +126,9 @@ async function listaFichas({ query, ir }) {
 // ======================================================================
 // Ficha: visualização (folha do RE) e formulário com prévia ao vivo
 // ======================================================================
-async function detalheFicha({ params, ir }) {
+async function detalheFicha({ params, query, ir }) {
   const f = await get(`/contratacao/fichas/${params[0]}`);
+  if (query.imprimir) setTimeout(() => { history.replaceState(null, '', `#/contratacao/fichas/${f.id}`); window.print(); }, 400); // "Salvar e imprimir"
   return [
     h('div', { class: 'nao-imprime' },
       cabecalhoPagina({ migalhas: [...BASE, ['Fichas', '#/contratacao/fichas'], [f.nome]], titulo: f.nome, sub: `${f.funcao} · ${dataBR(f.data)}${f.origem && f.origem !== 'digitada' ? ` · importada de ${f.origem}` : ''}` }),
@@ -238,18 +276,27 @@ async function formFicha({ params, query, ir }) {
   el.funcaoSel.addEventListener('change', () => aoMudarFuncao());
   turnos.forEach((l) => l.querySelector('input').addEventListener('change', () => { el.horario.value = p.horarios[turnoAtual()] || el.horario.value; }));
 
-  const salvar = async (continuar) => {
+  // ficha preenchida e não salva: avisa antes de sair (o registro só existe depois de salvar)
+  let sujo = false;
+  const avisoSair = (e) => { if (sujo && location.hash.startsWith('#/contratacao/')) { e.preventDefault(); e.returnValue = ''; } };
+  window.addEventListener('beforeunload', avisoSair);
+  window.addEventListener('hashchange', () => window.removeEventListener('beforeunload', avisoSair), { once: true });
+  const salvar = async (continuar, imprimir = false) => {
     erro.textContent = '';
     const v = valores();
     if (!v.nome) { erro.textContent = 'Informe o nome do candidato.'; el.nome.focus(); return; }
     try {
-      if (editando) { await put(`/contratacao/fichas/${editando}`, v); toast('Ficha salva.'); ir(`#/contratacao/fichas/${editando}`); return; }
+      if (editando) {
+        await put(`/contratacao/fichas/${editando}`, v); sujo = false; toast('Ficha salva.');
+        ir(`#/contratacao/fichas/${editando}`, imprimir ? { imprimir: 1 } : {}); return;
+      }
       const r = await post('/contratacao/fichas', v);
-      toast('Ficha salva.');
+      sujo = false;
+      toast('Ficha salva no registro.');
       if (continuar) { // próxima ficha com os mesmos dados do contrato
         for (const k of ['nome', 'telefone', 'celular1', 'celular2', 'email', 'cidade']) el[k].value = '';
         el.nome.focus(); desenharPrevia();
-      } else ir(`#/contratacao/fichas/${r.id}`);
+      } else ir(`#/contratacao/fichas/${r.id}`, imprimir ? { imprimir: 1 } : {});
     } catch (e) { erro.textContent = e.message; }
   };
 
@@ -273,10 +320,14 @@ async function formFicha({ params, query, ir }) {
       campo('Cidade', el.cidade), campo('Observação', el.observacao, { cheio: true })),
     erro,
     h('div', { class: 'linha-botoes' },
-      h('button', { type: 'button', class: 'sec', onclick: () => ir(editando ? `#/contratacao/fichas/${editando}` : '#/contratacao/fichas') }, 'Cancelar'),
+      h('button', { type: 'button', class: 'sec', onclick: async () => {
+        if (sujo && !(await confirmar('Sair sem salvar?', 'A ficha preenchida não foi salva e não vai ficar no registro.', { rotulo: 'Sair sem salvar', perigo: true }))) return;
+        sujo = false; ir(editando ? `#/contratacao/fichas/${editando}` : '#/contratacao/fichas');
+      } }, 'Cancelar'),
       editando ? null : h('button', { type: 'button', class: 'sec', onclick: () => salvar(true) }, 'Salvar e nova'),
+      h('button', { type: 'button', class: 'sec', onclick: () => salvar(false, true) }, icone('impressora'), 'Salvar e imprimir'),
       h('button', { type: 'submit' }, 'Salvar')));
-  form.addEventListener('input', () => { clearTimeout(form.t); form.t = setTimeout(desenharPrevia, 150); });
+  form.addEventListener('input', () => { sujo = true; clearTimeout(form.t); form.t = setTimeout(desenharPrevia, 150); });
   form.addEventListener('change', () => { clearTimeout(form.t); form.t = setTimeout(desenharPrevia, 150); });
   // Estado inicial: departamento e função da ficha (ou "outro" quando não estão nos parâmetros)
   montarDeptos(inicial.depto_codigo ? (deptos.has(inicial.depto_codigo) ? inicial.depto_codigo : OUTRO) : '');
@@ -317,13 +368,18 @@ async function imprimirFichas({ query, ir }) {
 // ======================================================================
 // Resumo do dia (aba Resumo): fichas feitas na data, por função e departamento
 // ======================================================================
-async function resumoDia({ query, ir }) {
+async function resumoDia({ query, ir, recarregarPagina }) {
   const r = await get(`/contratacao/resumo${query.data ? `?data=${query.data}` : ''}`);
   const linhas = [];
   for (const g of r.grupos) {
     g.itens.forEach((f, i) => linhas.push(h('tr', {},
       i === 0 ? [h('td', { rowspan: g.qtd }, g.funcao), h('td', { rowspan: g.qtd, class: 'c' }, deptoFmt(g.depto_codigo)), h('td', { rowspan: g.qtd }, g.depto_descricao)] : null,
-      h('td', {}, h('a', { href: `#/contratacao/fichas/${f.id}` }, f.nome)), h('td', {}, f.cidade || ''), h('td', { class: 'c' }, f.celular1 || ''), h('td', { class: 'c' }, '1'))));
+      h('td', {}, h('a', { href: `#/contratacao/fichas/${f.id}` }, f.nome),
+        h('button', { type: 'button', class: 'rf-x nao-imprime', title: 'Excluir ficha', 'aria-label': `Excluir a ficha de ${f.nome}`, onclick: async () => {
+          if (!(await confirmar('Excluir ficha', `${f.nome} · ${g.funcao}`, { rotulo: 'Excluir', perigo: true }))) return;
+          await del(`/contratacao/fichas/${f.id}`); toast('Ficha excluída.'); recarregarPagina();
+        } }, icone('lixeira'))),
+      h('td', {}, f.cidade || ''), h('td', { class: 'c' }, f.celular1 || ''), h('td', { class: 'c' }, '1'))));
     linhas.push(h('tr', { class: 'subtotal' }, h('td', { colspan: 6 }, `${g.funcao} — ${g.depto_descricao}`), h('td', { class: 'c' }, g.qtd)));
   }
   const ano = (r.data || '').slice(0, 4);
