@@ -865,6 +865,36 @@ CREATE TABLE IF NOT EXISTS op_pasta_arquivos (
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS op_pasta_arquivos_caminho_uk ON op_pasta_arquivos (pasta_id, upper(caminho));
+-- AETs (Autorização Especial de Trânsito): uma linha por AET, como na planilha "SOLICITAÇÃO DE AETs" (uma aba por tipo).
+-- Veículo sem AET = linha sem vencimento. encerrada: renovada ou não precisa mais (sai dos alertas, fica no histórico).
+CREATE TABLE IF NOT EXISTS op_aets (
+  id            SERIAL PRIMARY KEY,
+  categoria     TEXT NOT NULL,
+  esfera        TEXT NOT NULL DEFAULT '',
+  frota         TEXT NOT NULL DEFAULT '',
+  placa         TEXT NOT NULL DEFAULT '',
+  propriedade   TEXT NOT NULL DEFAULT '',
+  especialidade TEXT NOT NULL DEFAULT '',
+  uf            TEXT NOT NULL DEFAULT '',
+  uf_aet        BOOLEAN NOT NULL DEFAULT false,
+  doc_crv       TEXT NOT NULL DEFAULT '',
+  chassi        TEXT NOT NULL DEFAULT '',
+  renavam       TEXT NOT NULL DEFAULT '',
+  numero        TEXT NOT NULL DEFAULT '',
+  realizacao    DATE,
+  vencimento    DATE,
+  valor         NUMERIC(12,2),
+  desconto      NUMERIC(12,2),
+  observacao    TEXT NOT NULL DEFAULT '',
+  encerrada     BOOLEAN NOT NULL DEFAULT false,
+  origem        TEXT NOT NULL DEFAULT 'manual' CHECK (origem IN ('manual','importacao')),
+  linha         INTEGER,
+  criado_por    INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (frota <> '' OR placa <> '')
+);
+CREATE INDEX IF NOT EXISTS op_aets_cat_idx ON op_aets (categoria, vencimento);
 
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,

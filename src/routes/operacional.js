@@ -7,6 +7,7 @@ const { tx } = require('../db');
 const { wrap, texto, data, idParam, auditar, diff, ehData, hojeSP, enviarCsv, erro400, erro404, erro409 } = require('../util');
 const { exigirPerfil, ADM, FIN, OPE } = require('../workflow');
 const { detectarTipo, nomeSeguro, MAX_BYTES } = require('./anexos');
+const { situacaoAet } = require('../aets');
 const { TIPOS_VEICULO, SITUACOES_VEICULO, PROPRIEDADES, CATEGORIAS, quadroVeiculo, somarDias } = require('../operacional');
 
 const dataLocal = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : d);
@@ -42,6 +43,13 @@ function criarOperacional({ pool }) {
   const nomeVeiculo = (v) => [v.frota, v.placa].filter(Boolean).join(' · ');
 
   // ================= Painel =================
+  // AETs: quantas vencidas, vencendo em até 30 dias e sem AET (para o painel e o Início)
+  const resumoAets = async (hoje) => {
+    const { rows } = await pool.query("SELECT to_char(vencimento, 'YYYY-MM-DD') AS vencimento, encerrada FROM op_aets");
+    const c = { total: 0, vencida: 0, vence_logo: 0, em_dia: 0, sem_aet: 0 };
+    for (const a of rows) { const s = situacaoAet(a, hoje).situacao; if (s in c) { c[s] += 1; c.total += 1; } }
+    return c;
+  };
   router.get('/operacional/painel', wrap(async (_req, res) => {
     const { hoje, tipos, veiculos } = await carregar(pool);
     const itens = veiculos.flatMap((v) => v.quadro.itens.map((i) => ({ ...i, veiculo_id: v.id, veiculo: nomeVeiculo(v), veiculo_tipo: v.tipo, categoria: v.categoria })));
@@ -62,7 +70,7 @@ function criarOperacional({ pool }) {
         com_pendencia: veiculos.filter((v) => v.quadro.situacao !== 'em_dia').length, em_dia: veiculos.filter((v) => v.quadro.situacao === 'em_dia').length,
       },
       documentos: { vencidos: conta('vencido'), vencendo: conta('vence_logo'), faltando: conta('faltando'), em_dia: conta('em_dia') + conta('sem_vencimento'), total: itens.length },
-      por_tipo: porTipo, alertas: alertas.slice(0, 200),
+      por_tipo: porTipo, alertas: alertas.slice(0, 200), aets: await resumoAets(hoje),
     });
   }));
 

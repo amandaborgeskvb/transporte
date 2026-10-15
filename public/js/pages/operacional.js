@@ -1,11 +1,12 @@
 // Controle Operacional – Transporte: documentação dos veículos leves e pesados.
-// Rotas: #/operacional/painel | veiculos | veiculos/:id | documentos | tipos | pastas | pastas/:id
+// Rotas: #/operacional/painel | veiculos | veiculos/:id | documentos | tipos | pastas | pastas/:id | aets
 import { get, post, put, del, enviarArquivo } from '../api.js';
 import {
   h, dataBR, tabela, botao, cabecalhoPagina, barraComandos, barraFiltros, secao, kpi, toast, confirmar, dialogo, icone, badgeTom,
 } from '../ui.js';
 import { barrasEmpilhadas, legendaSeries } from '../charts.js';
 import pastas from './operacionalPastas.js';
+import aets from './operacionalAets.js';
 
 const BASE = [['Controle Operacional']];
 const fmt = (n) => Number(n || 0).toLocaleString('pt-BR');
@@ -148,7 +149,8 @@ async function painel({ ir }) {
       kpi('Documentos vencidos', fmt(d.vencidos), { icone: 'alerta', tom: d.vencidos ? 'alerta' : 'ok', link: '#/operacional/documentos?situacao=vencido' }),
       kpi('Vencem em breve', fmt(d.vencendo), { icone: 'relogio', tom: d.vencendo ? 'alerta' : 'neutro', sub: 'dentro do aviso de cada documento', link: '#/operacional/documentos?situacao=vence_logo' }),
       kpi('Obrigatórios faltando', fmt(d.faltando), { icone: 'documento', tom: d.faltando ? 'alerta' : 'ok', link: '#/operacional/documentos?situacao=faltando' }),
-      kpi('Veículos em dia', `${fmt(p.veiculos.em_dia)} de ${fmt(p.veiculos.total)}`, { icone: 'ok', tom: p.veiculos.com_pendencia ? 'neutro' : 'ok', sub: `${fmt(p.veiculos.com_pendencia)} com pendência` })),
+      kpi('Veículos em dia', `${fmt(p.veiculos.em_dia)} de ${fmt(p.veiculos.total)}`, { icone: 'ok', tom: p.veiculos.com_pendencia ? 'neutro' : 'ok', sub: `${fmt(p.veiculos.com_pendencia)} com pendência` }),
+      p.aets?.total ? kpi('AETs vencidas', fmt(p.aets.vencida), { icone: 'caminhao', tom: p.aets.vencida ? 'alerta' : 'ok', sub: `${fmt(p.aets.vence_logo)} vencem em até 30 dias · ${fmt(p.aets.sem_aet)} sem AET`, link: '#/operacional/aets' }) : null),
     h('div', { class: 'grade-2 op-igual' },
       secao('Situação por tipo de documento', null, legendaSeries(SERIES),
         barrasEmpilhadas(p.por_tipo.map((x) => ({ nome: x.tipo, valores: { em_dia: x.em_dia, vence_logo: x.vence_logo, faltando: x.faltando, vencido: x.vencido }, total: x.em_dia + x.vence_logo + x.faltando + x.vencido,
@@ -354,5 +356,6 @@ export default async function operacional(ctx) {
   if (sub === 'documentos') return documentos(ctx);
   if (sub === 'tipos') return tiposPagina(ctx);
   if (sub === 'pastas') return pastas({ ...ctx, params: resto });
+  if (sub === 'aets') return aets(ctx);
   return painel(ctx);
 }

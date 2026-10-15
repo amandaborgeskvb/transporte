@@ -983,3 +983,44 @@ html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
 .op-progresso { position: fixed; right: 16px; bottom: 16px; z-index: 60; width: min(380px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; background: var(--card); border: 1px solid var(--linha); border-radius: 10px; box-shadow: 0 8px 28px rgba(0, 0, 0, .18); }
 .op-progresso span { font-size: .84rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .op-progresso progress { width: 100%; height: 10px; accent-color: var(--marca); }
+/* Controle de AETs: semáforo dos vencimentos (mesma paleta dos documentos) */
+.aet-vencida { background: var(--st-venc); } .aet-vence_logo { background: var(--st-aviso); } .aet-em_dia { background: var(--st-ok); }
+.aet-sem_aet { background: repeating-linear-gradient(135deg, var(--st-falta) 0 3px, transparent 3px 6px); outline: 1px dashed var(--st-falta); outline-offset: -1px; }
+.aet-c-vencida { color: var(--bad); } .aet-c-vence_logo { color: var(--warn); } .aet-c-em_dia { color: var(--ok); } .aet-c-sem_aet, .aet-c-encerrada { color: var(--muted); }
+.aet-tempo { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 6px; }
+.aet-mes { all: unset; box-sizing: border-box; cursor: pointer; display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 8px 7px 7px; border: 1px solid var(--linha); border-radius: 8px; background: var(--card); border-top: 4px solid var(--linha); }
+.aet-mes:hover { background: var(--hover); }
+.aet-mes:focus-visible { outline: 2px solid var(--marca); outline-offset: 2px; }
+.aet-mes.ativo { box-shadow: 0 0 0 2px var(--marca); }
+.aet-mes small { font-size: .68rem; font-weight: 700; letter-spacing: .03em; color: var(--muted); white-space: nowrap; }
+.aet-mes strong { font-size: 1.25rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.aet-mes em { font-style: normal; font-size: .66rem; color: var(--muted); }
+.aet-mes-barra { display: block; height: 5px; border-radius: 3px; background: var(--card-2); overflow: hidden; }
+.aet-mes-barra i { display: block; height: 100%; border-radius: 3px; background: var(--muted); }
+.aet-mes.vencida { border-top-color: var(--st-venc); background: color-mix(in srgb, var(--st-venc) 9%, var(--card)); } .aet-mes.vencida strong { color: var(--bad); } .aet-mes.vencida .aet-mes-barra i { background: var(--st-venc); }
+.aet-mes.vence_logo { border-top-color: var(--st-aviso); background: color-mix(in srgb, var(--st-aviso) 10%, var(--card)); } .aet-mes.vence_logo strong { color: var(--warn); } .aet-mes.vence_logo .aet-mes-barra i { background: var(--st-aviso); }
+.aet-mes.em_dia { border-top-color: var(--st-ok); } .aet-mes.em_dia .aet-mes-barra i { background: var(--st-ok); }
+.aet-mes.vazio strong { color: var(--muted); font-weight: 500; }
+.aet-legenda { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: .8rem; color: var(--muted); }
+.aet-legenda span { display: inline-flex; align-items: center; gap: 6px; }
+.aet-legenda i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+.aet-tipos { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.aet-tipo { display: flex; flex-direction: column; gap: 7px; padding: 12px 14px; background: var(--card); border: 1px solid var(--linha); border-left: 5px solid var(--st-ok); border-radius: 10px; color: inherit; text-decoration: none; box-shadow: var(--sombra); min-width: 0; }
+.aet-tipo:hover { background: var(--hover); text-decoration: none; }
+.aet-tipo.ativo { box-shadow: 0 0 0 2px var(--marca); }
+.aet-borda-vencida { border-left-color: var(--st-venc); } .aet-borda-vence_logo { border-left-color: var(--st-aviso); } .aet-borda-sem_aet { border-left-color: var(--st-falta); }
+.aet-tipo-topo { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.aet-tipo-topo strong { font-size: .88rem; line-height: 1.3; overflow-wrap: anywhere; }
+.aet-esfera { flex: none; font-size: .68rem; font-weight: 650; padding: 1px 7px; border-radius: 99px; background: var(--info-bg); color: var(--info); white-space: nowrap; }
+.aet-tipo-num { display: flex; align-items: baseline; gap: 6px; }
+.aet-tipo-num b { font-size: 1.5rem; line-height: 1; font-variant-numeric: tabular-nums; }
+.aet-tipo-num span { font-size: .78rem; color: var(--muted); }
+.aet-barra { display: flex; gap: 2px; height: 10px; border-radius: 5px; overflow: hidden; background: var(--card-2); }
+.aet-barra i { display: block; min-width: 4px; }
+.aet-tipo-cont { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: .78rem; font-weight: 600; }
+.aet-sit { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.aet-prazo { font-size: .78rem; font-weight: 650; white-space: nowrap; }
+.aet-previa { max-height: 340px; }
+.aet-previa td, .aet-previa th { padding: 4px 8px; font-size: .82rem; }
+@media (max-width: 1100px) { .aet-tempo { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .aet-tempo { grid-template-columns: repeat(4, minmax(0, 1fr)); } .aet-tipos { grid-template-columns: minmax(0, 1fr); } }

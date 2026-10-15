@@ -236,14 +236,16 @@ function moduloOperacional(p) {
       kpi('Veículos', fmt(p.veiculos.total), { icone: 'caminhao', sub: `${fmt(p.veiculos.leves)} leves · ${fmt(p.veiculos.pesados)} pesados`, link: '#/operacional/veiculos' }),
       kpi('Documentos vencidos', fmt(d.vencidos), { icone: 'alerta', tom: d.vencidos ? 'alerta' : 'ok', link: '#/operacional/documentos?situacao=vencido' }),
       kpi('Vencem em breve', fmt(d.vencendo), { icone: 'relogio', tom: d.vencendo ? 'alerta' : 'neutro', link: '#/operacional/documentos?situacao=vence_logo' }),
-      kpi('Obrigatórios faltando', fmt(d.faltando), { icone: 'documento', tom: d.faltando ? 'alerta' : 'ok', link: '#/operacional/documentos?situacao=faltando' })),
+      kpi('Obrigatórios faltando', fmt(d.faltando), { icone: 'documento', tom: d.faltando ? 'alerta' : 'ok', link: '#/operacional/documentos?situacao=faltando' }),
+      p.aets?.total ? kpi('AETs vencidas', fmt(p.aets.vencida), { icone: 'caminhao', tom: p.aets.vencida ? 'alerta' : 'ok', sub: `${fmt(p.aets.vence_logo)} vencem em até 30 dias`, link: '#/operacional/aets' }) : null),
     secao('Situação por tipo de documento', null, legendaSeries(series),
       barrasEmpilhadas(p.por_tipo.map((x) => ({ nome: x.tipo, valores: { em_dia: x.em_dia, vence_logo: x.vence_logo, faltando: x.faltando, vencido: x.vencido }, total: x.em_dia + x.vence_logo + x.faltando + x.vencido })), series, { vazioMsg: 'Nenhum veículo cadastrado.' })),
   ];
   return cartao({
     titulo: 'Controle Operacional', nomeIcone: 'caminhao', principal: fmt(d.vencidos + d.faltando), rotulo: `documento${d.vencidos + d.faltando === 1 ? '' : 's'} vencido${d.vencidos + d.faltando === 1 ? '' : 's'} ou faltando`,
-    linhas: [['Veículos', `${fmt(p.veiculos.total)} (${fmt(p.veiculos.leves)} leves · ${fmt(p.veiculos.pesados)} pesados)`], ['Vencem em breve', fmt(d.vencendo)], ['Veículos em dia', `${fmt(p.veiculos.em_dia)} de ${fmt(p.veiculos.total)}`]],
-    tom: d.vencidos || d.faltando ? 'atencao' : '',
+    linhas: [['Veículos', `${fmt(p.veiculos.total)} (${fmt(p.veiculos.leves)} leves · ${fmt(p.veiculos.pesados)} pesados)`], ['Vencem em breve', fmt(d.vencendo)],
+      p.aets?.total ? ['AETs vencidas / até 30 dias', `${fmt(p.aets.vencida)} / ${fmt(p.aets.vence_logo)}`] : ['Veículos em dia', `${fmt(p.veiculos.em_dia)} de ${fmt(p.veiculos.total)}`]],
+    tom: d.vencidos || d.faltando || p.aets?.vencida ? 'atencao' : '',
     abrir: () => abrirModal({ titulo: 'Controle Operacional', sub: 'Documentação dos veículos leves e pesados', nomeIcone: 'caminhao', corpo: corpo(), link: { href: '#/operacional/painel', rotulo: 'Abrir o painel de vencimentos' } }),
   });
 }
