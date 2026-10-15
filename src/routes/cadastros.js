@@ -1,6 +1,6 @@
 const express = require('express');
 const { wrap, texto, data, idParam, inteiro, opcaoDe, erro400, erro403, erro404, erro409, auditar, diff } = require('../util');
-const { exigirPerfil, ADM } = require('../workflow');
+const { exigirPerfil, ADM, FIN, MODULOS } = require('../workflow');
 const { hashSenha, verificarSenha, validarSenhaNova, publico } = require('../auth');
 const { PERFIS } = require('../schema');
 
@@ -131,7 +131,7 @@ function criarCadastros({ pool }) {
   const usuarios = express.Router();
   usuarios.use(exigirPerfil(ADM));
 
-  const COLS = 'u.id, u.nome, u.login, u.perfil, u.funcionario_id, u.ativo, u.criado_em, f.nome AS funcionario_nome';
+  const COLS = 'u.id, u.nome, u.login, u.perfil, u.perfis_extras, u.funcionario_id, u.ativo, u.criado_em, f.nome AS funcionario_nome';
   const listar = (where = '', params = []) =>
     pool.query(`SELECT ${COLS} FROM usuarios u LEFT JOIN funcionarios f ON f.id = u.funcionario_id ${where} ORDER BY u.nome`, params);
 
@@ -142,6 +142,11 @@ function criarCadastros({ pool }) {
       funcionario_id: b.funcionario_id ? inteiro(b.funcionario_id, 'Funcionário') : null,
       ativo: b.ativo === undefined ? true : bool(b.ativo),
     };
+    // módulos adicionais (além do perfil principal); administrador e financeiro já veem todos os módulos
+    const extras = Array.isArray(b.perfis_extras) ? b.perfis_extras : String(b.perfis_extras ?? '').split(',');
+    const invalido = extras.map((x) => String(x).trim()).find((x) => x && !MODULOS.includes(x));
+    if (invalido) throw erro400(`Módulo adicional inválido: ${invalido}.`);
+    d.perfis_extras = [ADM, FIN].includes(d.perfil) ? [] : MODULOS.filter((m) => m !== d.perfil && extras.map((x) => String(x).trim()).includes(m));
     if (novo) {
       d.login = texto(b.login, 40, { obrigatorio: true, rotulo: 'Login' }).toLowerCase();
       if (!/^[a-z0-9._@-]+$/.test(d.login)) throw erro400('Login: use apenas letras, números e . _ @ -');
@@ -161,10 +166,10 @@ function criarCadastros({ pool }) {
     const d = lerUsuario(req.body, { novo: true });
     validarSenhaNova(req.body.senha);
     const { rows } = await pool.query(
-      `INSERT INTO usuarios (nome, login, senha_hash, perfil, funcionario_id, ativo) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-      [d.nome, d.login, await hashSenha(req.body.senha), d.perfil, d.funcionario_id, d.ativo],
+      `INSERT INTO usuarios (nome, login, senha_hash, perfil, perfis_extras, funcionario_id, ativo) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+      [d.nome, d.login, await hashSenha(req.body.senha), d.perfil, d.perfis_extras, d.funcionario_id, d.ativo],
     );
-    await auditar(pool, req.usuario, 'criar', 'usuarios', rows[0].id, { login: d.login, perfil: d.perfil });
+    await auditar(pool, req.usuario, 'criar', 'usuarios', rows[0].id, { login: d.login, perfil: d.perfil, ...(d.perfis_extras.length ? { perfis_extras: d.perfis_extras.join(', ') } : {}) });
     res.status(201).json((await listar('WHERE u.id = $1', [rows[0].id])).rows[0]);
   }));
 
@@ -176,8 +181,11 @@ function criarCadastros({ pool }) {
     if (id === req.usuario.id && (!d.ativo || d.perfil !== ADM)) throw erro409('Você não pode remover seu próprio acesso de administrador.');
     if (antes.perfil === ADM) await garantirAdminRestante(id, d.perfil, d.ativo);
 
-    const sets = ['nome=$1', 'perfil=$2', 'funcionario_id=$3', 'ativo=$4'];
-    const params = [d.nome, d.perfil, d.funcionario_id, d.ativo];
+    // perfis_extras chega só quando a tela manda (cliente antigo sem o campo mantém os módulos adicionais)
+    if (req.body.perfis_extras === undefined) d.perfis_extras = [ADM, FIN].includes(d.perfil) ? [] : (antes.perfis_extras || []).filter((m) => m !== d.perfil);
+    const sets = ['nome=$1', 'perfil=$2', 'funcionario_id=$3', 'ativo=$4', 'perfis_extras=$5'];
+    const params = [d.nome, d.perfil, d.funcionario_id, d.ativo, d.perfis_extras];
+    const mudouExtras = [...(antes.perfis_extras || [])].sort().join(',') !== [...d.perfis_extras].sort().join(',');
     let trocouSenha = false;
     if (req.body.senha) {
       validarSenhaNova(req.body.senha);
@@ -186,10 +194,13 @@ function criarCadastros({ pool }) {
       trocouSenha = true;
     }
     // Mudar perfil, desativar ou trocar senha derruba as sessões abertas do usuário
-    if (trocouSenha || d.perfil !== antes.perfil || !d.ativo) sets.push('token_versao = token_versao + 1');
+    if (trocouSenha || d.perfil !== antes.perfil || mudouExtras || !d.ativo) sets.push('token_versao = token_versao + 1');
     params.push(id);
     await pool.query(`UPDATE usuarios SET ${sets.join(', ')} WHERE id=$${params.length}`, params);
-    await auditar(pool, req.usuario, 'editar', 'usuarios', id, { ...diff(antes, d, ['nome', 'perfil', 'funcionario_id', 'ativo']), ...(trocouSenha ? { senha: 'redefinida' } : {}) });
+    await auditar(pool, req.usuario, 'editar', 'usuarios', id, {
+      ...diff(antes, d, ['nome', 'perfil', 'funcionario_id', 'ativo']), ...(mudouExtras ? { perfis_extras: { de: (antes.perfis_extras || []).join(', '), para: d.perfis_extras.join(', ') } } : {}),
+      ...(trocouSenha ? { senha: 'redefinida' } : {}),
+    });
     res.json((await listar('WHERE u.id = $1', [id])).rows[0]);
   }));
 

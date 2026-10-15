@@ -36,6 +36,8 @@ CREATE TABLE IF NOT EXISTS usuarios (
   criado_em      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 -- Perfis novos (atualiza a lista permitida em bancos já existentes)
+-- Módulos adicionais do usuário (além do perfil principal): Treinamento, Gratificação, Contratação, Ônibus, Operacional
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perfis_extras TEXT[] NOT NULL DEFAULT '{}';
 ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_perfil_check;
 ALTER TABLE usuarios ADD CONSTRAINT usuarios_perfil_check CHECK (perfil IN (${PERFIS.map((p) => `'${p}'`).join(', ')}));
 

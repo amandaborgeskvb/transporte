@@ -15,8 +15,13 @@ const OPE = 'operacional';
 const MODULO_DO_PERFIL = { [TRE]: '/treino', [GRA]: '/gratificacao', [CON]: '/contratacao', [ONI]: '/onibus', [OPE]: '/operacional' };
 const VE_TUDO = [ADM, APR, FIN];
 
+const MODULOS = Object.keys(MODULO_DO_PERFIL); // perfis que podem ser dados como "módulo adicional"
+// Todos os perfis do usuário: o principal (regras de viagem, financeiro) + os módulos adicionais
+const perfisDe = (u) => [...new Set([u?.perfil, ...(u?.perfis_extras || [])].filter(Boolean))];
+const temPerfil = (u, ...perfis) => perfisDe(u).some((p) => perfis.includes(p));
+
 const exigirPerfil = (...perfis) => (req, _res, next) =>
-  perfis.includes(req.usuario.perfil) ? next() : next(erro403());
+  temPerfil(req.usuario, ...perfis) ? next() : next(erro403());
 
 // Preenche params e devolve a condição SQL que restringe as viagens visíveis ao usuário.
 function escopoSql(usuario, params, alias = 'v') {
@@ -117,17 +122,18 @@ function acoesReembolso(u, r, v) {
 }
 
 // Perfis de um módulo só: além do próprio módulo, só a sessão (/me), as pendências e a leitura dos cadastros
+// Com mais de um módulo (ex.: Ônibus + Operacional), vale qualquer um deles; com um perfil geral (ex.: Solicitante), não restringe.
 function restringirModulo(req, _res, next) {
-  const prefixo = MODULO_DO_PERFIL[req.usuario?.perfil];
-  if (!prefixo) return next();
+  const perfis = perfisDe(req.usuario);
+  if (!perfis.length || perfis.some((x) => !MODULO_DO_PERFIL[x])) return next();
   const p = req.path;
   const livre = p === '/me' || p === '/me/senha' || p === '/pendencias' || (req.method === 'GET' && p.startsWith('/cadastros/'));
-  if (livre || p === prefixo || p.startsWith(`${prefixo}/`) || p.startsWith(`${prefixo}.`)) return next();
+  if (livre || perfis.map((x) => MODULO_DO_PERFIL[x]).some((prefixo) => p === prefixo || p.startsWith(`${prefixo}/`) || p.startsWith(`${prefixo}.`))) return next();
   return next(erro403());
 }
 
 module.exports = {
-  ADM, SOL, APR, FIN, TRE, GRA, CON, ONI, OPE, MODULO_DO_PERFIL, restringirModulo, VE_TUDO, TRANSICOES, STATUS_FINANCEIRO,
+  ADM, SOL, APR, FIN, TRE, GRA, CON, ONI, OPE, MODULO_DO_PERFIL, MODULOS, perfisDe, temPerfil, restringirModulo, VE_TUDO, TRANSICOES, STATUS_FINANCEIRO,
   exigirPerfil, escopoSql, ehDono, carregarViagem, podeTransicao, podeLancar, podeAnalisar, prestacaoAberta,
   acoesViagem, acoesAdiantamento, acoesDespesa, acoesReembolso,
 };

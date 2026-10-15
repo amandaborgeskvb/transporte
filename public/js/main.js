@@ -137,7 +137,8 @@ const MENU = [
   { rota: 'auditoria', titulo: 'Auditoria', icone: 'auditoria', perfis: ADMIN },
   { rota: 'treinamento', titulo: 'Guia do sistema', icone: 'ajuda' },
 ];
-const permitido = (perfis) => !perfis || perfis.includes(usuario.perfil);
+// o usuário pode ter mais de um perfil: o principal + módulos adicionais
+const permitido = (perfis) => !perfis || (usuario.perfis || [usuario.perfil]).some((p) => perfis.includes(p));
 
 // ---------- Navegação ----------
 function lerHash() {
@@ -330,7 +331,7 @@ function montarApp() {
   areaPagina = h('main', { id: 'pagina', class: 'pagina', tabindex: '-1' });
   areaVoltar = h('div', { class: 'barra-voltar' });
   const menuUsuario = h('div', { class: 'menu-usuario', hidden: true, role: 'menu' },
-    h('div', { class: 'cab' }, h('strong', {}, usuario.nome), h('small', {}, `${rotulo(usuario.perfil)}${usuario.funcionario_nome ? ` · ${usuario.funcionario_nome}` : ''}`)),
+    h('div', { class: 'cab' }, h('strong', {}, usuario.nome), h('small', {}, `${(usuario.perfis || [usuario.perfil]).map(rotulo).join(' + ')}${usuario.funcionario_nome ? ` · ${usuario.funcionario_nome}` : ''}`)),
     h('button', { type: 'button', role: 'menuitem', onclick: () => { menuUsuario.hidden = true; alterarSenha(); } }, icone('chave'), 'Alterar senha'),
     h('button', { type: 'button', role: 'menuitem', onclick: sair }, icone('sair'), 'Sair'));
   const chip = h('div', { class: 'usuario-chip' },

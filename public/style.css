@@ -1038,3 +1038,8 @@ html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
 .aet-l-txt small { color: var(--muted); font-size: .74rem; }
 .aet-renovadas summary { cursor: pointer; font-size: .76rem; color: var(--muted); padding: 2px 6px; }
 .aet-renovadas[open] { display: flex; flex-direction: column; gap: 4px; }
+/* usuários: módulos adicionais (mais de um perfil) */
+.modulos-extra { border: 1px solid var(--linha); border-radius: 8px; padding: 8px 12px 10px; margin: 0; }
+.modulos-extra legend { font-size: .86rem; font-weight: 600; padding: 0 4px; }
+.modulos-op { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 2px 0 4px; }
+.perfis-badges { display: inline-flex; gap: 4px; align-items: center; flex: none; }

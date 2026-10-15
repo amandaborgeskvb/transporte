@@ -43,3 +43,30 @@ test('o administrador vê o perfil na lista e pode trocar', async () => {
   assert.equal((await admin.put(`/api/usuarios/${u.id}`, { nome: 'tre', perfil: 'contratacao', ativo: true })).status, 200);
   assert.equal((await admin.post('/api/usuarios', { nome: 'x', login: 'x1', senha: SENHA, perfil: 'inexistente' })).status, 400);
 });
+
+test('mais de um perfil: perfil principal + módulos adicionais', async () => {
+  // Ônibus + Operacional: usa os dois módulos e nada além
+  let r = await admin.post('/api/usuarios', { nome: 'multi', login: 'multi', senha: SENHA, perfil: 'onibus', perfis_extras: ['operacional', 'onibus'] });
+  assert.equal(r.status, 201, JSON.stringify(r.corpo));
+  assert.deepEqual(r.corpo.perfis_extras, ['operacional']); // o principal não se repete
+  const multi = await t.logado('multi');
+  const me = (await multi.get('/api/me')).corpo;
+  assert.deepEqual(me.perfis, ['onibus', 'operacional']);
+  for (const u of ['/api/onibus/painel', '/api/operacional/painel', '/api/operacional/aets']) assert.equal((await multi.get(u)).status, 200, u);
+  for (const u of ['/api/treino/relatorio', '/api/gratificacao/painel', '/api/viagens', '/api/usuarios']) assert.equal((await multi.get(u)).status, 403, u);
+  // solicitante + Treinamento: continua com as viagens dele e ganha o módulo Treinamento
+  const ana = (await admin.get('/api/usuarios')).corpo.find((u) => u.login === 'ana');
+  r = await admin.put(`/api/usuarios/${ana.id}`, { nome: ana.nome, perfil: ana.perfil, funcionario_id: ana.funcionario_id, ativo: true, perfis_extras: ['treinamento'] });
+  assert.equal(r.status, 200, JSON.stringify(r.corpo));
+  const ana2 = await t.logado('ana');
+  assert.equal((await ana2.get('/api/viagens')).status, 200);
+  assert.equal((await ana2.get('/api/treino/relatorio')).status, 200);
+  assert.equal((await ana2.get('/api/onibus/painel')).status, 403);
+  assert.equal((await ana2.get('/api/usuarios')).status, 403); // módulo adicional não dá poder de administrador
+  // editar sem mandar o campo mantém os módulos; módulo inválido é recusado; administrador/financeiro não precisam
+  r = await admin.put(`/api/usuarios/${ana.id}`, { nome: ana.nome, perfil: ana.perfil, funcionario_id: ana.funcionario_id, ativo: true });
+  assert.deepEqual(r.corpo.perfis_extras, ['treinamento']);
+  assert.equal((await admin.put(`/api/usuarios/${ana.id}`, { nome: ana.nome, perfil: ana.perfil, ativo: true, perfis_extras: ['administrador'] })).status, 400);
+  r = await admin.put(`/api/usuarios/${ana.id}`, { nome: ana.nome, perfil: 'financeiro', ativo: true, perfis_extras: ['onibus'] });
+  assert.deepEqual(r.corpo.perfis_extras, []);
+});

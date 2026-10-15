@@ -251,11 +251,12 @@ function moduloOperacional(p) {
 }
 
 export default async function dashboard({ query, ir, usuario }) {
-  const perfil = usuario?.perfil;
+  const perfil = usuario?.perfil; // principal (viagens e financeiro)
+  const tem = (p) => (usuario?.perfis || [perfil]).includes(p); // principal ou módulo adicional
   const gestor = GESTAO.includes(perfil);
   const viagens = ['administrador', 'solicitante', 'aprovador', 'financeiro'].includes(perfil);
-  // perfis de um módulo só veem o resumo do próprio módulo
-  const ve = { descontos: gestor, gratificacao: gestor || perfil === 'gratificacao', contratacao: gestor || perfil === 'contratacao', treino: gestor || perfil === 'treinamento', onibus: gestor || perfil === 'onibus', operacional: gestor || perfil === 'operacional' };
+  // perfis de um módulo só (e módulos adicionais) veem o resumo do próprio módulo
+  const ve = { descontos: gestor, gratificacao: gestor || tem('gratificacao'), contratacao: gestor || tem('contratacao'), treino: gestor || tem('treinamento'), onibus: gestor || tem('onibus'), operacional: gestor || tem('operacional') };
   const outros = ve.gratificacao || ve.contratacao || ve.treino || ve.onibus;
   const anoAtual = new Date().getFullYear();
   const ano = /^\d{4}$/.test(query.ano || '') ? query.ano : String(anoAtual);

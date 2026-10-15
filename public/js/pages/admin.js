@@ -17,6 +17,9 @@ const DESCRICAO_PERFIL = {
   onibus: 'Só o módulo Ônibus: RESUMO (planilha do dia), Disponibilidade e BASE. O Início mostra o resumo dos ônibus. Não vê viagens de despesa nem os outros módulos.',
   operacional: 'Só o módulo Controle Operacional: veículos leves e pesados, documentos, arquivos e vencimentos. O Início mostra o resumo dos vencimentos. Não vê viagens nem os outros módulos.',
 };
+// Módulos que podem ser dados a mais a um usuário (além do perfil principal)
+const MODULOS = ['treinamento', 'gratificacao', 'contratacao', 'onibus', 'operacional'];
+const nomesPerfis = (u) => [rotulo(u.perfil), ...(u.perfis_extras || []).map(rotulo)].join(' + ');
 const TOM_PERFIL = { administrador: 'ok', solicitante: 'mute', aprovador: 'info', financeiro: 'warn', treinamento: 'info', gratificacao: 'warn', contratacao: 'info', onibus: 'ok', operacional: 'warn' };
 
 export async function usuarios({ params = [] } = {}) {
@@ -37,7 +40,8 @@ export async function usuarios({ params = [] } = {}) {
       class: `item-lista ${selecionado !== 'novo' && selecionado.id === u.id ? 'ativo' : ''} ${u.ativo ? '' : 'inativo'}`, tabindex: 0, role: 'button',
       onclick: () => { selecionado = u; desenhar(); }, onkeydown: (e) => { if (e.key === 'Enter') { selecionado = u; desenhar(); } },
     }, h('div', {}, h('strong', {}, u.nome), h('small', {}, `${u.login}${u.funcionario_nome ? ` · ${u.funcionario_nome}` : ''}`)),
-    u.ativo ? badgeTom(rotulo(u.perfil), TOM_PERFIL[u.perfil]) : badgeTom('Inativo', 'mute'))) : [vazio('Nenhum usuário encontrado.')]));
+    u.ativo ? h('span', { class: 'perfis-badges', title: nomesPerfis(u) }, badgeTom(rotulo(u.perfil), TOM_PERFIL[u.perfil]), u.perfis_extras?.length ? badgeTom(`+${u.perfis_extras.length}`, 'mute') : null)
+      : badgeTom('Inativo', 'mute'))) : [vazio('Nenhum usuário encontrado.')]));
   }
 
   async function recarregar(idSelecionado) {
@@ -61,7 +65,7 @@ export async function usuarios({ params = [] } = {}) {
         novo ? null : { nome: 'ativo', rotulo: 'Usuário ativo', tipo: 'checkbox', valor: u.ativo, cheio: true },
       ].filter(Boolean),
       aoSalvar: async (v) => {
-        const corpo = { ...v, funcionario_id: v.funcionario_id || null };
+        const corpo = { ...v, funcionario_id: v.funcionario_id || null, perfis_extras: [...caixaModulos.querySelectorAll('input:checked')].map((i) => i.value).filter((m) => m !== v.perfil) };
         if (!corpo.senha) delete corpo.senha;
         const salvo = novo ? await post('/usuarios', corpo) : await put(`/usuarios/${u.id}`, corpo);
         toast('Usuário salvo.');
@@ -69,9 +73,20 @@ export async function usuarios({ params = [] } = {}) {
       },
       aoCancelar: novo && lista.length ? () => { selecionado = lista[0]; desenhar(); } : null,
     });
-    form.querySelector('select[name=perfil]')?.addEventListener('change', (e) => { caixaPerfil.textContent = DESCRICAO_PERFIL[e.target.value]; });
+    // mais de um perfil: o principal (acima) + módulos adicionais (o usuário passa a usar também estes módulos)
+    const caixaModulos = h('fieldset', { class: 'cheio modulos-extra' }, h('legend', {}, 'Módulos adicionais (além do perfil principal)'),
+      h('div', { class: 'modulos-op' }, MODULOS.map((m) => h('label', { class: 'check', 'data-mod': m },
+        h('input', { type: 'checkbox', value: m, checked: (u?.perfis_extras || []).includes(m) }), ' ', rotulo(m)))),
+      h('small', { class: 'dica' }, 'Marque os módulos que este usuário também usa (ex.: perfil Ônibus + Operacional). Administrador e financeiro já veem todos os módulos.'));
+    const atualizarModulos = (perfil) => {
+      caixaModulos.style.display = ['administrador', 'financeiro'].includes(perfil) ? 'none' : '';
+      caixaModulos.querySelectorAll('label').forEach((l) => { l.style.display = l.dataset.mod === perfil ? 'none' : ''; }); // o principal não aparece de novo
+    };
+    form.querySelector('.form-grid').append(caixaModulos);
+    atualizarModulos(u?.perfil || 'solicitante');
+    form.querySelector('select[name=perfil]')?.addEventListener('change', (e) => { caixaPerfil.textContent = DESCRICAO_PERFIL[e.target.value]; atualizarModulos(e.target.value); });
     detalhe.replaceChildren(
-      h('div', { class: 'detalhe-cab' }, h('div', {}, h('h2', {}, novo ? 'Novo usuário' : u.nome), h('div', { class: 'muted' }, novo ? 'Defina o perfil e uma senha inicial.' : `${u.login} · ${rotulo(u.perfil)}`))),
+      h('div', { class: 'detalhe-cab' }, h('div', {}, h('h2', {}, novo ? 'Novo usuário' : u.nome), h('div', { class: 'muted' }, novo ? 'Defina o perfil, os módulos adicionais e uma senha inicial.' : `${u.login} · ${nomesPerfis(u)}`))),
       caixaPerfil, h('div', { class: 'espaco' }), form);
   }
 

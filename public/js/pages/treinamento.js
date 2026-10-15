@@ -126,12 +126,13 @@ const TOPICOS = [
 ];
 
 export default async function treinamento({ usuario }) {
-  const meus = TOPICOS.filter((t) => t.perfis.includes(usuario.perfil));
-  const soUmModulo = ['treinamento', 'gratificacao', 'contratacao', 'onibus', 'operacional'].includes(usuario.perfil); // não usam os outros módulos
-  const outros = soUmModulo ? [] : TOPICOS.filter((t) => !t.perfis.includes(usuario.perfil));
+  const perfis = usuario.perfis || [usuario.perfil]; // principal + módulos adicionais
+  const meus = TOPICOS.filter((t) => t.perfis.some((p) => perfis.includes(p)));
+  const soModulos = perfis.every((p) => ['treinamento', 'gratificacao', 'contratacao', 'onibus', 'operacional'].includes(p)); // não usam os outros módulos
+  const outros = soModulos ? [] : TOPICOS.filter((t) => !t.perfis.some((p) => perfis.includes(p)));
   const bloco = (t, aberto) => h('details', { class: 'treino', open: aberto }, h('summary', {}, t.titulo), h('div', { class: 'treino-corpo' }, t.corpo()));
   return [
-    cabecalhoPagina({ migalhas: [['Configurações'], ['Guia do sistema']], titulo: 'Guia do sistema', sub: `Passo a passo do sistema — perfil: ${rotulo(usuario.perfil)}` }),
+    cabecalhoPagina({ migalhas: [['Configurações'], ['Guia do sistema']], titulo: 'Guia do sistema', sub: `Passo a passo do sistema — perfil: ${perfis.map(rotulo).join(' + ')}` }),
     secao('Para o seu perfil', null, ...meus.map((t, i) => bloco(t, i === 0))),
     outros.length ? secao('Outros tópicos', null, ...outros.map((t) => bloco(t, false))) : null,
   ].filter(Boolean);
