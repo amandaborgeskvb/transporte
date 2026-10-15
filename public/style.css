@@ -848,3 +848,29 @@ html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
 .oni-folha .oni-ftab th { font-size: 5.8pt; padding: .6mm .6mm; }
 .oni-folha .oni-fcab { margin-bottom: 2mm; }
 .oni-folha .oni-fcab h1 { font-size: 14pt; margin-bottom: 1mm; }
+/* previsto × em atividade (atividades da frota) */
+.ch-prev { display: grid; gap: 6px; }
+.ch-prev .ch-linha { display: grid; grid-template-columns: minmax(110px, 170px) 1fr minmax(70px, auto); gap: 10px; align-items: center; font-size: .82rem; outline: none; }
+.ch-prev .ch-linha:focus-visible { box-shadow: 0 0 0 2px var(--marca); border-radius: 4px; }
+.ch-prev .nome { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--txt); }
+.ch-prev .ch-trilho { position: relative; height: 14px; background: var(--trilho); border-radius: 4px; }
+.ch-prev .ch-trilho i { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 4px; }
+.ch-prev .ch-trilho i.ch-prev-f { background: var(--cls-sem); border-radius: 0 4px 4px 0; border-left: 2px solid var(--card); }
+.ch-prev .ch-prev-m { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--txt); border-radius: 1px; }
+.ch-prev .valor { font-variant-numeric: tabular-nums; font-weight: 650; color: var(--txt); white-space: nowrap; }
+.ch-prev .valor small { display: block; font-weight: 400; color: var(--muted); font-size: .72rem; }
+.oni-folha .ch-prev { gap: 1.1mm; }
+.oni-folha .ch-prev .ch-linha { font-size: 6.6pt; grid-template-columns: 30mm 1fr 15mm; gap: 2mm; }
+.oni-folha .ch-prev .ch-trilho { height: 3mm; }
+.oni-folha .ch-prev .valor small { font-size: 5.6pt; }
+.oni-fgrade.tres { grid-template-columns: .85fr 1fr 1fr; gap: 3mm; }
+.oni-folha { --trilho: #e8ecf2; }
+.oni-folha .oni-fgraf .legenda { gap: 2mm 3mm; }
+.oni-folha .ch-prev .ch-linha { grid-template-columns: 24mm 1fr 11mm; gap: 1.5mm; }
+/* coluna do valor com largura fixa: todos os trilhos do mesmo tamanho */
+.ch-prev .ch-linha { grid-template-columns: minmax(110px, 170px) 1fr 64px; }
+.ch-prev .valor { text-align: right; }
+.oni-folha .ch-prev .ch-linha { grid-template-columns: 24mm 1fr 10mm; }
+.oni-folha .ch-prev .valor small { font-size: 5.2pt; }
+.oni-folha .ch-prev .valor { min-width: 0; }
+.oni-folha .ch-prev .ch-linha { padding: 0; }

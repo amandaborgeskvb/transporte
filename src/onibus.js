@@ -94,11 +94,43 @@ function lerPassageiros(v) {
   if (!partes.every((x) => /^\d+(\.0+)?$/.test(x))) return undefined;
   return partes.reduce((s, x) => s + Math.round(Number(x)), 0);
 }
+// Atividade de uma linha do RESUMO pelo texto da coluna ATIVIDADE.
+// palavras: "HERBICIDA, TRATOS" (qualquer uma) e "INDUSTRIA+IPIACU" (todas as partes); sem acento e sem diferença de maiúscula.
+// Se o texto combina com mais de uma atividade, vale a palavra mais específica (a mais longa): "FRENTE 1 - IRRIGACAO" é irrigação.
+const normAtividade = (t) => ` ${semAcento(t).toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim()} `;
+function classificarAtividade(texto, atividades) {
+  const t = normAtividade(texto);
+  if (t.trim() === '') return null;
+  let melhor = null;
+  for (const a of atividades) {
+    if (a.ativo === false) continue;
+    for (const alt of String(a.palavras || '').split(/[,;\n]/)) {
+      const partes = alt.split('+').map((p) => normAtividade(p).trim()).filter(Boolean);
+      if (!partes.length || !partes.every((p) => t.includes(p))) continue;
+      const peso = partes.join('').length;
+      if (!melhor || peso > melhor.peso || (peso === melhor.peso && a.ordem < melhor.ordem)) melhor = { id: a.id, peso, ordem: a.ordem };
+    }
+  }
+  return melhor?.id ?? null;
+}
+// Ônibus por atividade num dia: previsto × em atividade (liberados) e os que estão na atividade mas não liberados; na ordem do cadastro
+function contarAtividades(linhas, atividades) {
+  const lista = [...atividades].filter((a) => a.ativo !== false).sort((a, b) => a.ordem - b.ordem || a.id - b.id);
+  const por = new Map(lista.map((a) => [a.id, { id: a.id, nome: a.nome, previsto: a.previsto, em_atividade: 0, fora: 0 }]));
+  const outros = { id: null, nome: 'Outros', previsto: null, em_atividade: 0, fora: 0 };
+  for (const l of linhas) {
+    const id = classificarAtividade(l.atividade, lista);
+    const g = id ? por.get(id) : outros;
+    if (l.situacao === 'liberado') g.em_atividade += 1; else g.fora += 1;
+  }
+  return { atividades: [...por.values()], outros };
+}
+
 // Disponibilidade = ônibus-dia liberados ÷ ônibus-dia lançados (%)
 const disponibilidade = (liberados, total) => (total ? Math.round((liberados * 1000) / total) / 10 : null);
 
 module.exports = {
   TOLERANCIA_MIN, SITUACOES, TIPOS_OCORRENCIA, DOCUMENTOS, AVISO_DIAS, ehHora, minutos, lerHora, diferenca, duracao, calculosViagem, situacaoDocumento,
   VISTORIA_DIAS, LAVAGEM_DIAS, META_DISPONIBILIDADE, SITUACOES_DIARIO, NOME_SITUACAO, somarDias, semAcento, situacaoVistoria, lavagemPendente,
-  lerSituacaoDiario, lerPassageiros, disponibilidade,
+  lerSituacaoDiario, lerPassageiros, disponibilidade, normAtividade, classificarAtividade, contarAtividades,
 };

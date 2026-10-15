@@ -11,7 +11,7 @@ const { lerData } = require('../treino');
 const { gerarPdfOnibus } = require('../onibusPdf');
 const {
   VISTORIA_DIAS, LAVAGEM_DIAS, META_DISPONIBILIDADE, SITUACOES_DIARIO, NOME_SITUACAO, somarDias, semAcento, situacaoVistoria, lavagemPendente,
-  lerSituacaoDiario, lerPassageiros, disponibilidade,
+  lerSituacaoDiario, lerPassageiros, disponibilidade, contarAtividades,
 } = require('../onibus');
 
 const dataLocal = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : d);
@@ -83,12 +83,19 @@ async function calcularDisponibilidade(db, de, ate, { previa = null } = {}) {
     dias.set(k, d);
     total[r.situacao] += r.qtd; total.total += r.qtd;
   }
+  // atividades do último dia do período (ou do dia em prévia): previsto × em atividade
+  const diaAtv = previa && previa >= de && previa <= ate ? previa : ate;
+  const [atvs, linhasDia] = await Promise.all([
+    db.query('SELECT * FROM onibus_atividades WHERE ativo ORDER BY ordem, id'),
+    db.query(`SELECT atividade, situacao FROM ${diaAtv === previa ? 'onibus_diario' : 'onibus_base'} WHERE data = $1`, [diaAtv]),
+  ]);
   const comPct = (x) => ({ ...x, disponibilidade: disponibilidade(x.liberado, x.total) });
   const lista = [...empresas.values()].sort((a, b) => a.ordem - b.ordem || a.empresa.localeCompare(b.empresa)).map(({ ordem, ...x }) => comPct(x));
   return {
     de, ate, meta: META_DISPONIBILIDADE, empresas: lista, total: comPct(total),
     abaixo_da_meta: lista.filter((e) => e.disponibilidade != null && e.disponibilidade < META_DISPONIBILIDADE).length,
     dias: [...dias.values()].sort((a, b) => a.data.localeCompare(b.data)).map(comPct),
+    atividades: { data: diaAtv, ...contarAtividades(linhasDia.rows, atvs.rows) },
   };
 }
 
@@ -197,7 +204,7 @@ function criarOnibusDiario({ pool }) {
   router.get('/onibus/diario', wrap(async (req, res) => {
     const hoje = hojeSP();
     const dia = ehData(req.query.data) ? req.query.data : hoje;
-    const [linhas, obs, ant, prox, faltam, sug, empresas, salvo] = await Promise.all([
+    const [linhas, obs, ant, prox, faltam, sug, empresas, salvo, atividades] = await Promise.all([
       pool.query(`${SELECT} WHERE d.data = $1 ${ORDEM}`, [dia]),
       pool.query('SELECT observacao, alterado_em FROM onibus_diario_obs WHERE data = $1', [dia]),
       pool.query(`SELECT max(data) AS d FROM ${DIAS} x WHERE data < $1`, [dia]),
@@ -208,6 +215,7 @@ function criarOnibusDiario({ pool }) {
                   UNION SELECT 'rota', rota_volta FROM onibus_diario WHERE data > $1::date - 120 AND rota_volta <> '' GROUP BY 2`, [dia]),
       pool.query("SELECT DISTINCT empresa FROM onibus_frota WHERE empresa <> '' ORDER BY 1"),
       pool.query('SELECT linhas, salvo_em, salvo_por_nome, origem FROM onibus_base_dias WHERE data = $1', [dia]),
+      pool.query('SELECT * FROM onibus_atividades WHERE ativo ORDER BY ordem, id'),
     ]);
     const itens = linhas.rows.map(formatar);
     const b = salvo.rows[0];
@@ -216,7 +224,7 @@ function criarOnibusDiario({ pool }) {
     res.json({
       data: dia, hoje, anterior: dataLocal(ant.rows[0].d), proximo: dataLocal(prox.rows[0].d), linhas: itens, resumo: resumir(itens),
       observacao: obs.rows[0]?.observacao || '', fora_do_dia: faltam.rows, empresas: empresas.rows.map((r) => r.empresa),
-      sugestoes: { atividades: lista('atividade'), rotas: lista('rota') }, vistoria_dias: VISTORIA_DIAS, lavagem_dias: LAVAGEM_DIAS, meta: META_DISPONIBILIDADE,
+      sugestoes: { atividades: lista('atividade'), rotas: lista('rota') }, atividades: atividades.rows, vistoria_dias: VISTORIA_DIAS, lavagem_dias: LAVAGEM_DIAS, meta: META_DISPONIBILIDADE,
       // BASE: quando este dia foi salvo e se o RESUMO mudou depois disso
       base: b ? { linhas: b.linhas, salvo_em: b.salvo_em, salvo_por: b.salvo_por_nome, origem: b.origem } : null,
       alterado_em: alterado, pendente: itens.length > 0 && (!b || (alterado && new Date(alterado) > new Date(b.salvo_em))),
@@ -330,6 +338,44 @@ function criarOnibusDiario({ pool }) {
       return rows[0];
     });
     res.json({ data: dia, base: { linhas: salvo.linhas, salvo_em: salvo.salvo_em, salvo_por: salvo.salvo_por_nome, origem: 'resumo' }, pendente: false });
+  }));
+
+  // ================= Atividades (previsto por atividade e as palavras da coluna ATIVIDADE) =================
+  const lerAtividade = (b) => {
+    const previsto = Number(b.previsto);
+    if (!Number.isInteger(previsto) || previsto < 0 || previsto > 200) throw erro400('Quantidade prevista inválida.');
+    const ordem = b.ordem === '' || b.ordem == null ? 0 : Number(b.ordem);
+    if (!Number.isInteger(ordem)) throw erro400('Ordem inválida.');
+    return {
+      nome: texto(b.nome, 80, { obrigatorio: true, rotulo: 'Nome da atividade' }), previsto,
+      palavras: texto(b.palavras, 300, { obrigatorio: true, rotulo: 'Palavras da coluna ATIVIDADE' }).toUpperCase(),
+      ordem, ativo: b.ativo === undefined ? true : bool(b.ativo),
+    };
+  };
+  const COLS_ATV = ['nome', 'previsto', 'palavras', 'ordem', 'ativo'];
+  router.get('/onibus/atividades', wrap(async (_req, res) => {
+    res.json((await pool.query('SELECT * FROM onibus_atividades ORDER BY ativo DESC, ordem, id')).rows);
+  }));
+  router.post('/onibus/atividades', wrap(async (req, res) => {
+    const a = lerAtividade(req.body);
+    const { rows } = await pool.query(`INSERT INTO onibus_atividades (${COLS_ATV.join(', ')}) VALUES ($1, $2, $3, $4, $5) RETURNING *`, COLS_ATV.map((c) => a[c]));
+    await auditar(pool, req.usuario, 'criar', 'onibus_atividade', rows[0].id, a);
+    res.status(201).json(rows[0]);
+  }));
+  router.put('/onibus/atividades/:id', wrap(async (req, res) => {
+    const id = idParam(req);
+    const a = lerAtividade(req.body);
+    const { rows } = await pool.query(`UPDATE onibus_atividades SET ${COLS_ATV.map((c, i) => `${c} = $${i + 1}`).join(', ')} WHERE id = $6 RETURNING *`, [...COLS_ATV.map((c) => a[c]), id]);
+    if (!rows[0]) throw erro404('Atividade não encontrada.');
+    await auditar(pool, req.usuario, 'editar', 'onibus_atividade', id, a);
+    res.json(rows[0]);
+  }));
+  router.delete('/onibus/atividades/:id', wrap(async (req, res) => {
+    const id = idParam(req);
+    const { rows } = await pool.query('DELETE FROM onibus_atividades WHERE id = $1 RETURNING nome', [id]);
+    if (!rows[0]) throw erro404('Atividade não encontrada.');
+    await auditar(pool, req.usuario, 'excluir', 'onibus_atividade', id, rows[0]);
+    res.status(204).end();
   }));
 
   // GET /onibus/disponibilidade?de&ate (padrão: da segunda-feira da semana até hoje)

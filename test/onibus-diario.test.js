@@ -298,3 +298,44 @@ test('Salvar em PDF: RESUMO + disponibilidade (ou só um deles) como arquivo PDF
   assert.equal((await oni.get(`/api/onibus/imprimir.pdf?data=${D1}&de=${D2}&ate=${D1}`)).status, 400);
   assert.equal((await ana.get(`/api/onibus/imprimir.pdf?data=${D1}`)).status, 403);
 });
+
+test('atividades: previsto × em atividade pela coluna ATIVIDADE, com o previsto editável', async () => {
+  const { classificarAtividade } = require('../src/onibus');
+  const lista = (await oni.get('/api/onibus/atividades')).corpo;
+  assert.deepEqual(lista.map((a) => [a.nome, a.previsto]), [['Frentes (CTT)', 6], ['Irrigação Localizada', 1], ['Irrigação Convencional', 1], ['Herbicida (Tratos)', 4],
+    ['Reflorestamento', 1], ['Indústria Capinópolis', 6], ['Indústria Ipiaçu', 2], ['Indústria Ituiutaba', 2]]);
+  const nome = (t) => lista.find((a) => a.id === classificarAtividade(t, lista))?.nome || 'Outros';
+  assert.equal(nome('FRENTE 3 - ITUIUTABA'), 'Frentes (CTT)');
+  assert.equal(nome('FRENTE 1 -  IRRIGACAO'), 'Irrigação Convencional'); // a palavra mais específica vence
+  assert.equal(nome('LOCALIZADA'), 'Irrigação Localizada');
+  assert.equal(nome('HERBICIDA IPIAÇU'), 'Herbicida (Tratos)');
+  assert.equal(nome('MANOBRA INDUSTRIA - IPIAÇU'), 'Indústria Ipiaçu');
+  assert.equal(nome('CAPINÓPOLIS- INDUSTRIA'), 'Indústria Capinópolis');
+  assert.equal(nome('ITUIUTABA - INDUSTRIA'), 'Indústria Ituiutaba');
+  assert.equal(nome('MOTORISTAS- BASE'), 'Outros');
+
+  // D1 na BASE: 50001 FRENTE 2 (liberado), 50002 MANUTENÇÃO (manutenção), 60001 sem atividade
+  let p = (await oni.get(`/api/onibus/disponibilidade?de=${D1}&ate=${D1}`)).corpo;
+  assert.equal(p.atividades.data, D1);
+  const frentes = () => p.atividades.atividades.find((a) => a.nome === 'Frentes (CTT)');
+  assert.deepEqual([frentes().em_atividade, frentes().previsto], [1, 6]);
+  // na prévia do RESUMO (D2), muda conforme a atividade é alterada
+  const d2 = (await oni.get(`/api/onibus/diario?data=${D2}`)).corpo;
+  assert.ok(d2.atividades.length >= 8);
+  const beta = d2.linhas.find((l) => l.prefixo === '60001');
+  await oni.put(`/api/onibus/diario/${beta.id}`, { ...beta, atividade: 'Herbicida tratos', situacao: 'liberado' });
+  p = (await oni.get(`/api/onibus/disponibilidade?de=${D2}&ate=${D2}&previa=${D2}`)).corpo;
+  assert.equal(p.atividades.atividades.find((a) => a.nome === 'Herbicida (Tratos)').em_atividade, 1);
+
+  // o previsto é editável; atividade nova e exclusão
+  const herb = lista.find((a) => a.nome === 'Herbicida (Tratos)');
+  assert.equal((await oni.put(`/api/onibus/atividades/${herb.id}`, { ...herb, previsto: 5 })).status, 200);
+  p = (await oni.get(`/api/onibus/disponibilidade?de=${D2}&ate=${D2}&previa=${D2}`)).corpo;
+  assert.equal(p.atividades.atividades.find((a) => a.nome === 'Herbicida (Tratos)').previsto, 5);
+  const nova = (await oni.post('/api/onibus/atividades', { nome: 'Motoristas', previsto: 2, palavras: 'motorista', ordem: 90 })).corpo;
+  assert.equal(nova.palavras, 'MOTORISTA');
+  assert.equal((await oni.post('/api/onibus/atividades', { nome: 'X', previsto: -1, palavras: 'A' })).status, 400);
+  assert.equal((await oni.post('/api/onibus/atividades', { nome: 'Motoristas', previsto: 1, palavras: 'A' })).status, 409);
+  assert.equal((await oni.del(`/api/onibus/atividades/${nova.id}`)).status, 204);
+  assert.equal((await ana.get('/api/onibus/atividades')).status, 403);
+});

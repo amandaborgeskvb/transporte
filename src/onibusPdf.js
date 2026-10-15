@@ -221,14 +221,15 @@ function gerarPdfOnibus({ resumo = null, disp = null, emitidoPor = '', agora = n
 
     // --- Situação da frota por dia (colunas empilhadas)
     const dy = by + bh + 8;
-    const dw = L * 0.52;
+    const dw = L * 0.28;
     const dh = doc.page.height - 22 - dy;
     caixa(x0, dy, dw, dh, 'Situação da frota por dia');
-    legenda(x0 + 10, dy + 20, [['Liberado', COR.liberado], ['Manutenção', COR.manutencao], ['Interditado', COR.interditado], ['Reserva / parado', COR.outros]]);
+    legenda(x0 + 8, dy + 20, [['Liberado', COR.liberado], ['Manutenção', COR.manutencao], ['Interditado', COR.interditado]]);
+    legenda(x0 + 8, dy + 29, [['Reserva / parado', COR.outros]]);
     const sx = x0 + 34;
-    const sy = dy + 42;
+    const sy = dy + 48;
     const sw = dw - 34 - 12;
-    const sh = dh - 42 - 22;
+    const sh = dh - 48 - 22;
     const dias = disp.dias;
     // eixo com números redondos (passo de 1, 2, 5, 10, 20, 25, 50…)
     const maior = Math.max(1, ...dias.map((x) => x.total));
@@ -252,20 +253,50 @@ function gerarPdfOnibus({ resumo = null, disp = null, emitidoPor = '', agora = n
       }
     });
 
+    // --- Frotas por atividade (previsto × em atividade) no último dia do período
+    const at = disp.atividades;
+    const ax = x0 + dw + 8;
+    const aw = L * 0.36;
+    caixa(ax, dy, aw, dh, `Frotas por atividade — ${br(at?.data)}`);
+    if (at) {
+      legenda(ax + 8, dy + 20, [['Liberados no previsto ou acima', COR.meta_ok], ['Abaixo do previsto', COR.meta_baixo]]);
+      legenda(ax + 8, dy + 29, [['Na atividade, não liberados', COR.outros], ['Previsto (traço)', TINTA]]);
+      const itens = at.atividades.map((a) => ({ nome: a.nome, valor: a.em_atividade, fora: a.fora, previsto: a.previsto }));
+      if (at.outros.em_atividade + at.outros.fora) itens.push({ nome: 'Outros', valor: at.outros.em_atividade, fora: at.outros.fora, previsto: null });
+      const maxA = Math.max(1, ...itens.map((i) => Math.max(i.valor + i.fora, i.previsto || 0)));
+      const nomeW = 78;
+      const valW = 34;
+      const trilhoX = ax + 8 + nomeW;
+      const trilhoW = aw - 16 - nomeW - valW;
+      const passoY = Math.min(15, (dh - 48 - 8) / Math.max(1, itens.length));
+      itens.forEach((i, k) => {
+        const yy = dy + 46 + k * passoY;
+        doc.font('Helvetica').fontSize(6.6).fillColor(TINTA).text(corte(i.nome, nomeW - 4), ax + 8, yy + 1, { width: nomeW - 4, lineBreak: false });
+        doc.roundedRect(trilhoX, yy, trilhoW, 8, 2).fill('#e8ecf2');
+        const w1 = (trilhoW * i.valor) / maxA;
+        const w2 = (trilhoW * i.fora) / maxA;
+        if (i.valor) doc.roundedRect(trilhoX, yy, w1, 8, 2).fill(i.previsto == null ? COR.outros : i.valor >= i.previsto ? COR.meta_ok : COR.meta_baixo);
+        if (i.fora) doc.rect(trilhoX + w1 + (i.valor ? 1 : 0), yy, w2, 8).fill(COR.outros);
+        if (i.previsto != null) { const mx = trilhoX + (trilhoW * i.previsto) / maxA; doc.rect(mx - 0.8, yy - 2, 1.6, 12).fill(TINTA); }
+        doc.font('Helvetica-Bold').fontSize(6.8).fillColor(i.previsto != null && i.valor < i.previsto ? '#b4232a' : TINTA)
+          .text(i.previsto == null ? n(i.valor) : `${n(i.valor)} / ${n(i.previsto)}`, trilhoX + trilhoW + 4, yy + 1, { width: valW - 4, lineBreak: false });
+      });
+    }
+
     // --- Tabela por empresa
-    const tx = x0 + dw + 10;
-    const tw = L - dw - 10;
-    const TCOLS = [['EMPRESA', 0.28], ['LIB.', 0.09], ['MANUT.', 0.1], ['RES.', 0.08], ['INTERD.', 0.1], ['PARADO', 0.1], ['TOTAL', 0.1], ['DISP.', 0.15]];
+    const tx = ax + aw + 8;
+    const tw = x0 + L - tx;
+    const TCOLS = [['EMPRESA', 0.3], ['LIB.', 0.08], ['MANUT.', 0.1], ['RES.', 0.08], ['INTERD.', 0.1], ['PARADO', 0.1], ['TOTAL', 0.09], ['DISP.', 0.15]];
     let yy = dy;
     let xx = tx;
-    TCOLS.forEach(([t, f]) => { celula(xx, yy, tw * f, 14, t, { fundo: '#eef0f3', negrito: true, tam: 6.2, alinhar: t === 'EMPRESA' ? 'left' : 'right', borda: '#dbe0e8' }); xx += tw * f; });
+    TCOLS.forEach(([t, f]) => { celula(xx, yy, tw * f, 14, t, { fundo: '#eef0f3', negrito: true, tam: 5.4, alinhar: t === 'EMPRESA' ? 'left' : 'right', borda: '#dbe0e8' }); xx += tw * f; });
     yy += 14;
     for (const e of [...disp.empresas, { ...disp.total, empresa: 'TOTAL' }]) {
       xx = tx;
       const vals = [e.empresa, n(e.liberado), n(e.manutencao), n(e.reserva), n(e.interditado), n(e.parado), n(e.total), pct(e.disponibilidade)];
       TCOLS.forEach(([, f], i) => {
         const fundo = i === 7 && e.disponibilidade != null ? (e.disponibilidade >= disp.meta ? FUNDO.ok : FUNDO.aviso) : null;
-        celula(xx, yy, tw * f, 14, vals[i], { fundo, negrito: i === 0 || i === 7 || e.empresa === 'TOTAL', tam: 6.6, alinhar: i === 0 ? 'left' : 'right', borda: '#dbe0e8' });
+        celula(xx, yy, tw * f, 14, vals[i], { fundo, negrito: i === 0 || i === 7 || e.empresa === 'TOTAL', tam: 6, alinhar: i === 0 ? 'left' : 'right', borda: '#dbe0e8' });
         xx += tw * f;
       });
       yy += 14;

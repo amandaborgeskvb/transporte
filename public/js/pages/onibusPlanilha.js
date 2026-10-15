@@ -5,7 +5,7 @@ import { get, post, put, del, enviarArquivo } from '../api.js';
 import {
   h, dataBR, hojeISO, tabela, botao, cabecalhoPagina, barraComandos, barraFiltros, secao, kpi, toast, confirmar, dialogo, icone, badgeTom,
 } from '../ui.js';
-import { colunasEmpilhadas, colunasMeta, legendaSeries } from '../charts.js';
+import { colunasEmpilhadas, colunasMeta, legendaSeries, barrasPrevisto } from '../charts.js';
 
 const BASE = [['Ônibus']];
 const LOGO = '/img/crv-industrial-azul.png?v=2';
@@ -200,9 +200,16 @@ async function planilha({ query, ir, recarregarPagina }) {
         const p = await get(`/onibus/disponibilidade?de=${segunda(d.data)}&ate=${d.data}&previa=${d.data}`);
         areaDisp.replaceChildren(
           h('p', { class: 'muted pequeno' }, `Semana de ${dataBR(p.de)} a ${dataBR(p.ate)} · geral `, h('strong', {}, pct(p.total.disponibilidade)), ` (meta ${p.meta}%) — prévia com o RESUMO como está agora; os outros dias vêm da BASE. Ela muda a cada alteração; na aba Disponibilidade entra quando o RESUMO é salvo na BASE.`),
-          graficoDisponibilidade(p, { largura: 1100, altura: 240 }));
+          graficoDisponibilidade(p, { largura: 560, altura: 260 }));
       } catch { /* a disponibilidade volta na próxima alteração */ }
     }, 500);
+  };
+
+  // ---------- Atividades do dia (previsto × em atividade): recalculado na hora a cada alteração ----------
+  const areaAtv = h('div', {});
+  const desenharAtividades = () => {
+    const at = contarAtividades(linhas, d.atividades);
+    areaAtv.replaceChildren(h('p', { class: 'muted pequeno' }, resumoAtividades(at)), graficoAtividades(at));
   };
 
   // ---------- Resumo (legenda com as contagens) ----------
@@ -253,6 +260,7 @@ async function planilha({ query, ir, recarregarPagina }) {
     // o Nº segue a ordem das linhas (muda quando um ônibus sai)
     corpo.querySelectorAll('tr[data-id] td.oni-n').forEach((td, i) => { td.textContent = String(i + 1); });
     desenharResumo();
+    desenharAtividades();
     atualizarDisponibilidade();
   };
 
@@ -384,7 +392,9 @@ async function planilha({ query, ir, recarregarPagina }) {
         h('p', { class: 'muted pequeno' }, `Cada célula é salva ao sair dela (Enter desce para a linha de baixo). Próxima vistoria = última + ${d.vistoria_dias} dias: vermelho = vencida, verde = em dia. Lavagem 2 = lavagem 1 + ${d.lavagem_dias} dias; em amarelo quando chegou o dia. Passageiros aceita soma (ex.: 50 + 45).`),
         secao('Obs. do dia', null, obs),
         h('div', { class: 'oni-barra-salvar fim' }, botaoSalvar2, h('span', { class: 'muted pequeno' }, 'Tudo o que foi digitado e alterado no dia vai para a BASE (e para a Disponibilidade) ao salvar. Pode salvar quantas vezes quiser: a BASE fica com a última versão do dia.')),
-        secao('Disponibilidade da semana', h('a', { href: `#/onibus/disponibilidade?ate=${d.data}` }, 'Abrir Disponibilidade'), areaDisp),
+        h('div', { class: 'grade-2' },
+          secao('Disponibilidade da semana', h('a', { href: `#/onibus/disponibilidade?ate=${d.data}` }, 'Abrir Disponibilidade'), areaDisp),
+          secao('Frotas por atividade (hoje no RESUMO)', h('a', { href: `#/onibus/disponibilidade?ate=${d.data}` }, 'Mudar previstos'), areaAtv)),
       ],
   ];
 }
@@ -403,6 +413,46 @@ function graficoDias(p, opts = {}) {
     valores: { liberado: x.liberado, manutencao: x.manutencao, interditado: x.interditado, outros: x.reserva + x.parado }, total: x.total,
   })), SERIES_SIT, { aria: 'Situação da frota por dia', ...opts });
 }
+// ---------- Atividades da frota: previsto × em atividade ----------
+// Mesma regra do servidor (src/onibus.js): palavras "A, B" (qualquer uma) e "A+B" (todas); vale a palavra mais específica
+const normAtv = (t) => ` ${String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim()} `;
+function classificarAtividade(texto, atividades) {
+  const t = normAtv(texto);
+  if (!t.trim()) return null;
+  let melhor = null;
+  for (const a of atividades) {
+    for (const alt of String(a.palavras || '').split(/[,;\n]/)) {
+      const partes = alt.split('+').map((x) => normAtv(x).trim()).filter(Boolean);
+      if (!partes.length || !partes.every((x) => t.includes(x))) continue;
+      const peso = partes.join('').length;
+      if (!melhor || peso > melhor.peso || (peso === melhor.peso && a.ordem < melhor.ordem)) melhor = { id: a.id, peso, ordem: a.ordem };
+    }
+  }
+  return melhor?.id ?? null;
+}
+function contarAtividades(linhas, atividades) {
+  const lista = [...atividades].sort((a, b) => a.ordem - b.ordem || a.id - b.id);
+  const por = new Map(lista.map((a) => [a.id, { id: a.id, nome: a.nome, previsto: a.previsto, em_atividade: 0, fora: 0 }]));
+  const outros = { id: null, nome: 'Outros', previsto: null, em_atividade: 0, fora: 0 };
+  for (const l of linhas) {
+    const id = classificarAtividade(l.atividade, lista);
+    const g = id ? por.get(id) : outros;
+    if (l.situacao === 'liberado') g.em_atividade += 1; else g.fora += 1;
+  }
+  return { atividades: [...por.values()], outros };
+}
+function graficoAtividades(at) {
+  const itens = at.atividades.map((a) => ({ nome: a.nome, valor: a.em_atividade, fora: a.fora, previsto: a.previsto }));
+  if (at.outros.em_atividade + at.outros.fora) itens.push({ nome: 'Outros (motoristas, manutenção…)', valor: at.outros.em_atividade, fora: at.outros.fora, previsto: null });
+  return barrasPrevisto(itens, { vazioMsg: 'Nenhuma atividade cadastrada.', rotuloValor: 'liberados na atividade', rotuloFora: 'na atividade, não liberados', rotuloForaCurto: 'não lib.' });
+}
+const resumoAtividades = (at) => {
+  const prev = at.atividades.reduce((t, a) => t + a.previsto, 0);
+  const real = at.atividades.reduce((t, a) => t + Math.min(a.em_atividade, a.previsto), 0);
+  const abaixo = at.atividades.filter((a) => a.em_atividade < a.previsto).length;
+  return `${fmt(real)} de ${fmt(prev)} previstos atendidos${abaixo ? ` · ${abaixo} atividade(s) abaixo do previsto` : ' · todas no previsto'}`;
+};
+
 // curto: títulos abreviados para a folha impressa (a tabela divide a largura com o gráfico)
 const CURTO = { liberado: 'Lib.', manutencao: 'Manut.', reserva: 'Res.', interditado: 'Interd.', parado: 'Parado' };
 function tabelaDisponibilidade(p, { curto = false } = {}) {
@@ -414,7 +464,7 @@ function tabelaDisponibilidade(p, { curto = false } = {}) {
   ], [...p.empresas, { ...p.total, empresa: 'TOTAL' }], { vazioMsg: 'Nada lançado no período.' });
 }
 
-async function disponibilidadePagina({ query, ir }) {
+async function disponibilidadePagina({ query, ir, recarregarPagina }) {
   const qs = new URLSearchParams(query).toString();
   const p = await get(`/onibus/disponibilidade${qs ? `?${qs}` : ''}`);
   const t = p.total;
@@ -436,9 +486,49 @@ async function disponibilidadePagina({ query, ir }) {
       kpi('Manutenção', fmt(t.manutencao), { icone: 'alerta', tom: t.manutencao ? 'alerta' : 'neutro', sub: `${fmt(t.interditado)} interditado · ${fmt(t.reserva + t.parado)} reserva/parado` }),
       kpi('Empresas abaixo da meta', fmt(p.abaixo_da_meta), { icone: 'relatorio', tom: p.abaixo_da_meta ? 'alerta' : 'ok' })),
     secao('Disponibilidade por empresa', null, graficoDisponibilidade(p, { largura: 1100 })),
-    secao('Situação da frota por dia', null, legendaSeries(SERIES_SIT), graficoDias(p, { largura: Math.max(1100, p.dias.length * 40) })),
+    h('div', { class: 'grade-2' },
+      secao('Situação da frota por dia', null, legendaSeries(SERIES_SIT), graficoDias(p, { largura: Math.max(560, p.dias.length * 40) })),
+      secao(`Frotas por atividade — ${dataBR(p.atividades.data)}`, h('span', { class: 'muted pequeno' }, 'previsto × em atividade'),
+        h('p', { class: 'muted pequeno' }, resumoAtividades(p.atividades)), graficoAtividades(p.atividades))),
     secao('Tabela', null, tabelaDisponibilidade(p)),
+    await secaoAtividades(recarregarPagina),
   ];
+}
+
+// Cadastro das atividades: quantos ônibus previstos e as palavras da coluna ATIVIDADE que indicam cada uma
+async function secaoAtividades(recarregar) {
+  const lista = await get('/onibus/atividades');
+  const area = h('div', {});
+  const editar = async (a = {}) => {
+    const ok = await dialogo({
+      titulo: a.id ? `Atividade ${a.nome}` : 'Nova atividade',
+      descricao: 'As palavras dizem quais textos da coluna ATIVIDADE contam nesta atividade (sem acento e sem diferença de maiúscula). Separe as alternativas por vírgula; use + quando o texto precisa ter as duas (ex.: INDUSTRIA+IPIACU). Se um texto combinar com mais de uma atividade, vale a palavra mais específica.',
+      campos: [
+        { nome: 'nome', rotulo: 'Atividade', valor: a.nome || '', obrigatorio: true, max: 80, cheio: true },
+        { nome: 'previsto', rotulo: 'Frotas previstas', tipo: 'number', passo: '1', min: '0', max: '200', valor: a.previsto ?? 1, obrigatorio: true },
+        { nome: 'ordem', rotulo: 'Ordem no gráfico', tipo: 'number', passo: '1', valor: a.ordem ?? (Math.max(0, ...lista.map((x) => x.ordem)) + 10) },
+        { nome: 'palavras', rotulo: 'Palavras da coluna ATIVIDADE', valor: a.palavras || '', obrigatorio: true, max: 300, cheio: true, dica: 'Ex.: HERBICIDA, TRATOS' },
+        { nome: 'ativo', rotulo: 'Ativa', tipo: 'checkbox', valor: a.ativo ?? true },
+      ],
+      aoSalvar: (v) => (a.id ? put(`/onibus/atividades/${a.id}`, v) : post('/onibus/atividades', v)),
+    });
+    if (ok) { toast('Atividade salva. Os gráficos já usam o novo previsto.'); recarregar(); }
+  };
+  area.append(tabela([
+    { t: 'Atividade', f: (a) => [h('strong', {}, a.nome), a.ativo ? null : h('span', { class: 'muted pequeno' }, ' (inativa)')] },
+    { t: 'Frotas previstas', num: true, f: (a) => fmt(a.previsto) },
+    { t: 'Palavras da coluna ATIVIDADE', f: (a) => a.palavras },
+    { t: '', f: (a) => {
+      const b = botao('', async () => {
+        if (!(await confirmar('Excluir atividade', `${a.nome} — os ônibus dela passam a contar em "Outros".`, { rotulo: 'Excluir', perigo: true }))) return;
+        await del(`/onibus/atividades/${a.id}`); toast('Atividade excluída.'); recarregar();
+      }, { pequeno: true, tom: 'sec', icone: 'lixeira' });
+      b.setAttribute('aria-label', `Excluir a atividade ${a.nome}`); b.title = 'Excluir';
+      return b;
+    } },
+  ], lista, { vazioMsg: 'Nenhuma atividade cadastrada.', aoClicar: (a) => editar(a) }),
+  h('p', { class: 'muted pequeno' }, `Total previsto: ${fmt(lista.filter((a) => a.ativo).reduce((t, a) => t + a.previsto, 0))} frotas. Clique numa linha para mudar o previsto ou as palavras.`));
+  return secao('Atividades — frotas previstas', botao('Nova atividade', () => editar(), { tom: 'sec', icone: 'mais', pequeno: true }), area);
 }
 
 // ======================================================================
@@ -498,8 +588,9 @@ function folhaDisponibilidade(p) {
     cabecalhoFolha('Disponibilidade Transporte Funcionários', ['CRV Industrial - Unidade Capinópolis/MG', 'Disponibilidade Semanal Transporte Pessoal'], dataBR(p.ate)),
     h('p', { class: 'oni-fper' }, h('b', {}, `Período: ${dataBR(p.de)} - ${dataBR(p.ate)}`), ` · Disponibilidade geral: ${pct(p.total.disponibilidade)} (meta ${p.meta}%)`),
     h('div', { class: 'oni-fgraf' }, h('h2', {}, 'Disponibilidade Semanal'), graficoDisponibilidade(p, { largura: 1100, altura: 210 })),
-    h('div', { class: 'oni-fgrade' },
-      h('div', { class: 'oni-fgraf' }, h('h2', {}, 'Situação da frota por dia'), legendaSeries(SERIES_SIT), graficoDias(p, { largura: 820 })),
+    h('div', { class: 'oni-fgrade tres' },
+      h('div', { class: 'oni-fgraf' }, h('h2', {}, 'Situação da frota por dia'), legendaSeries(SERIES_SIT), graficoDias(p, { largura: 620 })),
+      h('div', { class: 'oni-fgraf' }, h('h2', {}, `Frotas por atividade — ${dataBR(p.atividades.data)}`), graficoAtividades(p.atividades)),
       h('div', { class: 'oni-ftabdisp' }, tabelaDisponibilidade(p, { curto: true }))));
 }
 

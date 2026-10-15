@@ -282,3 +282,34 @@ export function colunasMeta(itens, { meta, aria = 'Gráfico de colunas com meta'
     legendaSeries([{ nome: `Na meta (${meta}%) ou acima`, cor: 'var(--cls-2)' }, { nome: 'Abaixo da meta', cor: 'var(--cls-3)' }]),
     h('div', { class: 'scroll' }, raiz));
 }
+
+// Previsto × realizado por item (ex.: ônibus por atividade). itens: [{ nome, valor, fora, previsto }]
+// valor: realizado (cor --cls-2 no previsto ou acima, --cls-3 abaixo); fora: na atividade, mas sem contar (cinza);
+// previsto: traço vertical. previsto null = item sem previsto (ex.: "Outros"), em cinza.
+export function barrasPrevisto(itens, { vazioMsg = 'Sem dados.', rotuloValor = 'em atividade', rotuloFora = 'não liberados', rotuloForaCurto = 'fora' } = {}) {
+  if (!itens.length) return h('p', { class: 'muted vazio' }, vazioMsg);
+  const max = Math.max(1, ...itens.map((i) => Math.max((i.valor || 0) + (i.fora || 0), i.previsto || 0)));
+  const pctW = (v) => `${(v / max) * 100}%`;
+  const cor = (i) => (i.previsto == null ? 'var(--cls-sem)' : i.valor >= i.previsto ? 'var(--cls-2)' : 'var(--cls-3)');
+  return h('div', {},
+    legendaSeries([
+      { nome: `${rotuloValor} (no previsto ou acima)`, cor: 'var(--cls-2)' }, { nome: 'abaixo do previsto', cor: 'var(--cls-3)' },
+      { nome: rotuloFora, cor: 'var(--cls-sem)' }, { nome: 'previsto', cor: 'var(--txt)' },
+    ]),
+    h('div', { class: 'ch-prev' }, itens.map((i) => {
+      const trilho = h('div', { class: 'ch-trilho' });
+      if (i.valor) { const s = h('i', { class: 'ch-prev-v' }); s.style.width = pctW(i.valor); s.style.background = cor(i); trilho.append(s); }
+      if (i.fora) { const s = h('i', { class: 'ch-prev-f' }); s.style.left = pctW(i.valor || 0); s.style.width = pctW(i.fora); trilho.append(s); }
+      if (i.previsto != null) { const m = h('b', { class: 'ch-prev-m' }); m.style.left = pctW(i.previsto); trilho.append(m); }
+      const texto = i.previsto == null ? fmtN(i.valor) : `${fmtN(i.valor)} / ${fmtN(i.previsto)}`;
+      const linha = h('div', { class: 'ch-linha', tabindex: 0, 'aria-label': `${i.nome}: ${fmtN(i.valor)} ${rotuloValor}${i.previsto != null ? ` de ${fmtN(i.previsto)} previstos` : ''}${i.fora ? `, ${fmtN(i.fora)} ${rotuloFora}` : ''}` },
+        h('span', { class: 'nome', title: i.nome }, i.nome), trilho,
+        h('span', { class: `valor ${i.previsto != null && i.valor < i.previsto ? 'abaixo' : ''}` }, texto, i.fora ? h('small', {}, `+${fmtN(i.fora)} ${rotuloForaCurto}`) : null));
+      ligarDica(linha, () => [i.nome, [
+        [fmtN(i.valor), rotuloValor, cor(i)],
+        ...(i.previsto != null ? [[fmtN(i.previsto), 'previsto', null], [i.valor >= i.previsto ? `+${fmtN(i.valor - i.previsto)}` : `−${fmtN(i.previsto - i.valor)}`, 'em relação ao previsto', null]] : []),
+        ...(i.fora ? [[fmtN(i.fora), rotuloFora, 'var(--cls-sem)']] : []),
+      ]]);
+      return linha;
+    })));
+}

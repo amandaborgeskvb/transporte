@@ -697,6 +697,30 @@ CREATE TABLE IF NOT EXISTS onibus_diario_obs (
   observacao    TEXT NOT NULL DEFAULT '',
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Atividades da frota: quantos ônibus estão previstos em cada uma e as palavras da coluna ATIVIDADE que indicam a atividade
+-- (alternativas separadas por vírgula; "A+B" = precisa ter A e B; vale a palavra mais específica). A ordem é a dos gráficos.
+DO $$
+BEGIN
+  IF to_regclass('public.onibus_atividades') IS NULL THEN
+    CREATE TABLE onibus_atividades (
+      id        SERIAL PRIMARY KEY,
+      nome      TEXT NOT NULL UNIQUE,
+      previsto  INTEGER NOT NULL DEFAULT 0 CHECK (previsto BETWEEN 0 AND 200),
+      palavras  TEXT NOT NULL DEFAULT '',
+      ordem     INTEGER NOT NULL DEFAULT 0,
+      ativo     BOOLEAN NOT NULL DEFAULT true
+    );
+    INSERT INTO onibus_atividades (nome, previsto, palavras, ordem) VALUES
+      ('Frentes (CTT)', 6, 'FRENTE', 10),
+      ('Irrigação Localizada', 1, 'LOCALIZADA', 20),
+      ('Irrigação Convencional', 1, 'IRRIGACAO, IRRIGA', 30),
+      ('Herbicida (Tratos)', 4, 'HERBICIDA, TRATOS', 40),
+      ('Reflorestamento', 1, 'REFLOREST', 50),
+      ('Indústria Capinópolis', 6, 'INDUSTRIA+CAPINOPOLIS', 60),
+      ('Indústria Ipiaçu', 2, 'INDUSTRIA+IPIACU', 70),
+      ('Indústria Ituiutaba', 2, 'INDUSTRIA+ITUIUTABA', 80);
+  END IF;
+END $$;
 -- Quando o RESUMO do dia foi alterado pela última vez (digitação, inclusão, exclusão, observação, importação)
 ALTER TABLE onibus_diario_obs ADD COLUMN IF NOT EXISTS alterado_em TIMESTAMPTZ;
 -- BASE: o RESUMO de cada dia como foi salvo (botão "Salvar na BASE"); a disponibilidade sai daqui
