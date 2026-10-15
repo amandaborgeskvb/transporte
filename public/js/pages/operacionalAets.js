@@ -96,25 +96,33 @@ async function importar() {
   let previa = null;
   const ok = await dialogo({
     titulo: 'Importar planilha de AETs (Excel)',
-    descricao: 'A planilha "SOLICITAÇÃO DE AETs" (.xlsx): cada aba com FROTA, PLACA, Data Realiz. e Próxima Data vira um tipo de AET. As AETs desses tipos são substituídas pelas da planilha; os outros tipos ficam como estão.',
+    descricao: 'A planilha "SOLICITAÇÃO DE AETs" (.xlsx): cada aba com FROTA, PLACA, Data Realiz. e Próxima Data vira um tipo de AET. A planilha é comparada com o que já está no sistema: só entram as AETs novas e as alteradas são atualizadas — nada é duplicado nem apagado. Pode importar a mesma planilha atualizada quantas vezes quiser.',
     campos: [{ nome: 'arquivo', rotulo: 'Planilha (.xlsx)', tipo: 'file', accept: '.xlsx', obrigatorio: true, cheio: true }],
     confirmar: 'Ver prévia',
     aoSalvar: async (v) => { arquivo = v.arquivo; previa = await enviarArquivo('/operacional/aets/importar', arquivo); },
   });
   if (!ok || !previa) return false;
+  const t = previa.totais;
+  const n = (x, cls = '') => h('td', { class: `num ${x ? cls : ''}`.trim() }, x ? fmt(x) : '—');
   const conteudo = h('div', {},
-    h('p', {}, `${fmt(previa.total)} linha(s) em ${fmt(previa.abas.length)} aba(s):`),
+    h('p', {}, `${fmt(t.linhas)} AET(s) em ${fmt(previa.abas.length)} aba(s), comparadas com o que já está no sistema:`),
+    h('ul', { class: 'aet-previa-res' },
+      h('li', {}, h('strong', { class: t.novas ? 'aet-c-em_dia' : '' }, `${fmt(t.novas)} nova(s)`), ' — entram agora'),
+      h('li', {}, h('strong', {}, `${fmt(t.alteradas)} alterada(s)`), ' — atualizadas com os dados da planilha'),
+      h('li', {}, `${fmt(t.iguais)} sem alteração — ficam como estão (não duplicam)`),
+      t.renovadas ? h('li', {}, `${fmt(t.renovadas)} AET(s) do sistema passam a renovadas`) : null,
+      t.sem_aet_removidas ? h('li', {}, `${fmt(t.sem_aet_removidas)} linha(s) "sem AET" saem (o veículo já tem AET)`) : null,
+      t.so_no_sistema ? h('li', { class: 'muted' }, `${fmt(t.so_no_sistema)} AET(s) estão só no sistema (lançadas ou renovadas na tela) e continuam lá`) : null),
     h('div', { class: 'scroll aet-previa' }, h('table', {},
-      h('thead', {}, h('tr', {}, ['Aba (tipo de AET)', 'AETs', 'Vencidas', 'Até 30 dias', 'Sem AET'].map((t, i) => h('th', { class: i ? 'num' : '' }, t)))),
+      h('thead', {}, h('tr', {}, ['Aba (tipo de AET)', 'Na planilha', 'Novas', 'Alteradas', 'Iguais'].map((x, i) => h('th', { class: i ? 'num' : '' }, x)))),
       h('tbody', {}, previa.abas.map((a) => h('tr', {},
-        h('td', {}, a.categoria, h('div', { class: 'muted pequeno' }, [a.esfera, a.encerrada ? `${fmt(a.encerrada)} já renovada(s)` : '', a.substitui ? `substitui ${fmt(a.substitui)} lançada(s)` : ''].filter(Boolean).join(' · '))),
-        h('td', { class: 'num' }, fmt(a.linhas)),
-        h('td', { class: `num ${a.vencida ? 'aet-c-vencida' : ''}` }, a.vencida ? fmt(a.vencida) : '—'),
-        h('td', { class: `num ${a.vence_logo ? 'aet-c-vence_logo' : ''}` }, a.vence_logo ? fmt(a.vence_logo) : '—'),
-        h('td', { class: 'num' }, a.sem_aet ? fmt(a.sem_aet) : '—')))))));
+        h('td', {}, a.categoria, a.esfera ? h('div', { class: 'muted pequeno' }, a.esfera) : null),
+        n(a.linhas), n(a.novas, 'aet-c-em_dia'), n(a.alteradas), n(a.iguais)))))));
+  const nada = !t.novas && !t.alteradas && !t.renovadas && !t.sem_aet_removidas;
+  if (nada) { await confirmar('Nada a importar', h('div', {}, conteudo, h('p', { class: 'muted' }, 'O sistema já está igual à planilha.')), { rotulo: 'OK' }); return false; }
   if (!(await confirmar('Confirmar importação', conteudo, { rotulo: 'Importar' }))) return false;
   const r = await enviarArquivo('/operacional/aets/importar', arquivo, { aplicar: 1 });
-  toast(`Importado: ${fmt(r.total)} AET(s) de ${fmt(r.abas.length)} aba(s).`);
+  toast(`Importado: ${fmt(r.totais.novas)} nova(s), ${fmt(r.totais.alteradas)} alterada(s), ${fmt(r.totais.iguais)} sem alteração.`);
   return true;
 }
 

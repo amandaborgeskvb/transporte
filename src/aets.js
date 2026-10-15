@@ -137,4 +137,8 @@ function marcarRenovadas(itens) {
   return itens;
 }
 
-module.exports = { lerPlanilhaAets, situacaoAet, marcarRenovadas, esferaDe, AVISO_DIAS, RENOVACAO_DIAS, VALIDADE_PADRAO, placaLimpa, dias };
+// Identidade de uma AET entre uma importação e outra: aba (tipo) + veículo (frota e placa) + data de realização + UF
+const chaveVeiculo = (a) => [norm(a.categoria), norm(a.frota), placaLimpa(a.placa)].join('|');
+const chaveAet = (a) => [chaveVeiculo(a), a.realizacao || '', norm(a.uf)].join('|');
+
+module.exports = { lerPlanilhaAets, situacaoAet, marcarRenovadas, esferaDe, AVISO_DIAS, RENOVACAO_DIAS, VALIDADE_PADRAO, placaLimpa, dias, chaveAet, chaveVeiculo };

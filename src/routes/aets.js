@@ -5,7 +5,7 @@ const { tx } = require('../db');
 const { wrap, texto, data, idParam, auditar, diff, ehData, hojeSP, enviarCsv, erro400, erro404 } = require('../util');
 const { exigirPerfil, ADM, FIN, OPE } = require('../workflow');
 const { MAX_BYTES } = require('../planilha');
-const { lerPlanilhaAets, situacaoAet, marcarRenovadas, esferaDe, AVISO_DIAS, VALIDADE_PADRAO, placaLimpa, dias } = require('../aets');
+const { lerPlanilhaAets, situacaoAet, marcarRenovadas, esferaDe, AVISO_DIAS, VALIDADE_PADRAO, placaLimpa, dias, chaveAet, chaveVeiculo } = require('../aets');
 const { somarDias } = require('../onibus');
 
 const SITUACOES = ['vencida', 'vence_logo', 'em_dia', 'sem_aet', 'encerrada'];
@@ -154,24 +154,56 @@ function criarAets({ pool }) {
   }));
 
   // ---------- Importar a planilha ----------
-  // Sem ?aplicar=1: só a prévia. Com: as abas da planilha substituem as AETs desses mesmos tipos (as outras ficam como estão).
+  // Compara com o que já está no sistema (importações anteriores e lançamentos na tela), sem duplicar:
+  // a AET é a mesma quando bate aba + frota + placa + data de realização + UF. Nova entra; mudada é atualizada
+  // (a observação e o "encerrada" do sistema ficam); nada é apagado, só a linha "sem AET" do veículo que ganhou AET.
+  // Sem ?aplicar=1: só a prévia.
+  const CAMPOS_PLANILHA = ['categoria', 'esfera', 'frota', 'placa', 'propriedade', 'especialidade', 'uf', 'doc_crv', 'chassi', 'renavam', 'numero', 'realizacao', 'validade_dias', 'vencimento', 'valor', 'desconto'];
+  const igual = (x, y) => String(x ?? '') === String(y ?? '');
   router.post('/operacional/aets/importar', express.raw({ type: () => true, limit: MAX_BYTES }), wrap(async (req, res) => {
     if (!Buffer.isBuffer(req.body) || !req.body.length) throw erro400('Envie a planilha (.xlsx).');
     const abas = lerPlanilhaAets(req.body);
     const hoje = hojeSP();
-    const itens = marcarRenovadas(abas.flatMap((a) => a.itens.map((x) => ({ ...x, categoria: a.categoria, esfera: a.esfera }))));
-    const existentes = Object.fromEntries((await pool.query('SELECT categoria, count(*)::int AS n FROM op_aets GROUP BY categoria')).rows.map((r) => [r.categoria, r.n]));
+    // a mesma AET repetida na planilha conta uma vez (vale a última linha)
+    const doArquivo = new Map();
+    for (const a of abas) for (const x of a.itens) { const y = { ...x, categoria: a.categoria, esfera: a.esfera, encerrada: false }; doArquivo.set(chaveAet(y), y); }
+    const planilha = [...doArquivo.values()];
+    const existentes = (await pool.query('SELECT * FROM op_aets ORDER BY id')).rows.map(fmtAet);
+    const porChave = new Map();
+    for (const e of existentes) if (!porChave.has(chaveAet(e))) porChave.set(chaveAet(e), e);
+    const fora = existentes.filter((e) => !doArquivo.has(chaveAet(e)));
+    // renovação olhando planilha e sistema juntos (ex.: renovada na tela, ou a nova AET veio nesta planilha)
+    const copias = fora.map((e) => ({ ...e, encerrada: false }));
+    marcarRenovadas([...planilha, ...copias]);
+    const comAet = new Set([...existentes, ...planilha].filter((a) => a.vencimento).map(chaveVeiculo));
+    const acoes = { inserir: [], atualizar: [], iguais: [], ignorar: [] };
+    for (const x of planilha) {
+      const e = porChave.get(chaveAet(x));
+      if (!x.vencimento && comAet.has(chaveVeiculo(x)) && !e) { acoes.ignorar.push(x); continue; } // "sem AET" de quem já tem AET
+      if (!e) { acoes.inserir.push(x); continue; }
+      const encerrada = e.encerrada || x.encerrada;
+      const mudou = CAMPOS_PLANILHA.some((c) => !igual(e[c], x[c])) || encerrada !== e.encerrada || e.uf_aet !== !!x.uf_aet;
+      (mudou ? acoes.atualizar : acoes.iguais).push({ ...x, id: e.id, encerrada });
+    }
+    const semAetSai = existentes.filter((e) => !e.vencimento && comAet.has(chaveVeiculo(e)) && !e.encerrada);
+    const encerrar = fora.filter((e, i) => copias[i].encerrada && !e.encerrada && e.vencimento);
+    const conta = (lista, cat) => lista.filter((x) => x.categoria === cat).length;
     const resumo = abas.map((a) => {
-      const doTipo = itens.filter((x) => x.categoria === a.categoria).map((x) => situacaoAet(x, hoje).situacao);
-      const c = (s) => doTipo.filter((x) => x === s).length;
-      return { categoria: a.categoria, esfera: a.esfera, linhas: doTipo.length, vencida: c('vencida'), vence_logo: c('vence_logo'), em_dia: c('em_dia'), sem_aet: c('sem_aet'), encerrada: c('encerrada'), substitui: existentes[a.categoria] || 0 };
+      const sit = planilha.filter((x) => x.categoria === a.categoria).map((x) => situacaoAet(x, hoje).situacao);
+      return {
+        categoria: a.categoria, esfera: a.esfera, linhas: sit.length, novas: conta(acoes.inserir, a.categoria), alteradas: conta(acoes.atualizar, a.categoria),
+        iguais: conta(acoes.iguais, a.categoria) + conta(acoes.ignorar, a.categoria), vencida: sit.filter((x) => x === 'vencida').length, vence_logo: sit.filter((x) => x === 'vence_logo').length,
+      };
     });
-    if (req.query.aplicar !== '1') return res.json({ abas: resumo, total: itens.length });
+    const totais = {
+      linhas: planilha.length, novas: acoes.inserir.length, alteradas: acoes.atualizar.length, iguais: acoes.iguais.length + acoes.ignorar.length,
+      sem_aet_removidas: semAetSai.length, renovadas: encerrar.length, so_no_sistema: fora.length - semAetSai.length,
+    };
+    if (req.query.aplicar !== '1') return res.json({ abas: resumo, totais });
     await tx(pool, async (db) => {
-      await db.query('DELETE FROM op_aets WHERE categoria = ANY($1)', [abas.map((a) => a.categoria)]);
       const cols = [...COLS, 'uf_aet', 'origem', 'linha', 'criado_por'];
-      for (let i = 0; i < itens.length; i += 200) {
-        const lote = itens.slice(i, i + 200);
+      for (let i = 0; i < acoes.inserir.length; i += 200) {
+        const lote = acoes.inserir.slice(i, i + 200);
         const valores = [];
         const marcas = lote.map((x, j) => {
           valores.push(...COLS.map((c) => (c === 'observacao' ? '' : x[c] ?? (['valor', 'desconto', 'realizacao', 'vencimento', 'validade_dias'].includes(c) ? null : c === 'encerrada' ? false : ''))), !!x.uf_aet, 'importacao', x.linha, req.usuario.id);
@@ -179,9 +211,16 @@ function criarAets({ pool }) {
         });
         await db.query(`INSERT INTO op_aets (${cols.join(', ')}) VALUES ${marcas.join(', ')}`, valores);
       }
-      await auditar(db, req.usuario, 'importar', 'op_aet', null, { arquivo: String(req.query.nome || '').slice(0, 150), abas: resumo.map((r) => `${r.categoria}: ${r.linhas}`) });
+      for (const x of acoes.atualizar) {
+        await db.query(`UPDATE op_aets SET ${CAMPOS_PLANILHA.map((c, i) => `${c} = $${i + 2}`).join(', ')}, encerrada = $${CAMPOS_PLANILHA.length + 2}, uf_aet = $${CAMPOS_PLANILHA.length + 3},
+                        linha = $${CAMPOS_PLANILHA.length + 4}, atualizado_em = now() WHERE id = $1`,
+        [x.id, ...CAMPOS_PLANILHA.map((c) => x[c] ?? (['valor', 'desconto', 'realizacao', 'vencimento', 'validade_dias'].includes(c) ? null : '')), x.encerrada, !!x.uf_aet, x.linha]);
+      }
+      if (semAetSai.length) await db.query('DELETE FROM op_aets WHERE id = ANY($1)', [semAetSai.map((e) => e.id)]);
+      if (encerrar.length) await db.query('UPDATE op_aets SET encerrada = true, atualizado_em = now() WHERE id = ANY($1)', [encerrar.map((e) => e.id)]);
+      await auditar(db, req.usuario, 'importar', 'op_aet', null, { arquivo: String(req.query.nome || '').slice(0, 150), ...totais });
     });
-    res.json({ abas: resumo, total: itens.length, importado: true });
+    res.json({ abas: resumo, totais, importado: true });
   }));
 
   return router;

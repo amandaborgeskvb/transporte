@@ -12,11 +12,11 @@ const serial = (iso) => Date.parse(`${iso}T00:00:00Z`) / 86400000 + 25569;
 const CAB = ['Nº', 'FROTA', 'PROPRI.', 'ESPECIALIDADE', 'PLACA', 'UF', 'DOC. / CRV', 'CHASSI', 'RENAVAN', 'Data Realiz.', 'Próxima Data', 'Qtd Dias', 'Dias Faltante', 'Nº AETS', 'R$ ( Valor Unitário )', 'R$ ( Desconto )'];
 const CAB_PRANCHA = ['Nº', 'FROTA', 'PROPRI.', 'ESPECIALIDADE', 'PLACA', '', 'DOC. / CRV', 'CHASSI', 'RENAVAN', 'Data Realiz.', 'Próxima Data', 'Qtd Dias', 'Dias Faltante', 'Nº AETS', 'UF', 'R$ ( Valor Unitário )', 'R$ ( Desconto )'];
 const topo = (titulo) => [[titulo], [], [], [serial(hoje())], ['', '', '', '', '', '', '', '', '', 'VENCIMENTO ( AETS )']];
-function planilha() {
+function planilha({ numero = '' } = {}) {
   return criarXlsx([
     { nome: 'TABELA PREÇO AET 2026', linhas: [['R$ AET'], ['FORNECEDOR - ', 1, 'DESPACHANTE TESTE']] },
     { nome: 'AET FEDERAL CANAV. DIURNA 2026', linhas: [...topo('CONTROLE DE AETs FEDERAL'), CAB,
-      [1, 90001, 'CRV', 'Caminhão Canavieiro', 'TST-1A11', 'MG', 1, 'CHASSI1', 123, serial(mais(-200)), serial(mais(165)), 0, 0, '', 380, 560],
+      [1, 90001, 'CRV', 'Caminhão Canavieiro', 'TST-1A11', 'MG', 1, 'CHASSI1', 123, serial(mais(-200)), serial(mais(165)), 0, 0, numero, 380, 560],
       ['', '', '', '', '', '', '', '', '', serial(mais(-190)), serial(mais(10))], // 2ª AET do mesmo veículo: vence em 10 dias
       [2, 90002, 'CRV', 'Caminhão Canavieiro', 'TST2B22', 'MG', 2, 'CHASSI2', 456, serial(mais(-400)), serial(mais(-35))], // vencida
       [3, 90003, 'CRV', 'Caminhão Canavieiro', 'TST3C33', 'MG', 3, 'CHASSI3', 789], // sem AET
@@ -70,7 +70,15 @@ test('importar a planilha: prévia, aplicar, painel e filtros', async () => {
   assert.equal((await ope.get('/api/operacional/aets')).corpo.itens.length, 0); // prévia não grava
   r = await enviar(planilha(), true);
   assert.equal(r.corpo.importado, true);
-  r = await enviar(planilha(), true); // reimportar substitui (não duplica)
+  assert.deepEqual([r.corpo.totais.novas, r.corpo.totais.alteradas, r.corpo.totais.iguais], [6, 0, 0]);
+  // reimportar a mesma planilha: nada novo, nada duplicado
+  r = await enviar(planilha(), false);
+  assert.deepEqual([r.corpo.totais.novas, r.corpo.totais.alteradas, r.corpo.totais.iguais], [0, 0, 6]);
+  r = await enviar(planilha(), true);
+  // planilha com uma AET alterada (Nº da AET preenchido): só ela é atualizada
+  r = await enviar(planilha({ numero: '555 / 2026' }), true);
+  assert.deepEqual([r.corpo.totais.novas, r.corpo.totais.alteradas, r.corpo.totais.iguais], [0, 1, 5]);
+  assert.equal((await ope.get('/api/operacional/aets?q=555')).corpo.itens.length, 1);
   const d = (await ope.get('/api/operacional/aets?situacao=todas')).corpo;
   assert.deepEqual(d.totais, { ativas: 4, vencida: 1, vence_logo: 1, em_dia: 2, sem_aet: 1, encerrada: 1, veiculos: 4, vencem_90: 1 });
   const prancha = d.categorias.find((c) => c.nome === 'PRANCHA 4,40 Mts');
@@ -127,4 +135,10 @@ test('lançar, renovar, encerrar e excluir AET', async () => {
   assert.equal((await ope.del(`/api/operacional/aets/${aet.id}`)).status, 204);
   lista = (await ope.get('/api/operacional/aets?categoria=AET%20TESTE&situacao=todas')).corpo.itens;
   assert.equal(lista.length, 1);
+  // reimportar depois de lançar o "sem AET" e renovar na tela: não duplica e não apaga o que foi feito no sistema
+  const antes = (await ope.get('/api/operacional/aets?situacao=todas')).corpo.itens.length;
+  r = await ope.req('POST', '/api/operacional/aets/importar?aplicar=1', undefined, { bruto: planilha({ numero: '555 / 2026' }), tipo: 'application/octet-stream' });
+  assert.equal(r.corpo.totais.novas, 0);
+  assert.equal((await ope.get('/api/operacional/aets?situacao=todas')).corpo.itens.length, antes);
+  assert.equal((await ope.get('/api/operacional/aets?situacao=sem_aet')).corpo.itens.length, 0);
 });
