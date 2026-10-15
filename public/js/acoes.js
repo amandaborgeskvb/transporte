@@ -145,7 +145,8 @@ export async function formDespesa({ viagem, despesa, depois }) {
 
 export async function acaoDespesa(d, acao, depois) {
   if (acao === 'excluir') {
-    if (await confirmar('Excluir despesa', `${d.descricao} — ${brl(d.valor)}`, { rotulo: 'Excluir', perigo: true })) { await del(`/despesas/${d.id}`); ok('Despesa excluída.', depois)(); }
+    const aviso = d.situacao === 'aprovada' ? ' Ela já foi aprovada: os totais da viagem (despesas, saldo, reembolso) serão recalculados.' : '';
+    if (await confirmar('Excluir despesa', `${d.descricao} — ${brl(d.valor)}.${aviso} Não dá para desfazer (fica registrado na Auditoria).`, { rotulo: 'Excluir', perigo: true })) { await del(`/despesas/${d.id}`); ok('Despesa excluída.', depois)(); }
     return;
   }
   if (acao === 'aprovar') {

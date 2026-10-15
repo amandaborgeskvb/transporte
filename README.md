@@ -248,6 +248,7 @@ As permissões são validadas **no servidor** (a tela apenas esconde o que o per
 | Registrar pagamento de adiantamento e reembolso | | | ✔ | ✔ |
 | Lançar despesas e anexar comprovantes | ✔ | | ✔ | ✔ |
 | Aprovar ou rejeitar despesas | | | ✔ | ✔ |
+| Excluir qualquer despesa (ex.: lançada como teste; mesmo aprovada ou com a prestação encerrada) | | | | ✔ |
 | Encerrar prestação de contas | ✔ | | | ✔ |
 | Reabrir prestação de contas encerrada (com motivo) | | | ✔ | ✔ |
 | Emitir, editar e cancelar autorização de desconto (RE. 0150.09) | | | ✔ | ✔ |

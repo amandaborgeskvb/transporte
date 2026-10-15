@@ -108,9 +108,13 @@ function acoesAdiantamento(u, a, v) {
 
 function acoesDespesa(u, d, v) {
   const out = [];
-  if (!STATUS_FINANCEIRO.includes(v.status_codigo) || v.prestacao_situacao === 'aprovada') return out;
-  if (d.situacao === 'pendente' && podeAnalisar(u, v, [ADM, FIN])) out.push('aprovar', 'rejeitar');
-  if (d.situacao !== 'aprovada' && prestacaoAberta(v) && podeLancar(u, v)) out.push('editar', 'excluir');
+  if (STATUS_FINANCEIRO.includes(v.status_codigo) && v.prestacao_situacao !== 'aprovada') {
+    if (d.situacao === 'pendente' && podeAnalisar(u, v, [ADM, FIN])) out.push('aprovar', 'rejeitar');
+    if (d.situacao !== 'aprovada' && prestacaoAberta(v) && podeLancar(u, v)) out.push('editar', 'excluir');
+  }
+  // o administrador exclui qualquer despesa (ex.: lançada como teste ou por engano), mesmo aprovada ou com a prestação
+  // encerrada; os totais da viagem são recalculados e a exclusão fica na Auditoria
+  if (u.perfil === ADM && !out.includes('excluir')) out.push('excluir');
   return out;
 }
 

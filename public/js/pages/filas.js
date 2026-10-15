@@ -46,8 +46,8 @@ export const despesas = fila({
     { t: 'Descrição', f: (x) => x.descricao },
     { t: 'Valor', num: true, f: (x) => brl(x.valor) },
   ],
-  acoes: ['aprovar', 'rejeitar'], fn: acaoDespesa,
-  rotulos: { aprovar: ['Aprovar', ''], rejeitar: ['Rejeitar', 'perigo sec'] },
+  acoes: ['aprovar', 'rejeitar', 'excluir'], fn: acaoDespesa,
+  rotulos: { aprovar: ['Aprovar', ''], rejeitar: ['Rejeitar', 'perigo sec'], excluir: ['Excluir', 'perigo sec'] },
 });
 
 export const reembolsos = fila({

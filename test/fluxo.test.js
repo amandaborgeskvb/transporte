@@ -300,3 +300,18 @@ test('atalhos de prestação de contas: a_enviar e em_aberto só consideram viag
   assert.ok(!(await numeros(ana, 'a_enviar')).includes(v));
   assert.ok(!(await numeros(davi, 'em_aberto')).includes(v));
 });
+
+test('despesa de teste: o administrador exclui mesmo aprovada', async () => {
+  const v = (await novaViagem(ana, { destino: 'Viagem teste' })).corpo.id;
+  const d = (await ana.post(`/api/viagens/${v}/despesas`, { categoria_id: ids.alim, descricao: 'Despesa teste', valor: 10, data: '2026-06-11' })).corpo.id;
+  assert.equal((await davi.post(`/api/despesas/${d}/acao`, { acao: 'aprovar' })).status, 200);
+  assert.equal((await ana.del(`/api/despesas/${d}`)).status, 403); // aprovada: o solicitante não exclui
+  assert.equal((await davi.del(`/api/despesas/${d}`)).status, 403); // nem o financeiro
+  const antes = (await admin.get(`/api/viagens/${v}`)).corpo;
+  assert.ok(antes.despesas.find((x) => x.id === d).acoes.includes('excluir'));
+  assert.equal(antes.despesas_aprovadas, 10);
+  assert.equal((await admin.del(`/api/despesas/${d}`)).status, 204);
+  const depois = (await admin.get(`/api/viagens/${v}`)).corpo;
+  assert.equal(depois.despesas.length, 0);
+  assert.equal(depois.despesas_aprovadas, 0); // totais recalculados
+});
