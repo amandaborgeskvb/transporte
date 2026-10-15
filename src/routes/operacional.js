@@ -7,7 +7,7 @@ const { tx } = require('../db');
 const { wrap, texto, data, idParam, auditar, diff, ehData, hojeSP, enviarCsv, erro400, erro404, erro409 } = require('../util');
 const { exigirPerfil, ADM, FIN, OPE } = require('../workflow');
 const { detectarTipo, nomeSeguro, MAX_BYTES } = require('./anexos');
-const { situacaoAet } = require('../aets');
+const { situacaoAet, agruparAets } = require('../aets');
 const { TIPOS_VEICULO, SITUACOES_VEICULO, PROPRIEDADES, CATEGORIAS, quadroVeiculo, somarDias } = require('../operacional');
 
 const dataLocal = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : d);
@@ -45,9 +45,10 @@ function criarOperacional({ pool }) {
   // ================= Painel =================
   // AETs: quantas vencidas, vencendo em até 30 dias e sem AET (para o painel e o Início)
   const resumoAets = async (hoje) => {
-    const { rows } = await pool.query("SELECT to_char(vencimento, 'YYYY-MM-DD') AS vencimento, encerrada FROM op_aets");
+    const { rows } = await pool.query("SELECT id, categoria, frota, placa, uf, to_char(realizacao, 'YYYY-MM-DD') AS realizacao, to_char(vencimento, 'YYYY-MM-DD') AS vencimento, encerrada FROM op_aets");
     const c = { total: 0, vencida: 0, vence_logo: 0, em_dia: 0, sem_aet: 0 };
-    for (const a of rows) { const s = situacaoAet(a, hoje).situacao; if (s in c) { c[s] += 1; c.total += 1; } }
+    // por veículo em cada tipo de AET (a AET mais urgente do veículo vale)
+    for (const g of agruparAets(rows.map((a) => ({ ...a, ...situacaoAet(a, hoje) })))) if (g.situacao in c) { c[g.situacao] += 1; c.total += 1; }
     return c;
   };
   router.get('/operacional/painel', wrap(async (_req, res) => {

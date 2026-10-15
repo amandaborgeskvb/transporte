@@ -1026,3 +1026,15 @@ html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
 @media (max-width: 560px) { .aet-tempo { grid-template-columns: repeat(4, minmax(0, 1fr)); } .aet-tipos { grid-template-columns: minmax(0, 1fr); } }
 .aet-previa-res { margin: 4px 0 10px; padding-left: 18px; font-size: .88rem; }
 .aet-previa-res li { margin: 2px 0; }
+/* AETs agrupadas por veículo: uma linha por AET dentro da linha do veículo */
+.aet-linhas { display: flex; flex-direction: column; gap: 4px; min-width: 340px; }
+.aet-linha { display: flex; align-items: center; gap: 8px; }
+.aet-linha.enc { opacity: .7; }
+.aet-ponto { flex: none; width: 10px; height: 10px; border-radius: 50%; }
+.aet-ponto.aet-encerrada { background: var(--mute-bg); outline: 1px solid var(--muted); outline-offset: -1px; }
+.aet-l-txt { all: unset; box-sizing: border-box; cursor: pointer; flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 2px 6px; border-radius: 6px; line-height: 1.25; font-size: .86rem; }
+.aet-l-txt:hover { background: var(--hover); }
+.aet-l-txt:focus-visible { outline: 2px solid var(--marca); }
+.aet-l-txt small { color: var(--muted); font-size: .74rem; }
+.aet-renovadas summary { cursor: pointer; font-size: .76rem; color: var(--muted); padding: 2px 6px; }
+.aet-renovadas[open] { display: flex; flex-direction: column; gap: 4px; }

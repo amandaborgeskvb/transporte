@@ -158,7 +158,7 @@ function cartaoTipo(c, ativo) {
   const pior = c.vencida ? 'vencida' : c.vence_logo ? 'vence_logo' : c.sem_aet ? 'sem_aet' : 'em_dia';
   return h('a', { class: `aet-tipo aet-borda-${pior}${ativo ? ' ativo' : ''}`, href: ativo ? '#/operacional/aets' : `#/operacional/aets?categoria=${encodeURIComponent(c.nome)}`, title: ativo ? 'Mostrar todos os tipos' : `Ver só ${c.nome}` },
     h('div', { class: 'aet-tipo-topo' }, h('strong', {}, c.nome), c.esfera ? h('span', { class: 'aet-esfera' }, c.esfera) : null),
-    h('div', { class: 'aet-tipo-num' }, h('b', {}, fmt(c.total)), h('span', {}, `AET(s) · ${fmt(c.veiculos)} veículo(s)`)),
+    h('div', { class: 'aet-tipo-num' }, h('b', {}, fmt(c.veiculos)), h('span', {}, `veículo(s) · ${fmt(c.aets)} AET(s)`)),
     barraSituacao(c),
     h('div', { class: 'aet-tipo-cont' },
       c.vencida ? h('span', { class: 'aet-c-vencida' }, `${fmt(c.vencida)} vencida(s)`) : null,
@@ -183,7 +183,15 @@ export default async function aets({ query, ir, recarregarPagina }) {
   const filtroAtivo = !semFiltro;
   const tituloLista = query.mes === 'depois' ? 'Vencem depois de 12 meses'
     : query.mes ? `Vencem em ${MESES_LONGOS[Number(query.mes.slice(5, 7)) - 1]} de ${query.mes.slice(0, 4)}`
-      : pedido.situacao === 'pendentes' ? 'Pendentes: vencidas, até 30 dias e sem AET' : SIT[pedido.situacao]?.[0] || 'Todas as AETs ativas';
+      : pedido.situacao === 'pendentes' ? 'Pendentes: vencidas, até 30 dias e sem AET' : SIT[pedido.situacao]?.[0] || 'Todos os veículos com AET';
+  // uma AET do veículo: clique para editar; Renovar e excluir ao lado
+  const linhaAet = (a) => h('div', { class: `aet-linha${a.situacao === 'encerrada' ? ' enc' : ''}` },
+    h('i', { class: `aet-ponto aet-${a.situacao === 'encerrada' ? 'encerrada' : a.situacao}`, title: SIT[a.situacao][0] }),
+    h('button', { type: 'button', class: 'aet-l-txt', title: 'Abrir / editar esta AET', onclick: async () => { if (await formAet(a, nomes)) { toast('AET salva.'); recarregarPagina(); } } },
+      a.vencimento ? h('span', {}, `${dataBR(a.realizacao)} → `, h('strong', {}, dataBR(a.vencimento))) : h('span', {}, 'sem AET lançada'),
+      h('small', {}, [a.situacao === 'encerrada' ? 'renovada' : a.vencimento ? prazo(a) : '', a.validade_dias ? `validade ${fmt(a.validade_dias)} d` : '', a.uf, a.numero ? `Nº ${a.numero}` : ''].filter(Boolean).join(' · '))),
+    a.situacao === 'encerrada' ? null : botao(a.vencimento ? 'Renovar' : 'Lançar', async () => { if (await renovar(a)) { toast(a.vencimento ? 'AET renovada.' : 'AET lançada.'); recarregarPagina(); } }, { pequeno: true, tom: a.situacao === 'em_dia' ? 'sec' : '', icone: 'mais' }),
+    (() => { const b = botao('', () => excluir(a), { pequeno: true, tom: 'sec', icone: 'lixeira' }); b.title = 'Excluir esta AET'; b.setAttribute('aria-label', `Excluir AET ${veiculo(a)} ${dataBR(a.vencimento)}`); return b; })());
   const excluir = async (a) => {
     if (!(await confirmar('Excluir AET', `${a.categoria} · ${veiculo(a)}${a.vencimento ? ` · vencimento ${dataBR(a.vencimento)}` : ''}`, { rotulo: 'Excluir', perigo: true }))) return;
     await del(`/operacional/aets/${a.id}`); toast('AET excluída.'); recarregarPagina();
@@ -193,7 +201,7 @@ export default async function aets({ query, ir, recarregarPagina }) {
   return [
     cabecalhoPagina({
       migalhas: [['Controle Operacional'], ['AETs']], titulo: 'Controle de AETs',
-      sub: `Autorização Especial de Trânsito · ${fmt(t.veiculos)} veículo(s) · situação em ${dataBR(d.hoje)}`,
+      sub: `Autorização Especial de Trânsito · ${fmt(t.frotas)} veículo(s) · ${fmt(t.aets)} AET(s) · situação em ${dataBR(d.hoje)}`,
     }),
     barraComandos([
       { texto: 'Importar planilha (Excel)', icone: 'upload', tom: semDados ? 'primario' : '', aoClicar: async () => { if (await importar()) recarregarPagina(); } },
@@ -203,37 +211,36 @@ export default async function aets({ query, ir, recarregarPagina }) {
     semDados ? h('div', { class: 'card' }, h('p', { class: 'muted vazio' }, 'Nenhuma AET ainda. Use "Importar planilha (Excel)" com a planilha de solicitação de AETs, ou "Nova AET".')) : [
       // semáforo geral
       h('div', { class: 'kpis compactos aet-kpis' },
-        kpi('Vencidas', fmt(t.vencida), { icone: 'alerta', tom: t.vencida ? 'alerta' : 'ok', sub: t.vencida ? 'renovar já' : 'nenhuma', link: '#/operacional/aets?situacao=vencida' }),
-        kpi('Vencem em até 30 dias', fmt(t.vence_logo), { icone: 'relogio', tom: t.vence_logo ? 'alerta' : 'neutro', sub: `${fmt(t.vencem_90)} nos próximos 90 dias`, link: '#/operacional/aets?situacao=vence_logo' }),
-        kpi('Em dia', fmt(t.em_dia), { icone: 'ok', tom: 'ok', sub: `de ${fmt(t.ativas)} AET(s) ativas`, link: '#/operacional/aets?situacao=em_dia' }),
-        kpi('Sem AET lançada', fmt(t.sem_aet), { icone: 'documento', tom: t.sem_aet ? 'alerta' : 'neutro', sub: 'veículo na planilha sem data', link: '#/operacional/aets?situacao=sem_aet' })),
+        kpi('Vencidas', fmt(t.vencida), { icone: 'alerta', tom: t.vencida ? 'alerta' : 'ok', sub: t.vencida ? 'veículo(s) com AET vencida — renovar já' : 'nenhum veículo', link: '#/operacional/aets?situacao=vencida' }),
+        kpi('Vencem em até 30 dias', fmt(t.vence_logo), { icone: 'relogio', tom: t.vence_logo ? 'alerta' : 'neutro', sub: `veículo(s) · ${fmt(t.vencem_90)} nos próximos 90 dias`, link: '#/operacional/aets?situacao=vence_logo' }),
+        kpi('Em dia', fmt(t.em_dia), { icone: 'ok', tom: 'ok', sub: `de ${fmt(t.com_aet)} veículo(s) com AET`, link: '#/operacional/aets?situacao=em_dia' }),
+        kpi('Sem AET lançada', fmt(t.sem_aet), { icone: 'documento', tom: t.sem_aet ? 'alerta' : 'neutro', sub: 'veículo(s) na planilha sem data', link: '#/operacional/aets?situacao=sem_aet' })),
       h('section', { class: 'card' },
-        h('div', { class: 'card-topo' }, h('h2', {}, 'Quando vencem'), h('div', { class: 'acoes' }, h('span', { class: 'muted pequeno' }, 'clique num mês para ver as AETs'))),
+        h('div', { class: 'card-topo' }, h('h2', {}, 'Quando vencem'), h('div', { class: 'acoes' }, h('span', { class: 'muted pequeno' }, 'próximo vencimento de cada veículo · clique num mês para ver quais'))),
         linhaDoTempo(d, query, ir),
         h('div', { class: 'aet-legenda' }, ['vencida', 'vence_logo', 'em_dia', 'sem_aet'].map((k) => h('span', {}, h('i', { class: `aet-${k}` }), SIT[k][0])))),
       h('h3', { class: 'grupo' }, 'Por tipo de AET'),
       h('div', { class: 'aet-tipos' }, d.categorias.map((c) => cartaoTipo(c, query.categoria === c.nome))),
-      h('h3', { class: 'grupo' }, `${tituloLista}${query.categoria ? ` · ${query.categoria}` : ''} (${fmt(d.itens.length)})`),
+      h('h3', { class: 'grupo' }, `${tituloLista}${query.categoria ? ` · ${query.categoria}` : ''} (${fmt(d.itens.length)} veículo(s))`),
       barraFiltros([
         { nome: 'categoria', rotulo: 'Tipo de AET', tipo: 'select', opcoes: nomes.map((n) => ({ valor: n, rotulo: n })) },
-        { nome: 'situacao', rotulo: 'Situação', tipo: 'select', opcoes: [['pendentes', 'Pendentes (vencida, até 30 dias, sem AET)'], ['todas', 'Todas as ativas'], ...Object.entries(SIT).map(([k, [n]]) => [k, n])].map(([valor, rotulo]) => ({ valor, rotulo })) },
+        { nome: 'situacao', rotulo: 'Situação', tipo: 'select', opcoes: [['pendentes', 'Pendentes (vencida, até 30 dias, sem AET)'], ['todas', 'Todos os veículos'], ...Object.entries(SIT).map(([k, [n]]) => [k, n])].map(([valor, rotulo]) => ({ valor, rotulo })) },
         { nome: 'esfera', rotulo: 'Esfera', tipo: 'select', opcoes: d.esferas.map((e) => ({ valor: e, rotulo: e })) },
         { nome: 'q', rotulo: 'Busca', placeholder: 'Frota, placa, Nº AET, chassi…' },
       ], { ...query, situacao: query.situacao || (semFiltro ? 'pendentes' : '') }, (v) => ir('#/operacional/aets', { ...v, ...(query.mes ? { mes: query.mes } : {}) })),
-      h('p', { class: 'pequeno aet-atalhos' }, filtroAtivo ? h('a', { href: '#/operacional/aets' }, '× limpar filtros (voltar às pendentes)') : h('a', { href: '#/operacional/aets?situacao=todas' }, `Ver todas as ${fmt(t.ativas + t.sem_aet)} AETs ativas →`),
+      h('p', { class: 'pequeno aet-atalhos' }, filtroAtivo ? h('a', { href: '#/operacional/aets' }, '× limpar filtros (voltar às pendentes)') : h('a', { href: '#/operacional/aets?situacao=todas' }, `Ver todos os ${fmt(t.veiculos)} veículos com AET →`),
         d.itens.length > LIMITE ? h('span', { class: 'muted' }, ` · mostrando ${fmt(LIMITE)} de ${fmt(d.itens.length)}: escolha um tipo ou um mês para ver o resto`) : null),
       h('div', { class: 'card' }, tabela([
-        { t: 'Situação', f: (a) => h('div', { class: 'aet-sit' }, badge(a.situacao), h('span', { class: `aet-prazo aet-c-${a.situacao}` }, prazo(a))) },
-        { t: 'Realização', cls: 'nowrap', f: (a) => (a.realizacao ? [dataBR(a.realizacao), h('div', { class: 'muted pequeno' }, a.desde > 0 ? `há ${fmt(a.desde)} dia${a.desde === 1 ? '' : 's'}` : a.desde === 0 ? 'hoje' : '')] : '—') },
-        { t: 'Vencimento', cls: 'nowrap', f: (a) => (a.vencimento ? [h('strong', {}, dataBR(a.vencimento)), a.validade_dias ? h('div', { class: 'muted pequeno' }, `validade ${fmt(a.validade_dias)} dias`) : null] : '—') },
-        { t: 'Veículo', f: (a) => [h('strong', {}, a.frota || '—'), h('div', { class: 'muted pequeno' }, [a.placa, a.especialidade].filter(Boolean).join(' · '))] },
-        { t: 'Tipo de AET', f: (a) => [a.categoria, a.esfera ? h('div', { class: 'muted pequeno' }, a.esfera) : null] },
-        { t: 'UF', f: (a) => a.uf || '—' },
-        { t: 'Nº AET', f: (a) => a.numero || '—' },
-        { t: '', f: (a) => h('div', { class: 'oni-acoes' },
-          a.situacao === 'encerrada' ? null : botao(a.vencimento ? 'Renovar' : 'Lançar', async () => { if (await renovar(a)) { toast('AET renovada.'); recarregarPagina(); } }, { pequeno: true, tom: a.situacao === 'em_dia' ? 'sec' : '', icone: 'mais' }),
-          (() => { const b = botao('', () => excluir(a), { pequeno: true, tom: 'sec', icone: 'lixeira' }); b.title = 'Excluir'; b.setAttribute('aria-label', `Excluir AET ${veiculo(a)}`); return b; })()) },
-      ], visiveis, { vazioMsg: semFiltro ? 'Nenhuma pendência: todas as AETs estão em dia.' : 'Nenhuma AET com esses filtros.', aoClicar: async (a) => { if (await formAet(a, nomes)) { toast('AET salva.'); recarregarPagina(); } } })),
+        { t: 'Situação', f: (g) => h('div', { class: 'aet-sit' }, badge(g.situacao), h('span', { class: `aet-prazo aet-c-${g.situacao}` }, prazo(g))) },
+        { t: 'Veículo', f: (g) => [h('strong', {}, g.frota || '—'), h('div', { class: 'muted pequeno' }, [g.placa, g.especialidade].filter(Boolean).join(' · '))] },
+        { t: 'Tipo de AET', f: (g) => [g.categoria, g.esfera ? h('div', { class: 'muted pequeno' }, g.esfera) : null] },
+        { t: 'AETs do veículo (realização → vencimento)', f: (g) => {
+          const ativas = g.aets.filter((a) => a.situacao !== 'encerrada');
+          const renovadas = g.aets.filter((a) => a.situacao === 'encerrada');
+          return h('div', { class: 'aet-linhas' }, ativas.map(linhaAet),
+            renovadas.length ? h('details', { class: 'aet-renovadas' }, h('summary', {}, `${fmt(renovadas.length)} renovada(s) / encerrada(s)`), renovadas.map(linhaAet)) : null);
+        } },
+      ], visiveis, { vazioMsg: semFiltro ? 'Nenhuma pendência: todas as AETs estão em dia.' : 'Nenhuma AET com esses filtros.' })),
     ],
   ];
 }

@@ -5,7 +5,7 @@ const { tx } = require('../db');
 const { wrap, texto, data, idParam, auditar, diff, ehData, hojeSP, enviarCsv, erro400, erro404 } = require('../util');
 const { exigirPerfil, ADM, FIN, OPE } = require('../workflow');
 const { MAX_BYTES } = require('../planilha');
-const { lerPlanilhaAets, situacaoAet, marcarRenovadas, esferaDe, AVISO_DIAS, VALIDADE_PADRAO, placaLimpa, dias, chaveAet, chaveVeiculo } = require('../aets');
+const { lerPlanilhaAets, situacaoAet, marcarRenovadas, esferaDe, AVISO_DIAS, VALIDADE_PADRAO, placaLimpa, dias, chaveAet, chaveVeiculo, agruparAets } = require('../aets');
 const { somarDias } = require('../onibus');
 
 const SITUACOES = ['vencida', 'vence_logo', 'em_dia', 'sem_aet', 'encerrada'];
@@ -31,45 +31,50 @@ function criarAets({ pool }) {
   };
 
   // Painel e lista: resumo por tipo (aba), vencimentos por mês e as AETs (com filtros)
+  // Painel e lista, por veículo: uma linha por veículo em cada tipo de AET (a AET mais urgente define a situação;
+  // as outras AETs do veículo vão junto). Resumo por tipo, vencimentos por mês e filtros.
   router.get('/operacional/aets', wrap(async (req, res) => {
     const q = req.query;
     const { hoje, itens } = await carregar();
-    const ativos = itens.filter((a) => a.situacao !== 'encerrada');
+    const grupos = agruparAets(itens);
+    const ativos = grupos.filter((g) => g.situacao !== 'encerrada');
     const conta = (lista, s) => lista.filter((a) => a.situacao === s).length;
-    const categorias = [...new Set(itens.map((a) => a.categoria))].map((nome) => {
-      const doTipo = itens.filter((a) => a.categoria === nome);
-      const at = doTipo.filter((a) => a.situacao !== 'encerrada');
-      const proximo = at.filter((a) => a.vencimento && a.dias >= 0).sort((a, b) => a.vencimento.localeCompare(b.vencimento))[0];
+    const categorias = [...new Set(grupos.map((g) => g.categoria))].map((nome) => {
+      const doTipo = grupos.filter((g) => g.categoria === nome);
+      const at = doTipo.filter((g) => g.situacao !== 'encerrada');
+      const proximo = at.filter((g) => g.vencimento && g.dias >= 0).sort((a, b) => a.vencimento.localeCompare(b.vencimento))[0];
       return {
-        nome, esfera: doTipo[0].esfera, total: at.length, veiculos: new Set(at.map((a) => `${a.frota}|${a.placa}`)).size,
-        vencida: conta(at, 'vencida'), vence_logo: conta(at, 'vence_logo'), em_dia: conta(at, 'em_dia'), sem_aet: conta(at, 'sem_aet'), encerrada: conta(doTipo, 'encerrada'),
+        nome, esfera: doTipo[0].esfera, veiculos: at.length, aets: at.reduce((t, g) => t + g.ativas, 0),
+        vencida: conta(at, 'vencida'), vence_logo: conta(at, 'vence_logo'), em_dia: conta(at, 'em_dia'), sem_aet: conta(at, 'sem_aet'),
         proximo: proximo ? { vencimento: proximo.vencimento, dias: proximo.dias } : null,
       };
     }).sort((a, b) => (b.vencida - a.vencida) || (b.vence_logo - a.vence_logo) || (b.sem_aet - a.sem_aet) || a.nome.localeCompare(b.nome, 'pt-BR', { numeric: true }));
-    // linha do tempo: as vencidas e os próximos 12 meses
+    // linha do tempo: quantos veículos têm a próxima AET vencendo em cada mês (e os já vencidos)
     const mes0 = mesDe(hoje);
     const meses = Array.from({ length: 12 }, (_, i) => somarMeses(mes0, i)).map((mes) => {
-      const doMes = ativos.filter((a) => a.vencimento && a.dias >= 0 && mesDe(a.vencimento) === mes);
+      const doMes = ativos.filter((g) => g.vencimento && g.dias >= 0 && mesDe(g.vencimento) === mes);
       return { mes, vence_logo: conta(doMes, 'vence_logo'), em_dia: conta(doMes, 'em_dia') };
     });
-    const depois = ativos.filter((a) => a.vencimento && a.dias >= 0 && mesDe(a.vencimento) > meses[11].mes).length;
+    const depois = ativos.filter((g) => g.vencimento && g.dias >= 0 && mesDe(g.vencimento) > meses[11].mes).length;
     const busca = String(q.q || '').trim().toUpperCase();
-    const filtrados = itens.filter((a) => (!q.categoria || a.categoria === q.categoria)
-      && (!q.esfera || a.esfera === q.esfera)
-      && (SITUACOES.includes(q.situacao) ? a.situacao === q.situacao : q.situacao === 'pendentes' ? ['vencida', 'vence_logo', 'sem_aet'].includes(a.situacao) : a.situacao !== 'encerrada')
-      && (!ehData(q.ate) || (a.vencimento && a.vencimento <= q.ate))
-      && (!/^\d{4}-\d{2}$/.test(q.mes || '') || (a.vencimento && a.dias >= 0 && a.vencimento.startsWith(q.mes)))
-      && (q.mes !== 'depois' || (a.vencimento && a.dias >= 0 && mesDe(a.vencimento) > somarMeses(mesDe(hoje), 11)))
-      && (!busca || [a.frota, a.placa, a.especialidade, a.numero, a.uf, a.categoria, a.chassi].some((x) => String(x || '').toUpperCase().includes(busca))))
+    const filtrados = grupos.filter((g) => (!q.categoria || g.categoria === q.categoria)
+      && (!q.esfera || g.esfera === q.esfera)
+      && (SITUACOES.includes(q.situacao) ? g.situacao === q.situacao || (q.situacao === 'encerrada' && g.aets.some((a) => a.situacao === 'encerrada'))
+        : q.situacao === 'pendentes' ? ['vencida', 'vence_logo', 'sem_aet'].includes(g.situacao) : g.situacao !== 'encerrada')
+      && (!ehData(q.ate) || (g.vencimento && g.vencimento <= q.ate))
+      && (!/^\d{4}-\d{2}$/.test(q.mes || '') || (g.vencimento && g.dias >= 0 && g.vencimento.startsWith(q.mes)))
+      && (q.mes !== 'depois' || (g.vencimento && g.dias >= 0 && mesDe(g.vencimento) > somarMeses(mesDe(hoje), 11)))
+      && (!busca || [g.frota, g.placa, g.especialidade, g.uf, g.categoria, g.chassi, ...g.aets.map((a) => a.numero)].some((x) => String(x || '').toUpperCase().includes(busca))))
       .sort((a, b) => ORDEM[a.situacao] - ORDEM[b.situacao] || String(a.vencimento || '').localeCompare(String(b.vencimento || '')) || a.frota.localeCompare(b.frota, 'pt-BR', { numeric: true }));
     res.json({
       hoje, aviso: AVISO_DIAS,
       totais: {
-        ativas: ativos.filter((a) => a.vencimento).length, vencida: conta(ativos, 'vencida'), vence_logo: conta(ativos, 'vence_logo'), em_dia: conta(ativos, 'em_dia'),
-        sem_aet: conta(ativos, 'sem_aet'), encerrada: conta(itens, 'encerrada'), veiculos: new Set(ativos.map((a) => `${a.frota}|${a.placa}`)).size,
-        vencem_90: ativos.filter((a) => a.vencimento && a.dias >= 0 && a.dias <= 90).length,
+        veiculos: ativos.length, aets: ativos.reduce((t, g) => t + g.ativas, 0), com_aet: ativos.filter((g) => g.vencimento).length,
+        vencida: conta(ativos, 'vencida'), vence_logo: conta(ativos, 'vence_logo'), em_dia: conta(ativos, 'em_dia'), sem_aet: conta(ativos, 'sem_aet'),
+        renovadas: itens.filter((a) => a.situacao === 'encerrada').length, vencem_90: ativos.filter((g) => g.vencimento && g.dias >= 0 && g.dias <= 90).length,
+        frotas: new Set(ativos.map((g) => `${g.frota}|${g.placa}`)).size,
       },
-      categorias, meses, depois, esferas: [...new Set(itens.map((a) => a.esfera).filter(Boolean))].sort(),
+      categorias, meses, depois, esferas: [...new Set(grupos.map((g) => g.esfera).filter(Boolean))].sort(),
       itens: filtrados,
     });
   }));

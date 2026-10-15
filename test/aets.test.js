@@ -80,9 +80,11 @@ test('importar a planilha: prévia, aplicar, painel e filtros', async () => {
   assert.deepEqual([r.corpo.totais.novas, r.corpo.totais.alteradas, r.corpo.totais.iguais], [0, 1, 5]);
   assert.equal((await ope.get('/api/operacional/aets?q=555')).corpo.itens.length, 1);
   const d = (await ope.get('/api/operacional/aets?situacao=todas')).corpo;
-  assert.deepEqual(d.totais, { ativas: 4, vencida: 1, vence_logo: 1, em_dia: 2, sem_aet: 1, encerrada: 1, veiculos: 4, vencem_90: 1 });
+  // por veículo em cada tipo: 90001 tem 2 AETs (vale a que vence em 10 dias), a prancha tem 1 renovada + 1 em dia
+  assert.deepEqual(d.totais, { veiculos: 4, aets: 4, com_aet: 3, vencida: 1, vence_logo: 1, em_dia: 1, sem_aet: 1, renovadas: 1, vencem_90: 1, frotas: 4 });
+  assert.equal(d.itens.length, 4); // uma linha por veículo, sem repetir
   const prancha = d.categorias.find((c) => c.nome === 'PRANCHA 4,40 Mts');
-  assert.equal(prancha.encerrada, 1);
+  assert.equal(prancha.aets, 1);
   assert.equal(prancha.em_dia, 1);
   const canav = (await ope.get(`/api/operacional/aets?categoria=${encodeURIComponent('AET FEDERAL CANAV. DIURNA 2026')}`)).corpo.itens;
   assert.equal(canav[0].situacao, 'vencida'); // a mais urgente primeiro
@@ -90,7 +92,8 @@ test('importar a planilha: prévia, aplicar, painel e filtros', async () => {
   assert.equal(canav.find((a) => a.situacao === 'sem_aet').frota, '90003');
   assert.equal(canav.find((a) => a.situacao === 'vence_logo').dias, 10);
   assert.equal(canav.find((a) => a.situacao === 'vence_logo').validade_dias, 200); // Próxima Data − Data Realiz.
-  assert.equal(canav.find((a) => a.placa === 'TST2B22').desde, 400); // "Qtd Dias": desde a realização
+  assert.equal(canav.find((a) => a.placa === 'TST2B22').aets[0].desde, 400); // "Qtd Dias": desde a realização
+  assert.equal(canav.find((a) => a.frota === '90001').aets.length, 2); // as 2 AETs do veículo vão juntas
   assert.equal((await ope.get('/api/operacional/aets?situacao=pendentes')).corpo.itens.length, 3);
   assert.equal((await ope.get(`/api/operacional/aets?mes=${mais(10).slice(0, 7)}`)).corpo.itens.some((a) => a.vencimento === mais(10)), true);
   assert.equal((await ope.get('/api/operacional/aets?q=tst4d44')).corpo.itens.length, 1);
@@ -114,7 +117,8 @@ test('lançar, renovar, encerrar e excluir AET', async () => {
   assert.equal(r.corpo.vencimento, mais(365));
   assert.equal(r.corpo.frota, '91000');
   let lista = (await ope.get('/api/operacional/aets?categoria=AET%20TESTE&situacao=encerrada')).corpo.itens;
-  assert.deepEqual(lista.map((a) => a.id), [aet.id]);
+  assert.equal(lista.length, 1);
+  assert.deepEqual(lista[0].aets.map((a) => [a.id === aet.id, a.situacao]), [[false, 'em_dia'], [true, 'encerrada']]);
   // "sem AET" lançada: a linha vazia dá lugar à AET
   const sem = (await ope.get('/api/operacional/aets?situacao=sem_aet')).corpo.itens[0];
   r = await ope.post(`/api/operacional/aets/${sem.id}/renovar`, { realizacao: mais(0) });

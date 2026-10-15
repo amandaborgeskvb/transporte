@@ -141,4 +141,26 @@ function marcarRenovadas(itens) {
 const chaveVeiculo = (a) => [norm(a.categoria), norm(a.frota), placaLimpa(a.placa)].join('|');
 const chaveAet = (a) => [chaveVeiculo(a), a.realizacao || '', norm(a.uf)].join('|');
 
-module.exports = { lerPlanilhaAets, situacaoAet, marcarRenovadas, esferaDe, AVISO_DIAS, RENOVACAO_DIAS, VALIDADE_PADRAO, placaLimpa, dias, chaveAet, chaveVeiculo };
+// Um veículo pode ter várias AETs no mesmo tipo (ex.: 3 AETs federais diurnas feitas em datas diferentes).
+// Para a tela, junta por veículo + tipo: a situação é a da AET mais urgente; as outras vão junto (aets).
+const URGENCIA = { vencida: 0, vence_logo: 1, sem_aet: 2, em_dia: 3, encerrada: 4 };
+function agruparAets(itens) {
+  const grupos = new Map();
+  for (const a of itens) {
+    const k = chaveVeiculo(a);
+    if (!grupos.has(k)) grupos.set(k, []);
+    grupos.get(k).push(a);
+  }
+  return [...grupos.entries()].map(([chave, aets]) => {
+    aets.sort((x, y) => URGENCIA[x.situacao] - URGENCIA[y.situacao] || String(x.vencimento || '').localeCompare(String(y.vencimento || '')) || String(x.realizacao || '').localeCompare(String(y.realizacao || '')));
+    const r = aets[0];
+    const unicos = (campo) => [...new Set(aets.map((x) => x[campo]).filter(Boolean))];
+    return {
+      chave, id: r.id, categoria: r.categoria, esfera: r.esfera, frota: r.frota, placa: r.placa, especialidade: unicos('especialidade')[0] || '', chassi: r.chassi,
+      uf: unicos('uf').join(', '), situacao: r.situacao, dias: r.dias, vencimento: r.vencimento, realizacao: r.realizacao, validade_dias: r.validade_dias, numero: r.numero,
+      ativas: aets.filter((x) => x.situacao !== 'encerrada' && x.vencimento).length, aets,
+    };
+  });
+}
+
+module.exports = { lerPlanilhaAets, situacaoAet, marcarRenovadas, esferaDe, AVISO_DIAS, RENOVACAO_DIAS, VALIDADE_PADRAO, placaLimpa, dias, chaveAet, chaveVeiculo, agruparAets, URGENCIA };
