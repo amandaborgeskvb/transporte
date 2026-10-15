@@ -91,7 +91,7 @@ const TOPICOS = [
         'A **próxima vistoria** é a última + 30 dias: vermelho claro quando vencida e verde claro em dia. A lavagem 2 vem como lavagem 1 + 7 dias e fica amarela no dia. **Novo ônibus (nova frota)** cadastra um ônibus (e uma empresa nova, se for o caso); o lápis da linha edita empresa, frota e placa; a lixeira tira o ônibus do RESUMO.',
         '**Disponibilidade** (liberados ÷ ônibus lançados, meta de 85%) sai da BASE, por empresa e por dia, com gráficos. No RESUMO, a prévia da semana já muda a cada alteração. O gráfico **Frotas por atividade** compara o previsto de cada atividade (Frentes, Irrigação, Herbicida, Reflorestamento, Indústrias) com os ônibus liberados nela, pela coluna ATIVIDADE; os previstos são alterados no fim da aba Disponibilidade.',
         '**BASE** guarda todos os dias salvos, como a aba BASE: filtre por período, empresa, frota ou situação, exporte para o Excel e clique na data para abrir o RESUMO daquele dia. O histórico antigo vem em **Importar aba BASE**.'),
-      dica('**Imprimir RESUMO + disponibilidade** imprime as duas folhas juntas (A4 deitado). **Importar aba RESUMO** traz a aba RESUMO de uma planilha do Excel para o dia escolhido.'),
+      dica('**Imprimir RESUMO + disponibilidade** imprime as duas folhas juntas (A4 deitado): os gráficos na 1ª folha e o RESUMO na 2ª. **Importar aba RESUMO** traz a aba RESUMO de uma planilha do Excel para o dia escolhido.'),
     ],
   },
   {

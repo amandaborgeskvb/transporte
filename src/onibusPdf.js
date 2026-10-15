@@ -1,6 +1,6 @@
 // PDF "RESUMO + Disponibilidade" do módulo Ônibus (A4 paisagem, gerado no servidor), no layout das folhas impressas:
-// 1ª folha: o RESUMO do dia (Levantamento Transporte Funcionários), agrupado por empresa com TOTAL, legenda e Obs.;
-// 2ª folha: a Disponibilidade (por empresa com a meta, situação da frota por dia e a tabela).
+// 1ª folha: a Disponibilidade (por empresa com a meta, situação da frota por dia, frotas por atividade e a tabela);
+// 2ª folha: o RESUMO do dia (Levantamento Transporte Funcionários), agrupado por empresa com TOTAL, legenda e Obs.
 const path = require('path');
 const fs = require('fs');
 const PDFDocument = require('pdfkit');
@@ -61,8 +61,8 @@ function gerarPdfOnibus({ resumo = null, disp = null, emitidoPor = '', agora = n
     doc.text(t, x + 2, y + Math.max(1, (hgt - alt) / 2 + 0.5), { width: w - 4, align: alinhar, lineGap: 0, height: hgt, ellipsis: true });
   };
 
-  // ================= 1ª folha: RESUMO =================
-  if (resumo) {
+  // ================= Folha do RESUMO (planilha) =================
+  const folhaResumo = () => {
     cabecalho('Acompanhamento Diário Ônibus', ['CRV Industrial - Unidade Capinópolis/MG', 'Departamento de Transporte'], br(resumo.data));
     // indicadores do RESUMO (os mesmos da tela), logo abaixo do cabeçalho
     {
@@ -180,11 +180,10 @@ function gerarPdfOnibus({ resumo = null, disp = null, emitidoPor = '', agora = n
     if (resumo.observacao) {
       doc.font('Helvetica-Bold').fontSize(8).fillColor(TINTA).text('Obs.: ', x + 14, y + 3, { continued: true }).font('Helvetica').text(resumo.observacao, { width: x0 + L - x - 14 });
     }
-  }
+  };
 
-  // ================= 2ª folha: Disponibilidade =================
-  if (disp) {
-    if (resumo) doc.addPage();
+  // ================= Folha da disponibilidade (gráficos) =================
+  const folhaDisp = () => {
     cabecalho('Acompanhamento Diário Ônibus', ['CRV Industrial - Unidade Capinópolis/MG', 'Disponibilidade Semanal Transporte Pessoal'], br(disp.ate));
     doc.font('Helvetica-Bold').fontSize(9).fillColor(TINTA).text(`Período: ${br(disp.de)} - ${br(disp.ate)}`, x0, 76, { continued: true })
       .font('Helvetica').text(` · Disponibilidade geral: ${pct(disp.total.disponibilidade)} (meta ${disp.meta}%)`);
@@ -349,6 +348,13 @@ function gerarPdfOnibus({ resumo = null, disp = null, emitidoPor = '', agora = n
       yy += 14;
     }
     if (!disp.empresas.length) doc.font('Helvetica').fontSize(8).fillColor(MUDA).text('Nada salvo na BASE no período.', tx, yy + 6);
+  };
+
+  // gráficos na 1ª folha e a planilha (RESUMO) na 2ª
+  if (disp) folhaDisp();
+  if (resumo) {
+    if (disp) doc.addPage();
+    folhaResumo();
   }
 
   // rodapé em todas as folhas

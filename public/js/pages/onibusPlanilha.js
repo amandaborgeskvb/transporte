@@ -625,7 +625,7 @@ async function imprimir({ query, ir }) {
     h('div', { class: 'nao-imprime' },
       cabecalhoPagina({
         migalhas: [...BASE, ['RESUMO', `#/onibus/resumo?data=${d.data}`], ['Imprimir']], titulo: 'Imprimir RESUMO + disponibilidade',
-        sub: 'A4 deitado: o RESUMO do dia em uma folha e a disponibilidade com os gráficos na outra.',
+        sub: 'A4 deitado: na 1ª folha a disponibilidade com os gráficos e na 2ª o RESUMO do dia (a planilha).',
       }),
       form,
       barraComandos([
@@ -635,7 +635,8 @@ async function imprimir({ query, ir }) {
           location.href = `/api/onibus/imprimir.pdf?${q}`;
         } },
       ])),
-    h('div', { class: 'oni-mesa' }, mostrar.planilha ? folhaPlanilha(d) : null, mostrar.disponibilidade ? folhaDisponibilidade(p) : null),
+    // 1ª folha: os gráficos (disponibilidade); 2ª: a planilha (RESUMO)
+    h('div', { class: 'oni-mesa' }, mostrar.disponibilidade ? folhaDisponibilidade(p) : null, mostrar.planilha ? folhaPlanilha(d) : null),
   ];
 }
 
