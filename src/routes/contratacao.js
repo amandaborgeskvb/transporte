@@ -327,6 +327,13 @@ function criarContratacao({ pool }) {
     });
   }));
 
+  // Banco de candidatos: as fichas já feitas viram a base de contatos (a última ficha de cada nome)
+  router.get('/contratacao/candidatos', wrap(async (_req, res) => {
+    const { rows } = await pool.query(`SELECT DISTINCT ON (upper(nome)) nome, telefone, celular1, celular2, email, cidade, to_char(data, 'YYYY-MM-DD') AS data
+                                         FROM contr_fichas WHERE nome <> '' ORDER BY upper(nome), data DESC, id DESC LIMIT 5000`);
+    res.json(rows);
+  }));
+
   router.get('/contratacao/fichas/:id', wrap(async (req, res) => {
     const f = (await pool.query(`${SELECT_FICHA} WHERE f.id = $1`, [idParam(req)])).rows[0];
     if (!f) throw erro404('Ficha não encontrada.');

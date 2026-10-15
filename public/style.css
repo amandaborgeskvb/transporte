@@ -1051,3 +1051,5 @@ th.rf-sel, td.rf-sel { width: 32px; text-align: center; }
 .rf-x { all: unset; cursor: pointer; margin-left: 6px; color: var(--muted); line-height: 0; vertical-align: middle; }
 .rf-x:hover { color: var(--bad); }
 .rf-x .ico { width: 14px; height: 14px; }
+.rf-auto { display: block; margin: 0 0 12px; padding: 6px 10px; border-radius: 6px; background: var(--card-2); font-size: .82rem; color: var(--muted); }
+.rf-auto.ok { color: var(--ok); font-weight: 600; }

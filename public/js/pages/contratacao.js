@@ -147,11 +147,14 @@ async function detalheFicha({ params, query, ir }) {
 
 async function formFicha({ params, query, ir }) {
   const editando = params[0] === 'fichas' ? Number(params[1]) : null;
-  const [p, atual, base] = await Promise.all([
+  const [p, atual, base, candidatos] = await Promise.all([
     get('/contratacao/parametros'),
     editando ? get(`/contratacao/fichas/${editando}`) : null,
     !editando && query.base ? get(`/contratacao/fichas/${query.base}`) : null,
+    get('/contratacao/candidatos').catch(() => []),
   ]);
+  // banco de candidatos: as fichas já feitas (a última de cada nome)
+  const porNome = new Map(candidatos.map((c) => [c.nome.toUpperCase(), c]));
   // "Nova ficha igual": repete os dados do contrato, mas não os da pessoa
   const inicial = atual || (base ? { ...base, id: null, nome: '', telefone: '', celular1: '', celular2: '', email: '', cidade: '', data: hojeISO() }
     : { data: hojeISO(), setor: 'AGRÍCOLA', jornada: p.jornada_padrao, turno: 'matutino', horario: p.horarios.matutino, contrato_experiencia: true });
@@ -168,7 +171,7 @@ async function formFicha({ params, query, ir }) {
   const inp = (nome, valor, extra = {}) => h('input', { name: nome, value: valor ?? '', autocomplete: 'off', ...extra });
   const el = {
     data: inp('data', inicial.data, { type: 'date', required: true }),
-    nome: inp('nome', inicial.nome, { required: true, maxlength: 120, class: 'maiusc' }),
+    nome: inp('nome', inicial.nome, { required: true, maxlength: 120, class: 'maiusc', list: 'rf-candidatos' }),
     // Departamento: filtro (parte do nome ou do código) + lista com os departamentos encontrados
     deptoFiltro: inp('depto_filtro', '', { type: 'search', placeholder: 'Filtrar: parte do nome ou do código (ex.: TRANSBORDO, 104.001)' }),
     deptoSel: h('select', { name: 'depto_sel', required: true }),
@@ -276,31 +279,63 @@ async function formFicha({ params, query, ir }) {
   el.funcaoSel.addEventListener('change', () => aoMudarFuncao());
   turnos.forEach((l) => l.querySelector('input').addEventListener('change', () => { el.horario.value = p.horarios[turnoAtual()] || el.horario.value; }));
 
-  // ficha preenchida e não salva: avisa antes de sair (o registro só existe depois de salvar)
+  // Regra: toda ficha feita fica no registro. A ficha nova é salva sozinha assim que tem nome, departamento e função
+  // (e a cada alteração depois disso); Salvar só confirma e abre a ficha.
+  let fichaId = editando || null;
   let sujo = false;
+  let emAndamento = Promise.resolve();
+  const statusAuto = h('span', { class: 'rf-auto', role: 'status' }, editando ? '' : 'A ficha é salva sozinha no registro assim que tiver nome, departamento e função.');
+  const completa = (v) => v.nome && v.depto_codigo && (v.funcao_id || v.funcao);
+  const autoSalvar = () => {
+    if (editando) return emAndamento;
+    emAndamento = emAndamento.then(async () => {
+      const v = valores();
+      if (!completa(v) || !sujo) return;
+      statusAuto.textContent = 'Salvando no registro…';
+      try {
+        if (fichaId) await put(`/contratacao/fichas/${fichaId}`, v);
+        else fichaId = (await post('/contratacao/fichas', v)).id;
+        sujo = false;
+        statusAuto.textContent = `✓ Salva no registro às ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+        statusAuto.classList.add('ok');
+      } catch (e) { statusAuto.textContent = `Ainda não salva: ${e.message}`; statusAuto.classList.remove('ok'); }
+    });
+    return emAndamento;
+  };
   const avisoSair = (e) => { if (sujo && location.hash.startsWith('#/contratacao/')) { e.preventDefault(); e.returnValue = ''; } };
   window.addEventListener('beforeunload', avisoSair);
-  window.addEventListener('hashchange', () => window.removeEventListener('beforeunload', avisoSair), { once: true });
+  window.addEventListener('hashchange', () => { window.removeEventListener('beforeunload', avisoSair); if (sujo) autoSalvar(); }, { once: true });
   const salvar = async (continuar, imprimir = false) => {
     erro.textContent = '';
+    await emAndamento; // espera o salvamento automático em andamento
     const v = valores();
     if (!v.nome) { erro.textContent = 'Informe o nome do candidato.'; el.nome.focus(); return; }
     try {
-      if (editando) {
-        await put(`/contratacao/fichas/${editando}`, v); sujo = false; toast('Ficha salva.');
-        ir(`#/contratacao/fichas/${editando}`, imprimir ? { imprimir: 1 } : {}); return;
-      }
-      const r = await post('/contratacao/fichas', v);
+      if (fichaId) await put(`/contratacao/fichas/${fichaId}`, v);
+      else fichaId = (await post('/contratacao/fichas', v)).id;
       sujo = false;
-      toast('Ficha salva no registro.');
-      if (continuar) { // próxima ficha com os mesmos dados do contrato
+      const id = fichaId;
+      toast(editando ? 'Ficha salva.' : 'Ficha salva no registro.');
+      if (continuar && !editando) { // próxima ficha com os mesmos dados do contrato
+        fichaId = null;
         for (const k of ['nome', 'telefone', 'celular1', 'celular2', 'email', 'cidade']) el[k].value = '';
+        statusAuto.textContent = 'Nova ficha: é salva sozinha assim que tiver nome, departamento e função.'; statusAuto.classList.remove('ok');
         el.nome.focus(); desenharPrevia();
-      } else ir(`#/contratacao/fichas/${r.id}`, imprimir ? { imprimir: 1 } : {});
+      } else ir(`#/contratacao/fichas/${id}`, imprimir ? { imprimir: 1 } : {});
     } catch (e) { erro.textContent = e.message; }
   };
+  // nome de quem já teve ficha: puxa os contatos da última ficha (banco de candidatos)
+  el.nome.addEventListener('change', () => {
+    const c = porNome.get(el.nome.value.trim().toUpperCase());
+    if (!c) return;
+    const campos = ['telefone', 'celular1', 'celular2', 'email', 'cidade'].filter((k) => !el[k].value && c[k]);
+    for (const k of campos) el[k].value = c[k];
+    if (campos.length) { toast(`Contatos puxados da ficha de ${dataBR(c.data)}.`); desenharPrevia(); }
+  });
 
   const form = h('form', { class: 'card', onsubmit: (e) => { e.preventDefault(); salvar(false); } },
+    statusAuto,
+    h('datalist', { id: 'rf-candidatos' }, candidatos.map((c) => h('option', { value: c.nome }, [c.cidade, c.celular1].filter(Boolean).join(' · ')))),
     h('datalist', { id: 'rf-cidades' }, ['ITUIUTABA', 'CAPINÓPOLIS', 'IPIAÇU', 'CANÁPOLIS', 'CACHOEIRA DOURADA', 'GURINHATÃ'].map((c) => h('option', { value: c }))),
     h('div', { class: 'form-grid' },
       campo('Data', el.data, { obrigatorio: true }),
@@ -321,20 +356,28 @@ async function formFicha({ params, query, ir }) {
     erro,
     h('div', { class: 'linha-botoes' },
       h('button', { type: 'button', class: 'sec', onclick: async () => {
-        if (sujo && !(await confirmar('Sair sem salvar?', 'A ficha preenchida não foi salva e não vai ficar no registro.', { rotulo: 'Sair sem salvar', perigo: true }))) return;
-        sujo = false; ir(editando ? `#/contratacao/fichas/${editando}` : '#/contratacao/fichas');
-      } }, 'Cancelar'),
+        await emAndamento;
+        if (sujo && !fichaId && !(await confirmar('Sair sem salvar?', 'A ficha ainda não tem nome, departamento e função, por isso não foi salva no registro.', { rotulo: 'Sair sem salvar', perigo: true }))) return;
+        if (sujo && fichaId) await autoSalvar(); // o que mudou depois do último salvamento também fica
+        sujo = false; ir(fichaId ? `#/contratacao/fichas/${fichaId}` : '#/contratacao/fichas');
+      } }, editando ? 'Cancelar' : 'Fechar'),
       editando ? null : h('button', { type: 'button', class: 'sec', onclick: () => salvar(true) }, 'Salvar e nova'),
       h('button', { type: 'button', class: 'sec', onclick: () => salvar(false, true) }, icone('impressora'), 'Salvar e imprimir'),
       h('button', { type: 'submit' }, 'Salvar')));
-  form.addEventListener('input', () => { sujo = true; clearTimeout(form.t); form.t = setTimeout(desenharPrevia, 150); });
-  form.addEventListener('change', () => { clearTimeout(form.t); form.t = setTimeout(desenharPrevia, 150); });
+  const aoMudar = () => {
+    sujo = true;
+    clearTimeout(form.t); form.t = setTimeout(desenharPrevia, 150);
+    clearTimeout(form.ta); form.ta = setTimeout(autoSalvar, 1200);
+  };
+  form.addEventListener('input', aoMudar);
+  form.addEventListener('change', aoMudar);
   // Estado inicial: departamento e função da ficha (ou "outro" quando não estão nos parâmetros)
   montarDeptos(inicial.depto_codigo ? (deptos.has(inicial.depto_codigo) ? inicial.depto_codigo : OUTRO) : '');
   montarFuncoes(inicial.funcao_id && funcaoPorId.has(inicial.funcao_id) ? String(inicial.funcao_id) : inicial.funcao ? OUTRO : '');
   aoMudarDepto();
   if (inicial.salario !== undefined && inicial.salario !== null) el.salario.value = inicial.salario;
   desenharPrevia();
+  sujo = false; // montar a tela não conta como alteração
   setTimeout(() => el.nome.focus(), 50);
   return [
     cabecalhoPagina({

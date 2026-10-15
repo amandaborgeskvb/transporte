@@ -159,3 +159,14 @@ test('fichas salvas: excluir uma ou várias de uma vez', async () => {
   const aud = (await (await t.logado('admin')).get('/api/auditoria?entidade=contr_ficha')).corpo;
   assert.ok(aud.filter((a) => a.acao === 'excluir').length >= 3); // exclusões ficam na auditoria
 });
+
+test('banco de candidatos: as fichas feitas viram a base de contatos (a última de cada nome)', async () => {
+  const base = { nome: 'CANDIDATA BANCO', funcao: 'FUNCAO X', depto_codigo: '999', depto_descricao: 'SETOR X', turno: 'matutino' };
+  await davi.post('/api/contratacao/fichas', { ...base, data: '2026-01-10', celular1: '34 1111-1111', cidade: 'IPIAÇU' });
+  await davi.post('/api/contratacao/fichas', { ...base, data: '2026-03-10', celular1: '34 2222-2222', cidade: 'ITUIUTABA' });
+  const lista = (await davi.get('/api/contratacao/candidatos')).corpo;
+  const c = lista.filter((x) => x.nome === 'CANDIDATA BANCO');
+  assert.equal(c.length, 1); // um por nome
+  assert.deepEqual([c[0].celular1, c[0].cidade, c[0].data], ['34 2222-2222', 'ITUIUTABA', '2026-03-10']); // a mais recente
+  assert.equal((await ana.get('/api/contratacao/candidatos')).status, 403);
+});
