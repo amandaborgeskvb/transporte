@@ -1,10 +1,11 @@
 // Controle Operacional – Transporte: documentação dos veículos leves e pesados.
-// Rotas: #/operacional/painel | veiculos | veiculos/:id | documentos | tipos
+// Rotas: #/operacional/painel | veiculos | veiculos/:id | documentos | tipos | pastas | pastas/:id
 import { get, post, put, del, enviarArquivo } from '../api.js';
 import {
   h, dataBR, tabela, botao, cabecalhoPagina, barraComandos, barraFiltros, secao, kpi, toast, confirmar, dialogo, icone, badgeTom,
 } from '../ui.js';
 import { barrasEmpilhadas, legendaSeries } from '../charts.js';
+import pastas from './operacionalPastas.js';
 
 const BASE = [['Controle Operacional']];
 const fmt = (n) => Number(n || 0).toLocaleString('pt-BR');
@@ -352,5 +353,6 @@ export default async function operacional(ctx) {
   if (sub === 'veiculos') return veiculos(ctx);
   if (sub === 'documentos') return documentos(ctx);
   if (sub === 'tipos') return tiposPagina(ctx);
+  if (sub === 'pastas') return pastas({ ...ctx, params: resto });
   return painel(ctx);
 }

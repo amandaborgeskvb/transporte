@@ -841,6 +841,30 @@ CREATE TABLE IF NOT EXISTS op_arquivos (
   criado_em     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS op_arquivos_doc_idx ON op_arquivos (documento_id);
+-- Pastas de documentos (como as pastas do computador: "DOCUMENTOS REBOQUES 2026", "DOCUMENTO TANQUE DE VINHAÇA 2026"…),
+-- cada uma com os seus PDFs; o caminho guarda as subpastas (ex.: "CAVALO 7202/CRLV.pdf")
+CREATE TABLE IF NOT EXISTS op_pastas (
+  id            SERIAL PRIMARY KEY,
+  nome          TEXT NOT NULL,
+  descricao     TEXT NOT NULL DEFAULT '',
+  criado_por    INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS op_pastas_nome_uk ON op_pastas (upper(nome));
+CREATE TABLE IF NOT EXISTS op_pasta_arquivos (
+  id            SERIAL PRIMARY KEY,
+  pasta_id      INTEGER NOT NULL REFERENCES op_pastas(id) ON DELETE CASCADE,
+  caminho       TEXT NOT NULL,
+  nome_arquivo  TEXT NOT NULL,
+  tipo_mime     TEXT NOT NULL,
+  tamanho       INTEGER NOT NULL,
+  conteudo      BYTEA NOT NULL,
+  enviado_por   INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS op_pasta_arquivos_caminho_uk ON op_pasta_arquivos (pasta_id, upper(caminho));
 
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,

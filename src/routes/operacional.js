@@ -2,6 +2,7 @@
 // Veículos, tipos de documento (validade, para quais veículos, obrigatório), documentos com vencimento e arquivo anexo,
 // e o painel de vencimentos. Acesso: administrador, financeiro e o perfil Operacional.
 const express = require('express');
+const { zipSync } = require('fflate');
 const { tx } = require('../db');
 const { wrap, texto, data, idParam, auditar, diff, ehData, hojeSP, enviarCsv, erro400, erro404, erro409 } = require('../util');
 const { exigirPerfil, ADM, FIN, OPE } = require('../workflow');
@@ -12,7 +13,11 @@ const dataLocal = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : d);
 const bool = (v) => v === true || v === 'true' || v === 1 || v === '1' || v === 'on';
 const dataOuNulo = (v, rotulo) => (v ? data(v, rotulo) : null);
 const maiusculo = (v, max) => texto(v, max).toUpperCase().replace(/\s+/g, ' ').trim();
+const MAX_PASTA_BYTES = 15 * 1024 * 1024; // por arquivo das pastas (documento escaneado costuma passar de 5 MB)
+const MAX_ZIP_BYTES = 250 * 1024 * 1024; // baixar a pasta inteira (.zip) até este total
 const MAX_ARQUIVOS = 30; // arquivos por documento (dá para mandar vários PDFs ou uma pasta de uma vez)
+// "SUB/ARQ.pdf": cada parte sem barras invertidas, aspas, controles nem "..", até 400 caracteres
+const caminhoSeguro = (c) => String(c || '').replace(/\\/g, '/').split('/').map((p) => p.replace(/[\x00-\x1f"]/g, '').trim()).filter((p) => p && p !== '.' && p !== '..').join('/').slice(0, 400);
 const NOME_SITUACAO = { vencido: 'Vencido', vence_logo: 'Vence logo', em_dia: 'Em dia', sem_vencimento: 'Sem vencimento', faltando: 'Faltando' };
 
 function criarOperacional({ pool }) {
@@ -271,6 +276,127 @@ function criarOperacional({ pool }) {
     if (!rows[0]) throw erro404('Arquivo não encontrado.');
     await auditar(pool, req.usuario, 'remover_anexo', 'op_documento', rows[0].documento_id, { arquivo: rows[0].nome_arquivo });
     res.status(204).end();
+  }));
+
+  // ================= Pastas de documentos =================
+  const lerPasta = (b) => {
+    const nome = texto(b.nome, 150).replace(/[\\/]/g, '-').trim();
+    if (!nome) throw erro400('Informe o nome da pasta.');
+    return { nome, descricao: texto(b.descricao, 500) };
+  };
+  router.get('/operacional/pastas', wrap(async (_req, res) => {
+    const { rows } = await pool.query(`SELECT p.id, p.nome, p.descricao, p.criado_em, count(a.id)::int AS arquivos, coalesce(sum(a.tamanho), 0)::bigint AS bytes,
+                                              greatest(p.atualizado_em, max(a.atualizado_em)) AS atualizado_em
+                                         FROM op_pastas p LEFT JOIN op_pasta_arquivos a ON a.pasta_id = p.id
+                                        GROUP BY p.id ORDER BY upper(p.nome)`);
+    res.json(rows.map((r) => ({ ...r, bytes: Number(r.bytes) })));
+  }));
+  // reutilizar=1: devolve a pasta que já tem esse nome (ao enviar a mesma pasta de novo)
+  router.post('/operacional/pastas', wrap(async (req, res) => {
+    const p = lerPasta(req.body);
+    const existe = (await pool.query('SELECT * FROM op_pastas WHERE upper(nome) = upper($1)', [p.nome])).rows[0];
+    if (existe) {
+      if (bool(req.body.reutilizar)) return res.json(existe);
+      throw erro409(`Já existe a pasta "${existe.nome}".`);
+    }
+    try {
+      const { rows } = await pool.query('INSERT INTO op_pastas (nome, descricao, criado_por) VALUES ($1, $2, $3) RETURNING *', [p.nome, p.descricao, req.usuario.id]);
+      await auditar(pool, req.usuario, 'criar', 'op_pasta', rows[0].id, p);
+      res.status(201).json(rows[0]);
+    } catch (e) {
+      if (e.code === '23505') throw erro409(`Já existe a pasta "${p.nome}".`);
+      throw e;
+    }
+  }));
+  router.put('/operacional/pastas/:id', wrap(async (req, res) => {
+    const id = idParam(req);
+    const p = lerPasta(req.body);
+    const antes = (await pool.query('SELECT nome, descricao FROM op_pastas WHERE id = $1', [id])).rows[0];
+    if (!antes) throw erro404('Pasta não encontrada.');
+    try {
+      const { rows } = await pool.query('UPDATE op_pastas SET nome = $2, descricao = $3, atualizado_em = now() WHERE id = $1 RETURNING *', [id, p.nome, p.descricao]);
+      await auditar(pool, req.usuario, 'editar', 'op_pasta', id, diff(antes, p, ['nome', 'descricao']));
+      res.json(rows[0]);
+    } catch (e) {
+      if (e.code === '23505') throw erro409(`Já existe a pasta "${p.nome}".`);
+      throw e;
+    }
+  }));
+  router.delete('/operacional/pastas/:id', wrap(async (req, res) => {
+    const id = idParam(req);
+    const { rows } = await pool.query(`DELETE FROM op_pastas p WHERE id = $1
+                                       RETURNING nome, (SELECT count(*)::int FROM op_pasta_arquivos WHERE pasta_id = p.id) AS arquivos`, [id]);
+    if (!rows[0]) throw erro404('Pasta não encontrada.');
+    await auditar(pool, req.usuario, 'excluir', 'op_pasta', id, rows[0]);
+    res.status(204).end();
+  }));
+  // busca de arquivos em todas as pastas (nome do arquivo, subpasta ou pasta)
+  router.get('/operacional/pasta-arquivos', wrap(async (req, res) => {
+    const q = texto(req.query.q, 100);
+    if (q.length < 2) return res.json([]);
+    const { rows } = await pool.query(`SELECT a.id, a.caminho, a.nome_arquivo, a.tamanho, a.atualizado_em, p.id AS pasta_id, p.nome AS pasta
+                                         FROM op_pasta_arquivos a JOIN op_pastas p ON p.id = a.pasta_id
+                                        WHERE upper(a.caminho) LIKE '%' || upper($1) || '%' OR upper(p.nome) LIKE '%' || upper($1) || '%'
+                                        ORDER BY upper(p.nome), upper(a.caminho) LIMIT 300`, [q.replace(/[%_\\]/g, (c) => `\\${c}`)]);
+    res.json(rows);
+  }));
+  router.get('/operacional/pastas/:id', wrap(async (req, res) => {
+    const id = idParam(req);
+    const pasta = (await pool.query('SELECT * FROM op_pastas WHERE id = $1', [id])).rows[0];
+    if (!pasta) throw erro404('Pasta não encontrada.');
+    const { rows } = await pool.query(`SELECT a.id, a.caminho, a.nome_arquivo, a.tipo_mime, a.tamanho, a.criado_em, a.atualizado_em, u.nome AS enviado_por_nome
+                                         FROM op_pasta_arquivos a LEFT JOIN usuarios u ON u.id = a.enviado_por
+                                        WHERE a.pasta_id = $1 ORDER BY upper(a.caminho)`, [id]);
+    res.json({ ...pasta, arquivos: rows });
+  }));
+  // um arquivo por vez (corpo = o arquivo); ?caminho=SUB/ARQ.pdf. Mesmo caminho: o arquivo é substituído (envio da pasta atualizada)
+  router.post('/operacional/pastas/:id/arquivos', express.raw({ type: ['application/pdf', 'image/png', 'image/jpeg', 'application/octet-stream'], limit: MAX_PASTA_BYTES }), wrap(async (req, res) => {
+    const id = idParam(req);
+    if (!Buffer.isBuffer(req.body) || !req.body.length) throw erro400('Envie um arquivo PDF, JPG ou PNG de até 15 MB.');
+    const tipo = detectarTipo(req.body);
+    if (!tipo) throw erro400('Formato não aceito. Use PDF, JPG ou PNG.');
+    const caminho = caminhoSeguro(req.query.caminho || req.query.nome);
+    if (!caminho) throw erro400('Informe o nome do arquivo.');
+    const nome = nomeSeguro(caminho.split('/').pop());
+    if (!(await pool.query('SELECT 1 FROM op_pastas WHERE id = $1', [id])).rowCount) throw erro404('Pasta não encontrada.');
+    const { rows } = await pool.query(`INSERT INTO op_pasta_arquivos (pasta_id, caminho, nome_arquivo, tipo_mime, tamanho, conteudo, enviado_por) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                                       ON CONFLICT (pasta_id, upper(caminho)) DO UPDATE SET caminho = EXCLUDED.caminho, nome_arquivo = EXCLUDED.nome_arquivo, tipo_mime = EXCLUDED.tipo_mime,
+                                         tamanho = EXCLUDED.tamanho, conteudo = EXCLUDED.conteudo, enviado_por = EXCLUDED.enviado_por, atualizado_em = now()
+                                       RETURNING id, caminho, nome_arquivo, tipo_mime, tamanho, (xmax <> 0) AS substituido`, [id, caminho, nome, tipo, req.body.length, req.body, req.usuario.id]);
+    res.status(rows[0].substituido ? 200 : 201).json(rows[0]);
+  }));
+  router.get('/operacional/pasta-arquivos/:id', wrap(async (req, res) => {
+    const a = (await pool.query('SELECT nome_arquivo, tipo_mime, conteudo FROM op_pasta_arquivos WHERE id = $1', [idParam(req)])).rows[0];
+    if (!a) throw erro404('Arquivo não encontrado.');
+    res.setHeader('Content-Type', a.tipo_mime);
+    const ascii = a.nome_arquivo.normalize('NFD').replace(/[^\x20-\x7e]/g, '').replace(/"/g, '') || 'documento';
+    res.setHeader('Content-Disposition', `${req.query.baixar ? 'attachment' : 'inline'}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(a.nome_arquivo)}`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(a.conteudo);
+  }));
+  router.delete('/operacional/pasta-arquivos/:id', wrap(async (req, res) => {
+    const id = idParam(req);
+    const { rows } = await pool.query('DELETE FROM op_pasta_arquivos WHERE id = $1 RETURNING pasta_id, caminho', [id]);
+    if (!rows[0]) throw erro404('Arquivo não encontrado.');
+    await auditar(pool, req.usuario, 'remover_anexo', 'op_pasta', rows[0].pasta_id, { arquivo: rows[0].caminho });
+    res.status(204).end();
+  }));
+  // a pasta inteira em .zip (com as subpastas), para mandar a alguém ou guardar
+  router.get('/operacional/pastas/:id/zip', wrap(async (req, res) => {
+    const id = idParam(req);
+    const pasta = (await pool.query(`SELECT p.nome, coalesce(sum(a.tamanho), 0)::bigint AS bytes FROM op_pastas p LEFT JOIN op_pasta_arquivos a ON a.pasta_id = p.id
+                                      WHERE p.id = $1 GROUP BY p.id`, [id])).rows[0];
+    if (!pasta) throw erro404('Pasta não encontrada.');
+    if (Number(pasta.bytes) > MAX_ZIP_BYTES) throw erro400('A pasta passa de 250 MB: baixe os arquivos separadamente.');
+    const { rows } = await pool.query('SELECT caminho, conteudo, atualizado_em FROM op_pasta_arquivos WHERE pasta_id = $1 ORDER BY upper(caminho)', [id]);
+    const raiz = caminhoSeguro(pasta.nome) || 'pasta';
+    // PDF e imagem já são comprimidos: guarda sem comprimir de novo (mais rápido)
+    const zip = zipSync(Object.fromEntries(rows.map((a) => [`${raiz}/${a.caminho}`, [new Uint8Array(a.conteudo), { level: 0, mtime: a.atualizado_em }]])));
+    const ascii = raiz.normalize('NFD').replace(/[^\x20-\x7e]/g, '').replace(/"/g, '') || 'pasta';
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${ascii}.zip"; filename*=UTF-8''${encodeURIComponent(`${raiz}.zip`)}`);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.send(Buffer.from(zip));
   }));
 
   return router;

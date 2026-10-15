@@ -116,3 +116,37 @@ test('painel, vencimentos com filtros, CSV e exclusões', async () => {
   assert.equal((await ope.del(`/api/operacional/tipos/${novo.id}`)).status, 204);
   assert.equal((await ope.del(`/api/operacional/tipos/${tipos[0].id}`)).status, 409);
 });
+
+test('pastas de documentos: criar, enviar PDFs com subpastas, substituir, buscar, zip e excluir', async () => {
+  const { unzipSync } = require('fflate');
+  let r = await ope.post('/api/operacional/pastas', { nome: 'DOCUMENTOS REBOQUES 2026' });
+  assert.equal(r.status, 201, JSON.stringify(r.corpo));
+  const pasta = r.corpo;
+  assert.equal((await ope.post('/api/operacional/pastas', { nome: 'documentos reboques 2026' })).status, 409);
+  assert.equal((await ope.post('/api/operacional/pastas', { nome: 'documentos reboques 2026', reutilizar: true })).corpo.id, pasta.id);
+  const pdf = (txt) => Buffer.from(`%PDF-1.4\n% ${txt}\n`);
+  const enviar = (caminho, corpo) => ope.req('POST', `/api/operacional/pastas/${pasta.id}/arquivos?caminho=${encodeURIComponent(caminho)}`, undefined, { bruto: corpo, tipo: 'application/octet-stream' });
+  r = await enviar('REBOQUE 01/CRLV.pdf', pdf('a'));
+  assert.equal(r.status, 201, JSON.stringify(r.corpo));
+  assert.equal(r.corpo.nome_arquivo, 'CRLV.pdf');
+  assert.equal((await enviar('../../etc/Seguro.pdf', pdf('b'))).corpo.caminho, 'etc/Seguro.pdf');
+  r = await enviar('reboque 01/crlv.pdf', pdf('a2')); // mesmo caminho: substitui
+  assert.equal(r.status, 200);
+  assert.equal(r.corpo.substituido, true);
+  assert.equal((await enviar('leia.txt', Buffer.from('texto'))).status, 400);
+  const p = (await ope.get(`/api/operacional/pastas/${pasta.id}`)).corpo;
+  assert.deepEqual(p.arquivos.map((a) => a.caminho), ['etc/Seguro.pdf', 'reboque 01/crlv.pdf']);
+  const lista = (await ope.get('/api/operacional/pastas')).corpo;
+  assert.equal(lista.find((x) => x.id === pasta.id).arquivos, 2);
+  assert.equal((await ope.get('/api/operacional/pasta-arquivos?q=crlv')).corpo.length, 1);
+  assert.equal((await ope.get(`/api/operacional/pasta-arquivos/${p.arquivos[1].id}`)).headers.get('content-type'), 'application/pdf');
+  const zip = await ope.req('GET', `/api/operacional/pastas/${pasta.id}/zip`);
+  assert.equal(zip.headers.get('content-type'), 'application/zip');
+  assert.deepEqual(Object.keys(unzipSync(new Uint8Array(zip.corpo))).sort(), ['DOCUMENTOS REBOQUES 2026/etc/Seguro.pdf', 'DOCUMENTOS REBOQUES 2026/reboque 01/crlv.pdf']);
+  assert.equal((await ana.get('/api/operacional/pastas')).status, 403);
+  assert.equal((await oni.get(`/api/operacional/pastas/${pasta.id}`)).status, 403);
+  assert.equal((await ope.put(`/api/operacional/pastas/${pasta.id}`, { nome: 'DOCUMENTOS REBOQUES 2027' })).corpo.nome, 'DOCUMENTOS REBOQUES 2027');
+  assert.equal((await ope.del(`/api/operacional/pasta-arquivos/${p.arquivos[0].id}`)).status, 204);
+  assert.equal((await ope.del(`/api/operacional/pastas/${pasta.id}`)).status, 204);
+  assert.equal((await ope.get(`/api/operacional/pastas/${pasta.id}`)).status, 404);
+});
