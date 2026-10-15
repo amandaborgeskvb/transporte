@@ -806,3 +806,10 @@ html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
 .oni-cel { display: inline-block; padding: 2px 8px; border-radius: 4px; color: var(--txt); }
 .oni-basetab td { white-space: nowrap; }
 .oni-basetab td.oni-txt { white-space: normal; min-width: 170px; max-width: 280px; }
+/* folha da disponibilidade: gráficos com altura limitada para caber em uma folha A4 deitada (mesmo com cabeçalho/rodapé do navegador) */
+.oni-folha .oni-fgraf .grafico { max-height: 58mm; }
+.oni-folha .oni-fgrade .grafico { max-height: 52mm; }
+.oni-folha .oni-fgraf .legenda { margin: 0 0 1mm; font-size: 7.5pt; }
+.oni-folha.oni-fdisp .oni-fgraf { padding: 1.5mm 3mm; margin-bottom: 2.5mm; }
+.oni-folha.oni-fdisp .oni-fgrade td, .oni-folha.oni-fdisp .oni-fgrade th { padding: .7mm 1.2mm; }
+@media print { .oni-folha.oni-fdisp { break-inside: avoid; } }

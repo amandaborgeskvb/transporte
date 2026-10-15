@@ -432,12 +432,12 @@ function folhaPlanilha(d) {
       d.observacao ? h('p', { class: 'oni-fobs' }, h('b', {}, 'Obs.: '), d.observacao) : null));
 }
 function folhaDisponibilidade(p) {
-  return h('article', { class: 'oni-folha' },
+  return h('article', { class: 'oni-folha oni-fdisp' },
     cabecalhoFolha('Disponibilidade Transporte Funcionários', ['CRV Industrial - Unidade Capinópolis/MG', 'Disponibilidade Semanal Transporte Pessoal'], dataBR(p.ate)),
     h('p', { class: 'oni-fper' }, h('b', {}, `Período: ${dataBR(p.de)} - ${dataBR(p.ate)}`), ` · Disponibilidade geral: ${pct(p.total.disponibilidade)} (meta ${p.meta}%)`),
-    h('div', { class: 'oni-fgraf' }, h('h2', {}, 'Disponibilidade Semanal'), graficoDisponibilidade(p, { largura: 1050, altura: 250 })),
+    h('div', { class: 'oni-fgraf' }, h('h2', {}, 'Disponibilidade Semanal'), graficoDisponibilidade(p, { largura: 1100, altura: 210 })),
     h('div', { class: 'oni-fgrade' },
-      h('div', { class: 'oni-fgraf' }, h('h2', {}, 'Situação da frota por dia'), legendaSeries(SERIES_SIT), graficoDias(p, { largura: 620 })),
+      h('div', { class: 'oni-fgraf' }, h('h2', {}, 'Situação da frota por dia'), legendaSeries(SERIES_SIT), graficoDias(p, { largura: 820 })),
       h('div', {}, tabelaDisponibilidade(p))));
 }
 
