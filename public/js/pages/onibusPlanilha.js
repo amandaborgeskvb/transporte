@@ -403,12 +403,14 @@ function graficoDias(p, opts = {}) {
     valores: { liberado: x.liberado, manutencao: x.manutencao, interditado: x.interditado, outros: x.reserva + x.parado }, total: x.total,
   })), SERIES_SIT, { aria: 'Situação da frota por dia', ...opts });
 }
-function tabelaDisponibilidade(p) {
+// curto: títulos abreviados para a folha impressa (a tabela divide a largura com o gráfico)
+const CURTO = { liberado: 'Lib.', manutencao: 'Manut.', reserva: 'Res.', interditado: 'Interd.', parado: 'Parado' };
+function tabelaDisponibilidade(p, { curto = false } = {}) {
   return tabela([
     { t: 'Empresa', f: (e) => h('strong', {}, e.empresa) },
-    ...SITUACOES.map(([k, nome]) => ({ t: nome, num: true, f: (e) => fmt(e[k]) })),
+    ...SITUACOES.map(([k, nome]) => ({ t: curto ? CURTO[k] : nome, num: true, f: (e) => fmt(e[k]) })),
     { t: 'Total', num: true, f: (e) => fmt(e.total) },
-    { t: 'Disponibilidade', num: true, f: (e) => badgeTom(pct(e.disponibilidade), e.disponibilidade == null ? 'mute' : e.disponibilidade >= p.meta ? 'ok' : 'warn') },
+    { t: curto ? 'Disp.' : 'Disponibilidade', num: true, f: (e) => badgeTom(pct(e.disponibilidade), e.disponibilidade == null ? 'mute' : e.disponibilidade >= p.meta ? 'ok' : 'warn') },
   ], [...p.empresas, { ...p.total, empresa: 'TOTAL' }], { vazioMsg: 'Nada lançado no período.' });
 }
 
@@ -485,7 +487,7 @@ function folhaDisponibilidade(p) {
     h('div', { class: 'oni-fgraf' }, h('h2', {}, 'Disponibilidade Semanal'), graficoDisponibilidade(p, { largura: 1100, altura: 210 })),
     h('div', { class: 'oni-fgrade' },
       h('div', { class: 'oni-fgraf' }, h('h2', {}, 'Situação da frota por dia'), legendaSeries(SERIES_SIT), graficoDias(p, { largura: 820 })),
-      h('div', {}, tabelaDisponibilidade(p))));
+      h('div', { class: 'oni-ftabdisp' }, tabelaDisponibilidade(p, { curto: true }))));
 }
 
 async function imprimir({ query, ir }) {

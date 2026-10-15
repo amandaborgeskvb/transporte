@@ -822,3 +822,11 @@ html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
 .oni-status.pendente::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: #c98500; }
 .oni-salvar { display: inline-flex; align-items: center; gap: 6px; }
 .oni-salvar:disabled { opacity: .6; cursor: default; }
+/* tabela da folha de disponibilidade: cabe na metade da folha */
+.oni-fgrade > * { min-width: 0; }
+.oni-ftabdisp .scroll { overflow: visible; }
+.oni-ftabdisp table { width: 100%; font-size: 7pt; }
+.oni-folha .oni-ftabdisp th { font-size: 6.4pt; padding: .8mm .9mm; letter-spacing: 0; }
+.oni-folha .oni-ftabdisp td { padding: .7mm .9mm; }
+.oni-ftabdisp td:first-child { white-space: normal; max-width: 34mm; }
+.oni-ftabdisp .badge { padding: 1px 6px; font-size: 7pt; }
