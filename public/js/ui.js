@@ -313,7 +313,9 @@ export function dialogo({ titulo, descricao, campos = [], confirmar = 'Salvar', 
       campos, confirmar, perigo, aoCancelar: () => dlg.close(),
       aoSalvar: async (v) => { await aoSalvar?.(v); dlg.close(); resolve(true); },
     });
-    dlg.addEventListener('close', () => resolve(false), { once: true });
+    // o "close" do diálogo anterior chega depois (evento assíncrono): só vale se a janela estiver fechada mesmo
+    const aoFechar = () => { if (dlg.open) return; dlg.removeEventListener('close', aoFechar); resolve(false); };
+    dlg.addEventListener('close', aoFechar);
     const intro = typeof descricao === 'string' ? h('p', { class: 'muted' }, descricao) : descricao;
     dlg.replaceChildren(...[h('h2', {}, titulo), intro, form].filter(Boolean));
     dlg.showModal();

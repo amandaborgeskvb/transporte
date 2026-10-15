@@ -86,22 +86,26 @@ async function calcularDisponibilidade(db, de, ate) {
   };
 }
 
-// ---------- Leitura da planilha "Acompanhamento Diário - Ônibus" (aba BASE: DATA, EMPRESA, FROTA…) ----------
+// ---------- Leitura da planilha "Acompanhamento Diário - Ônibus" ----------
+// modo 'resumo' (padrão): a aba RESUMO — a planilha do dia, sem coluna DATA; as linhas entram no dia escolhido.
+// modo 'base': a aba BASE (DATA, EMPRESA, FROTA…) — o histórico, cada linha no dia dela.
 const norm = (t) => semAcento(t).toUpperCase().replace(/[º°]/g, '').replace(/\s+/g, ' ').trim();
-function lerPlanilhaDiario(buf) {
+const serialParaData = (v) => (/^\d{5}(\.\d+)?$/.test(String(v ?? '').trim()) && Number(v) > 36000 && Number(v) < 73000 ? lerData(v) : null);
+function lerPlanilhaDiario(buf, { modo = 'resumo', data: diaEscolhido = null } = {}) {
   const planilha = lerXlsx(buf);
-  for (const aba of planilha.abas) {
+  // RESUMO: primeiro a aba com esse nome; BASE: a aba que tem a coluna DATA
+  const abas = [...planilha.abas].sort((a, b) => (norm(b.nome) === modo.toUpperCase()) - (norm(a.nome) === modo.toUpperCase()));
+  for (const aba of abas) {
     const linhas = planilha.lerAba(aba);
     for (let i = 0; i < Math.min(linhas.length, 30); i++) {
       const cab = (linhas[i] || []).map((c) => norm(c));
       const col = (teste) => cab.findIndex((c) => c && teste(c));
-      const k = {
-        data: col((c) => c === 'DATA'), empresa: col((c) => c === 'EMPRESA'), frota: col((c) => c === 'FROTA'),
-        situacao: col((c) => c === 'SITUACAO'),
-      };
-      if (Object.values(k).some((x) => x < 0)) continue;
+      const k = { data: col((c) => c === 'DATA'), empresa: col((c) => c === 'EMPRESA'), frota: col((c) => c === 'FROTA'), situacao: col((c) => c === 'SITUACAO') };
+      if ([k.empresa, k.frota, k.situacao].some((x) => x < 0)) continue;
+      if (modo === 'base' ? k.data < 0 || k.data > k.empresa : k.data >= 0 && k.data < k.empresa) continue;
       // as colunas são procuradas a partir da tabela (à direita há tabelas dinâmicas com os mesmos títulos)
-      const depois = (teste) => cab.findIndex((c, j) => j >= k.data && c && teste(c));
+      const inicio = modo === 'base' ? k.data : k.empresa;
+      const depois = (teste) => cab.findIndex((c, j) => j >= inicio && c && teste(c));
       Object.assign(k, {
         capacidade: depois((c) => c.includes('TOTAL PASSAGEIROS') && !c.includes('DIA')), passageiros: depois((c) => c.includes('PASSAGEIROS POR DIA')),
         vistoria: depois((c) => c === 'VISTORIADO' || c === 'ULTIMA VISTORIA'), vencimento: depois((c) => c === 'VENCIMENTO' || c === 'PROXIMA VISTORIA'),
@@ -110,20 +114,30 @@ function lerPlanilhaDiario(buf) {
         observacao: depois((c) => c.startsWith('OBSERVA')),
       });
       const v = (l, j) => (j >= 0 ? String(l[j] ?? '').trim() : '');
+      // RESUMO: a data que está no cabeçalho (fórmula HOJE() — vale a do dia em que a planilha foi salva) e a "Obs.:" do rodapé
+      let dataNaPlanilha = null;
+      let observacaoDia = '';
+      if (modo === 'resumo') {
+        for (let n = 0; n < i && !dataNaPlanilha; n++) for (const c of linhas[n] || []) if (!dataNaPlanilha) dataNaPlanilha = serialParaData(c);
+      }
       const registros = [];
       const ignoradas = [];
       for (let n = i + 1; n < linhas.length; n++) {
         const l = linhas[n] || [];
+        const obs = (l.find((c) => /^\s*obs\.?\s*:/i.test(String(c ?? ''))) || '');
+        if (modo === 'resumo' && obs) { observacaoDia = String(obs).replace(/^\s*obs\.?\s*:\s*/i, '').trim().slice(0, 1000); continue; }
         const frota = v(l, k.frota).replace(/\.0+$/, '').toUpperCase();
-        const dia = lerData(v(l, k.data));
-        if (!frota && !v(l, k.data)) continue;
-        if (!frota || !dia || /^TOTAL/i.test(v(l, k.empresa))) { ignoradas.push(n + 1); continue; }
+        const empresa = v(l, k.empresa);
+        if (/^(TOTAL|LEGENDA)/i.test(empresa) || (modo === 'resumo' && !v(l, k.situacao))) { if (frota) ignoradas.push(n + 1); continue; }
+        const dia = modo === 'base' ? lerData(v(l, k.data)) : diaEscolhido;
+        if (!frota && !(modo === 'base' && v(l, k.data))) continue;
+        if (!frota || !dia) { ignoradas.push(n + 1); continue; }
         const passageiros = lerPassageiros(v(l, k.passageiros));
         const capacidade = lerPassageiros(v(l, k.capacidade));
         let vistoria = lerData(v(l, k.vistoria));
         if (!vistoria && lerData(v(l, k.vencimento))) vistoria = somarDias(lerData(v(l, k.vencimento)), -VISTORIA_DIAS);
         registros.push({
-          linha: n + 1, data: dia, prefixo: frota.slice(0, 20), empresa: v(l, k.empresa).toUpperCase().replace(/\s+/g, ' ').slice(0, 120),
+          linha: n + 1, data: dia, prefixo: frota.slice(0, 20), empresa: empresa.toUpperCase().replace(/\s+/g, ' ').slice(0, 120),
           capacidade: capacidade == null || capacidade > 300 ? null : capacidade, passageiros: passageiros == null || passageiros > 300 ? null : passageiros,
           ultima_vistoria: vistoria, lavagem_1: lerData(v(l, k.lavagem_1)), lavagem_2: lerData(v(l, k.lavagem_2)),
           atividade: v(l, k.atividade).toUpperCase().replace(/\s+/g, ' ').slice(0, 200), rota_ida: v(l, k.rota_ida).toUpperCase().replace(/\s+/g, ' ').replace(/^-$/, '').slice(0, 200),
@@ -131,10 +145,12 @@ function lerPlanilhaDiario(buf) {
           situacao: lerSituacaoDiario(v(l, k.situacao)) || 'liberado', observacao: v(l, k.observacao).slice(0, 500),
         });
       }
-      return { aba: aba.nome, registros, ignoradas };
+      return { aba: aba.nome, modo, registros, ignoradas, data_na_planilha: dataNaPlanilha, observacao_dia: observacaoDia };
     }
   }
-  throw erro400('Não achei a tabela do acompanhamento: a planilha precisa das colunas DATA, EMPRESA, FROTA e Situação (aba BASE).');
+  throw erro400(modo === 'base'
+    ? 'Não achei a aba BASE: ela precisa das colunas DATA, EMPRESA, FROTA e Situação.'
+    : 'Não achei a aba RESUMO: ela precisa das colunas EMPRESA, FROTA, ÚLTIMA VISTORIA… e Situação.');
 }
 
 function criarOnibusDiario({ pool }) {
@@ -287,20 +303,25 @@ function criarOnibusDiario({ pool }) {
     ]);
   }));
 
-  // POST /onibus/diario/importar?aplicar=1 (corpo: o .xlsx) — traz o histórico da planilha (aba BASE).
+  // POST /onibus/diario/importar?data=AAAA-MM-DD&aplicar=1 (corpo: o .xlsx) — a aba RESUMO vira a planilha do dia escolhido
+  // (o dia fica igual à aba, com a "Obs." do rodapé); com aba=base, traz o histórico da aba BASE (cada linha no dia dela).
   // Cada linha é achada por data + frota: só entram as novas e só mudam as alteradas; ônibus que não existem são cadastrados.
   router.post('/onibus/diario/importar', express.raw({ type: 'application/octet-stream', limit: 30 * 1024 * 1024 }), wrap(async (req, res) => {
     if (!Buffer.isBuffer(req.body) || !req.body.length) throw erro400('Envie a planilha (.xlsx).');
     if (!(req.body[0] === 0x50 && req.body[1] === 0x4b)) throw erro400('Envie a planilha em .xlsx.');
     if (req.body.length > Math.max(MAX_BYTES, 30 * 1024 * 1024)) throw erro400('Arquivo grande demais.');
-    const lido = lerPlanilhaDiario(req.body);
+    const modo = req.query.aba === 'base' ? 'base' : 'resumo';
+    const diaEscolhido = ehData(req.query.data) ? req.query.data : null;
+    let lido = lerPlanilhaDiario(req.body, { modo, data: diaEscolhido || '0000-00-00' });
+    // RESUMO sem dia escolhido: o da planilha (ou hoje)
+    if (modo === 'resumo' && !diaEscolhido) lido = lerPlanilhaDiario(req.body, { modo, data: lido.data_na_planilha || hojeSP() });
     const aplicar = bool(req.query.aplicar);
     // a mesma data + frota repetida na planilha: vale a última
     const porChave = new Map();
     let repetidas = 0;
     for (const r of lido.registros) { const k = `${r.data}|${r.prefixo}`; if (porChave.has(k)) repetidas += 1; porChave.set(k, r); }
     const registros = [...porChave.values()];
-    if (!registros.length) throw erro400('A planilha não tem linhas com data e frota.');
+    if (!registros.length) throw erro400(modo === 'base' ? 'A aba BASE não tem linhas com data e frota.' : 'A aba RESUMO não tem linhas com frota.');
     const ultimoDia = registros.reduce((m, r) => (r.data > m ? r.data : m), '');
 
     const resumo = await tx(pool, async (db) => {
@@ -317,8 +338,11 @@ function criarOnibusDiario({ pool }) {
       const igual = (e, r) => ['empresa', ...CAMPOS].every((c) => String(dataLocal(e[c]) ?? '') === String(r[c] ?? ''));
       const novas = registros.filter((r) => !existentes.has(`${r.data}|${r.prefixo}`));
       const alteradas = registros.filter((r) => existentes.has(`${r.data}|${r.prefixo}`) && !igual(existentes.get(`${r.data}|${r.prefixo}`), r));
+      // RESUMO: o dia fica igual à aba — ônibus que estão no dia no sistema e não estão na RESUMO saem do dia
+      const retirar = modo === 'resumo' ? [...existentes.values()].filter((e) => !porChave.has(`${dataLocal(e.data)}|${e.prefixo}`)) : [];
       const out = {
-        aba: lido.aba, linhas: lido.registros.length, dias: new Set(registros.map((r) => r.data)).size, de: registros.reduce((m, r) => (r.data < m ? r.data : m), ultimoDia), ate: ultimoDia,
+        modo, dia: modo === 'resumo' ? ultimoDia : null, data_na_planilha: lido.data_na_planilha, observacao_dia: lido.observacao_dia,
+        retiradas: retirar.map((e) => e.prefixo), aba: lido.aba, linhas: lido.registros.length, dias: new Set(registros.map((r) => r.data)).size, de: registros.reduce((m, r) => (r.data < m ? r.data : m), ultimoDia), ate: ultimoDia,
         novas: novas.length, alteradas: alteradas.length, sem_alteracao: registros.length - novas.length - alteradas.length, repetidas, ignoradas: lido.ignoradas.length,
         onibus_novos: novosOnibus, aplicado: aplicar,
       };
@@ -347,8 +371,16 @@ function criarOnibusDiario({ pool }) {
         await db.query(`INSERT INTO onibus_diario (${cols.join(', ')}) VALUES ${tuplas.join(', ')}
                         ON CONFLICT (data, onibus_id) DO UPDATE SET ${['empresa', ...CAMPOS].map((c) => `${c} = EXCLUDED.${c}`).join(', ')}, atualizado_em = now()`, valores);
       }
+      if (retirar.length) await db.query('DELETE FROM onibus_diario WHERE id = ANY($1::int[])', [retirar.map((e) => e.id)]);
+      if (modo === 'resumo') {
+        await db.query('UPDATE onibus_frota SET ativo = true WHERE id = ANY($1::int[])', [registros.map((x) => frota.get(x.prefixo).id)]);
+        if (lido.observacao_dia) {
+          await db.query(`INSERT INTO onibus_diario_obs (data, observacao) VALUES ($1, $2)
+                          ON CONFLICT (data) DO UPDATE SET observacao = EXCLUDED.observacao, atualizado_em = now()`, [ultimoDia, lido.observacao_dia]);
+        }
+      }
       await db.query(`UPDATE onibus_frota f SET ultima_vistoria = (SELECT ultima_vistoria FROM onibus_diario d WHERE d.onibus_id = f.id AND d.ultima_vistoria IS NOT NULL ORDER BY data DESC LIMIT 1)`);
-      await auditar(db, req.usuario, 'importar', 'onibus_diario', null, { arquivo: texto(req.query.nome, 150) || 'planilha.xlsx', novas: out.novas, alteradas: out.alteradas, onibus_novos: novosOnibus.length });
+      await auditar(db, req.usuario, 'importar', 'onibus_diario', null, { arquivo: texto(req.query.nome, 150) || 'planilha.xlsx', aba: lido.aba, dia: out.dia, novas: out.novas, alteradas: out.alteradas, onibus_novos: novosOnibus.length });
       return out;
     });
     res.status(aplicar ? 201 : 200).json(resumo);

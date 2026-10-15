@@ -87,25 +87,41 @@ async function planilha({ query, ir, recarregarPagina }) {
   const importar = async () => {
     let arquivo = null;
     let previa = null;
+    let params = null;
     const ok = await dialogo({
       titulo: 'Importar a planilha do acompanhamento (Excel)',
-      descricao: 'Envie o "Acompanhamento Diário - Ônibus" (.xlsx). A aba BASE (DATA, EMPRESA, FROTA, passageiros, vistoria, lavagens, atividade, rotas e situação) entra na planilha diária: cada linha é achada pela data + frota, só entram as novas e só mudam as alteradas. Ônibus que não existem são cadastrados na frota.',
-      campos: [{ nome: 'arquivo', rotulo: 'Planilha (.xlsx)', tipo: 'file', accept: '.xlsx', obrigatorio: true, cheio: true }],
+      descricao: 'Envie o "Acompanhamento Diário - Ônibus" (.xlsx). A aba RESUMO (empresa, frota, passageiros, última e próxima vistoria, lavagens, atividade, rotas, situação e a "Obs." do rodapé) vira a planilha do dia escolhido: os ônibus da RESUMO, na mesma ordem e com os mesmos dados. Ônibus que não existem são cadastrados na frota.',
+      campos: [
+        { nome: 'arquivo', rotulo: 'Planilha (.xlsx)', tipo: 'file', accept: '.xlsx', obrigatorio: true, cheio: true },
+        { nome: 'data', rotulo: 'Dia da planilha (aba RESUMO)', tipo: 'date', valor: d.data, obrigatorio: true },
+        { nome: 'aba', rotulo: 'O que importar', tipo: 'select', valor: 'resumo', opcoes: [{ valor: 'resumo', rotulo: 'Aba RESUMO (o dia escolhido)' }, { valor: 'base', rotulo: 'Aba BASE (histórico de todos os dias)' }] },
+      ],
       confirmar: 'Ver prévia',
-      aoSalvar: async (v) => { arquivo = v.arquivo; previa = await enviarArquivo('/onibus/diario/importar', arquivo, { nome: arquivo.name }); },
+      aoSalvar: async (v) => {
+        arquivo = v.arquivo;
+        params = { nome: arquivo.name, aba: v.aba, ...(v.aba === 'resumo' ? { data: v.data } : {}) };
+        previa = await enviarArquivo('/onibus/diario/importar', arquivo, params);
+      },
     });
     if (!ok || !previa) return;
     const p = previa;
+    const resumo = p.modo === 'resumo';
     const lista = h('ul', { class: 'pequeno' },
-      h('li', {}, `Aba ${p.aba}: ${fmt(p.linhas)} linhas de ${fmt(p.dias)} dias (${dataBR(p.de)} a ${dataBR(p.ate)}).`),
-      h('li', {}, h('strong', {}, `${fmt(p.novas)} novas`), ` · ${fmt(p.alteradas)} alteradas · ${fmt(p.sem_alteracao)} sem alteração`),
-      p.repetidas ? h('li', {}, `${fmt(p.repetidas)} repetida(s) na planilha (mesma data e frota: vale a última).`) : null,
-      p.onibus_novos.length ? h('li', {}, `${p.onibus_novos.length} ônibus novo(s) na frota: ${p.onibus_novos.slice(0, 20).join(', ')}${p.onibus_novos.length > 20 ? '…' : ''}`) : null);
-    if (!p.novas && !p.alteradas) { await confirmar('Nada a importar', h('div', {}, lista, h('p', { class: 'muted' }, 'A planilha já está igual ao sistema.')), { rotulo: 'OK' }); return; }
+      resumo
+        ? h('li', {}, `Aba ${p.aba} → planilha de `, h('strong', {}, dataBR(p.dia)), `: ${fmt(p.linhas)} ônibus.`,
+          p.data_na_planilha && p.data_na_planilha !== p.dia ? ` (a data no cabeçalho da planilha é ${dataBR(p.data_na_planilha)})` : '')
+        : h('li', {}, `Aba ${p.aba}: ${fmt(p.linhas)} linhas de ${fmt(p.dias)} dias (${dataBR(p.de)} a ${dataBR(p.ate)}).`),
+      h('li', {}, h('strong', {}, `${fmt(p.novas)} nova(s)`), ` · ${fmt(p.alteradas)} alterada(s) · ${fmt(p.sem_alteracao)} sem alteração`),
+      p.retiradas?.length ? h('li', {}, `${p.retiradas.length} ônibus que estão no dia e não estão na RESUMO saem do dia: ${p.retiradas.join(', ')}`) : null,
+      p.repetidas ? h('li', {}, `${fmt(p.repetidas)} repetida(s) na planilha (mesma frota: vale a última).`) : null,
+      p.onibus_novos.length ? h('li', {}, `${p.onibus_novos.length} ônibus novo(s) na frota: ${p.onibus_novos.slice(0, 20).join(', ')}${p.onibus_novos.length > 20 ? '…' : ''}`) : null,
+      resumo && p.observacao_dia ? h('li', {}, `Obs. do dia: ${p.observacao_dia}`) : null);
+    if (!p.novas && !p.alteradas && !p.retiradas?.length) { await confirmar('Nada a importar', h('div', {}, lista, h('p', { class: 'muted' }, 'A planilha já está igual ao sistema.')), { rotulo: 'OK' }); return; }
     if (!(await confirmar('Confirmar importação', lista, { rotulo: 'Importar' }))) return;
-    const r = await enviarArquivo('/onibus/diario/importar', arquivo, { nome: arquivo.name, aplicar: 1 });
-    toast(`Importado: ${fmt(r.novas)} novas e ${fmt(r.alteradas)} alteradas.`);
-    ir('#/onibus/planilha', r.ate && r.ate !== d.hoje ? { data: r.ate } : {});
+    const r = await enviarArquivo('/onibus/diario/importar', arquivo, { ...params, aplicar: 1 });
+    toast(`Importado: ${fmt(r.novas)} nova(s) e ${fmt(r.alteradas)} alterada(s).`);
+    const alvo = r.dia || r.ate;
+    ir('#/onibus/planilha', alvo && alvo !== d.hoje ? { data: alvo } : {});
   };
 
   // ---------- Resumo (legenda com as contagens) ----------
@@ -261,17 +277,17 @@ async function planilha({ query, ir, recarregarPagina }) {
       'sep',
       { texto: 'Disponibilidade', icone: 'relatorio', aoClicar: () => ir('#/onibus/disponibilidade', { ate: d.data }) },
       { texto: 'Exportar (Excel)', icone: 'baixar', aoClicar: () => { location.href = `/api/onibus/diario.csv?de=${d.data}&ate=${d.data}`; } },
-      { texto: 'Importar planilha Excel', icone: 'upload', aoClicar: importar },
+      { texto: 'Importar aba RESUMO (Excel)', icone: 'upload', aoClicar: importar },
     ]),
     listas,
     vazioDia
       ? secao(`Planilha de ${dataBR(d.data)} ainda não começou`, null,
         h('p', { class: 'muted' }, d.anterior
           ? `Comece copiando o último dia lançado (${dataBR(d.anterior)}): os mesmos ônibus, passageiros, vistorias, lavagens, atividades, rotas e situação. Depois é só alterar o que mudou.`
-          : 'Comece com todos os ônibus ativos da frota, ou importe a planilha do Excel com o histórico.'),
+          : 'Importe a aba RESUMO da planilha do Excel para este dia, ou comece com todos os ônibus ativos da frota.'),
         h('div', { class: 'linha-botoes inicio' },
           d.anterior ? botao(`Copiar de ${dataBR(d.anterior)}`, () => iniciar(d.anterior), { icone: 'setas' }) : botao('Começar com a frota ativa', () => iniciar(null), { icone: 'onibus' }),
-          botao('Importar planilha Excel', importar, { tom: 'sec', icone: 'upload' })))
+          botao('Importar aba RESUMO (Excel)', importar, { tom: d.anterior ? 'sec' : '', icone: 'upload' })))
       : [
         areaResumo,
         h('div', { class: 'pl-wrap oni-wrap' }, h('table', { class: 'pl oni-pl' },

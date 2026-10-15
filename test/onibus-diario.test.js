@@ -19,7 +19,14 @@ const serial = (iso) => Math.round((Date.parse(`${iso}T00:00:00Z`) - Date.UTC(18
 const CAB = ['DATA', 'EMPRESA ', 'FROTA ', 'N° TOTAL PASSAGEIROS', 'N° TOTAL PASSAGEIROS POR DIA', 'VISTORIADO', 'VENCIMENTO', 'LAVAGEM_1', 'LAVAGEM_2', 'ATIVIDADE ', 'ROTA/IDA', 'ROTA/VOLTA', 'Situação', '∆ %'];
 const planilha = (linhas) => criarXlsx([{ nome: 'BASE', linhas: [[], [], ['', '', '', 'Levantamento Transporte Funcionários'], [], [], [], [], [],
   ['', '', '', ...CAB, '', '', '', '', '', 'DATA', 'EMPRESA '], ...linhas.map((l) => ['', '', '', ...l])] }]);
-const importar = (c, buf, aplicar) => c.req('POST', `/api/onibus/diario/importar?nome=acomp.xlsx${aplicar ? '&aplicar=1' : ''}`, undefined, { bruto: buf, tipo: 'application/octet-stream' });
+const importar = (c, buf, aplicar, q = 'aba=base') => c.req('POST', `/api/onibus/diario/importar?nome=acomp.xlsx&${q}${aplicar ? '&aplicar=1' : ''}`, undefined, { bruto: buf, tipo: 'application/octet-stream' });
+// aba RESUMO: a planilha do dia (sem DATA), com TOTAL por empresa, legenda e "Obs.:" no rodapé
+const CAB_RESUMO = ['EMPRESA ', 'FROTA ', 'N° TOTAL PASSAGEIROS', 'N° TOTAL PASSAGEIROS POR DIA', 'ÚLTIMA VISTORIA', 'PRÓXIMA VISTORIA', 'LAVAGEM_1', 'LAVAGEM_2', 'ATIVIDADE ', 'ROTA/IDA', 'ROTA/VOLTA', 'Situação'];
+const resumo = (linhas, dataCab) => criarXlsx([
+  { nome: 'BASE', linhas: [[], ['', '', '', ...CAB]] },
+  { nome: 'RESUMO', linhas: [[], [], ['', '', '', 'Levantamento Transporte Funcionários'], [], [], [], ['', '', '', 'Departamento de Produção Agrícola', ...Array(10).fill(''), serial(dataCab)], [],
+    ['', '', '', ...CAB_RESUMO, '', '', '', '', '', '', 23, 'Liberado'], ...linhas.map((l) => (l[0] === '#' ? l.slice(1) : ['', '', '', ...l]))] },
+]);
 
 test('acesso: só administrador, financeiro e perfil Ônibus', async () => {
   assert.equal((await oni.get('/api/onibus/diario')).status, 200);
@@ -157,4 +164,44 @@ test('importar a planilha do Excel (aba BASE): prévia, novas, alteradas e ônib
   assert.equal(r.corpo.sem_alteracao, 4);
   assert.equal((await importar(oni, criarXlsx([{ nome: 'X', linhas: [['A', 'B']] }]), false)).status, 400);
   assert.equal((await importar(ana, buf, false)).status, 403);
+});
+
+test('importar a aba RESUMO para o dia escolhido: ordem, totais ignorados, obs. do dia e o dia fica igual à aba', async () => {
+  const D3 = '2026-05-06';
+  await oni.post('/api/onibus/diario/iniciar', { data: D3 }); // copia 05/05 (50001, 50002, 60001)
+  const buf = resumo([
+    [1, 'TRANSPORTE BETA', 60001, 33, 30, serial('2026-04-20'), serial('2026-05-20'), serial('2026-05-01'), serial('2026-05-08'), 'HERBICIDA', 'CIDADE/HERBICIDA', 'HERBICIDA/CIDADE', 'Liberado'].slice(1),
+    ['TOTAL', 1],
+    ['VIAÇÃO ALFA', 50001, 48, '20 + 22', serial('2026-04-04'), serial('2026-05-04'), '', '', 'FRENTE 1', 'CIDADE / BASE', '-', 'Manutenção'],
+    ['VIAÇÃO DELTA', 80001, 40, 35, '', serial('2026-06-01'), '', '', 'FRENTE 9', 'X/Y', 'Y/X', 'Liberado'],
+    ['TOTAL', 2],
+    ['TOTAL GERAL', 3],
+    [], ['LEGENDA'], ['Liberado', 2], [],
+    ['#', '', '', '', 'Obs.: As manobras estão sendo feitas normalmente!'],
+  ], '2026-05-09');
+  let r = await importar(oni, buf, false, `aba=resumo&data=${D3}`);
+  assert.equal(r.status, 200, JSON.stringify(r.corpo));
+  assert.equal(r.corpo.modo, 'resumo');
+  assert.equal(r.corpo.aba, 'RESUMO');
+  assert.equal(r.corpo.dia, D3);
+  assert.equal(r.corpo.data_na_planilha, '2026-05-09');
+  assert.equal(r.corpo.linhas, 3);
+  assert.equal(r.corpo.novas, 1); // 80001
+  assert.equal(r.corpo.alteradas, 2);
+  assert.deepEqual(r.corpo.retiradas, ['50002']); // estava no dia e não está na RESUMO
+  assert.deepEqual(r.corpo.onibus_novos, ['80001']);
+  assert.equal(r.corpo.observacao_dia, 'As manobras estão sendo feitas normalmente!');
+  r = await importar(oni, buf, true, `aba=resumo&data=${D3}`);
+  assert.equal(r.status, 201);
+  const d = (await oni.get(`/api/onibus/diario?data=${D3}`)).corpo;
+  // mesma ordem da aba RESUMO
+  assert.deepEqual(d.linhas.map((l) => [l.empresa, l.prefixo, l.passageiros, l.situacao]), [
+    ['TRANSPORTE BETA', '60001', 30, 'liberado'], ['VIAÇÃO ALFA', '50001', 42, 'manutencao'], ['VIAÇÃO DELTA', '80001', 35, 'liberado']]);
+  assert.equal(d.linhas[2].ultima_vistoria, '2026-05-02'); // sem a última: próxima − 30 dias
+  assert.equal(d.linhas[0].lavagem_2, '2026-05-08');
+  assert.equal(d.observacao, 'As manobras estão sendo feitas normalmente!');
+  // reimportar não muda nada; sem data, usa a do cabeçalho da planilha
+  assert.equal((await importar(oni, buf, false, `aba=resumo&data=${D3}`)).corpo.sem_alteracao, 3);
+  assert.equal((await importar(oni, buf, false, 'aba=resumo')).corpo.dia, '2026-05-09');
+  assert.equal((await importar(oni, criarXlsx([{ nome: 'RESUMO', linhas: [['A', 'B']] }]), false, 'aba=resumo')).status, 400);
 });
