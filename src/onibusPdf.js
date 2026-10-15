@@ -63,7 +63,7 @@ function gerarPdfOnibus({ resumo = null, disp = null, emitidoPor = '', agora = n
 
   // ================= 1ª folha: RESUMO =================
   if (resumo) {
-    cabecalho('Levantamento Transporte Funcionários', ['CRV Industrial - Unidade Capinópolis/MG', 'Departamento de Produção Agrícola'], br(resumo.data));
+    cabecalho('Levantamento Transporte Funcionários', ['CRV Industrial - Unidade Capinópolis/MG', 'Departamento de Transporte'], br(resumo.data));
     // indicadores do RESUMO (os mesmos da tela), logo abaixo do cabeçalho
     {
       const tot = resumo.linhas.length;
