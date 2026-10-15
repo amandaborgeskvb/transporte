@@ -1043,3 +1043,4 @@ html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
 .modulos-extra legend { font-size: .86rem; font-weight: 600; padding: 0 4px; }
 .modulos-op { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 2px 0 4px; }
 .perfis-badges { display: inline-flex; gap: 4px; align-items: center; flex: none; }
+.form-estreito { max-width: 520px; }

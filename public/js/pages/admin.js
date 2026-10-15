@@ -2,7 +2,7 @@
 import { get, post, put, cadastros } from '../api.js';
 import {
   h, tabela, botao, formulario, toast, secao, badgeTom, rotulo, dataHoraBR, barraFiltros, descreverEvento,
-  resumirDetalhes, entidadeRotulo, cabecalhoPagina, vazio,
+  resumirDetalhes, entidadeRotulo, cabecalhoPagina, vazio, confirmar, icone,
 } from '../ui.js';
 
 const PERFIS = ['administrador', 'solicitante', 'aprovador', 'financeiro', 'treinamento', 'gratificacao', 'contratacao', 'onibus', 'operacional'];
@@ -23,7 +23,8 @@ const nomesPerfis = (u) => [rotulo(u.perfil), ...(u.perfis_extras || []).map(rot
 const TOM_PERFIL = { administrador: 'ok', solicitante: 'mute', aprovador: 'info', financeiro: 'warn', treinamento: 'info', gratificacao: 'warn', contratacao: 'info', onibus: 'ok', operacional: 'warn' };
 
 export async function usuarios({ params = [] } = {}) {
-  const [dados, c] = await Promise.all([get('/usuarios'), cadastros(true)]);
+  const [dados, c, cfg] = await Promise.all([get('/usuarios'), cadastros(true), get('/usuarios/config').catch(() => ({}))]);
+  const temProvisoria = !!cfg.senha_provisoria; // senha provisória configurada no servidor (variável SENHA_PROVISORIA)
   let lista = dados;
   let selecionado = params[0] === 'novo' ? 'novo' : lista[0] || 'novo'; // #/usuarios/novo abre direto o cadastro
   let filtro = '';
@@ -61,7 +62,9 @@ export async function usuarios({ params = [] } = {}) {
         novo ? { nome: 'login', rotulo: 'Login', obrigatorio: true, dica: 'Letras, números e . _ @ -' } : null,
         { nome: 'perfil', rotulo: 'Perfil de acesso', tipo: 'select', opcoes: PERFIS.map((p) => ({ valor: p, rotulo: rotulo(p) })), valor: u?.perfil || 'solicitante', obrigatorio: true },
         { nome: 'funcionario_id', rotulo: 'Funcionário vinculado (matrícula ou nome)', tipo: 'funcionario', funcionarios: c.funcionarios, valor: u?.funcionario_id, dica: 'Obrigatório para solicitantes; deixe em branco para os demais perfis.' },
-        { nome: 'senha', rotulo: novo ? 'Senha' : 'Nova senha', tipo: 'password', obrigatorio: novo, dica: novo ? 'Mínimo de 8 caracteres.' : 'Deixe em branco para manter a atual.' },
+        { nome: 'senha', rotulo: novo ? 'Senha inicial' : 'Nova senha', tipo: 'password', obrigatorio: novo && !temProvisoria,
+          dica: novo ? (temProvisoria ? 'Em branco: usa a senha provisória (a pessoa cria a própria senha no primeiro acesso).' : 'Mínimo de 8 caracteres.') : 'Deixe em branco para manter a atual.' },
+        { nome: 'trocar_senha', rotulo: 'Pedir para trocar a senha no próximo acesso', tipo: 'checkbox', valor: novo ? true : !!u.trocar_senha, cheio: true },
         novo ? null : { nome: 'ativo', rotulo: 'Usuário ativo', tipo: 'checkbox', valor: u.ativo, cheio: true },
       ].filter(Boolean),
       aoSalvar: async (v) => {
@@ -72,6 +75,13 @@ export async function usuarios({ params = [] } = {}) {
         await recarregar(salvo.id);
       },
       aoCancelar: novo && lista.length ? () => { selecionado = lista[0]; desenhar(); } : null,
+      // esqueceu a senha: volta para a senha provisória e a pessoa cria outra ao entrar
+      extras: !novo && temProvisoria ? [h('button', { type: 'button', class: 'sec', onclick: async () => {
+        if (!(await confirmar('Redefinir para a senha provisória', `${u.nome} vai entrar com a senha provisória e criar uma senha nova no primeiro acesso. As sessões abertas são encerradas.`, { rotulo: 'Redefinir' }))) return;
+        await put(`/usuarios/${u.id}`, { nome: u.nome, perfil: u.perfil, funcionario_id: u.funcionario_id, ativo: u.ativo, redefinir_provisoria: true });
+        toast('Senha redefinida para a provisória.');
+        await recarregar(u.id);
+      } }, icone('chave'), 'Redefinir para a senha provisória')] : [],
     });
     // mais de um perfil: o principal (acima) + módulos adicionais (o usuário passa a usar também estes módulos)
     const caixaModulos = h('fieldset', { class: 'cheio modulos-extra' }, h('legend', {}, 'Módulos adicionais (além do perfil principal)'),
@@ -86,7 +96,7 @@ export async function usuarios({ params = [] } = {}) {
     atualizarModulos(u?.perfil || 'solicitante');
     form.querySelector('select[name=perfil]')?.addEventListener('change', (e) => { caixaPerfil.textContent = DESCRICAO_PERFIL[e.target.value]; atualizarModulos(e.target.value); });
     detalhe.replaceChildren(
-      h('div', { class: 'detalhe-cab' }, h('div', {}, h('h2', {}, novo ? 'Novo usuário' : u.nome), h('div', { class: 'muted' }, novo ? 'Defina o perfil, os módulos adicionais e uma senha inicial.' : `${u.login} · ${nomesPerfis(u)}`))),
+      h('div', { class: 'detalhe-cab' }, h('div', {}, h('h2', {}, novo ? 'Novo usuário' : u.nome), h('div', { class: 'muted' }, novo ? 'Defina o perfil, os módulos adicionais e a senha inicial.' : `${u.login} · ${nomesPerfis(u)}${u.trocar_senha ? ' · com senha provisória (troca no próximo acesso)' : ''}`))),
       caixaPerfil, h('div', { class: 'espaco' }), form);
   }
 

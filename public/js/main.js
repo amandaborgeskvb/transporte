@@ -1,5 +1,5 @@
 import { get, post } from './api.js';
-import { h, icone, dialogo, rotulo } from './ui.js';
+import { h, icone, dialogo, rotulo, formulario, cabecalhoPagina } from './ui.js';
 import dashboard from './pages/dashboard.js';
 import { lista as listaViagens, detalhe as detalheViagem } from './pages/viagens.js';
 import { adiantamentos, despesas, reembolsos } from './pages/filas.js';
@@ -50,6 +50,7 @@ const ROTAS = {
   onibus: { titulo: 'Acompanhamento de ônibus', pagina: onibus, perfis: [...GESTAO, 'onibus'], voltar: (c) => (c.params[0] === 'imprimir' ? `#/onibus/resumo${c.query.data ? `?data=${c.query.data}` : ''}` : null) },
   operacional: { titulo: 'Controle operacional', pagina: operacional, perfis: [...GESTAO, 'operacional'], voltar: (c) => (['veiculos', 'pastas'].includes(c.params[0]) && c.params.length > 1 ? `#/operacional/${c.params[0]}` : null) },
   treinamento: { titulo: 'Guia do sistema', pagina: treinamento },
+  senha: { titulo: 'Alterar minha senha', pagina: () => paginaSenha() },
   relatorios: { titulo: 'Relatório de viagem', pagina: relatorios, perfis: VIAGEM },
   cadastros: { titulo: 'Cadastros', pagina: cadastrosPagina, perfis: ADMIN, voltar: () => '#/dashboard' },
   importacao: { titulo: 'Importação de funcionários', pagina: importacao, perfis: ADMIN, voltar: () => '#/dashboard' },
@@ -136,6 +137,7 @@ const MENU = [
   },
   { rota: 'auditoria', titulo: 'Auditoria', icone: 'auditoria', perfis: ADMIN },
   { rota: 'treinamento', titulo: 'Guia do sistema', icone: 'ajuda' },
+  { rota: 'senha', titulo: 'Alterar minha senha', icone: 'chave' },
 ];
 // o usuário pode ter mais de um perfil: o principal + módulos adicionais
 const permitido = (perfis) => !perfis || (usuario.perfis || [usuario.perfil]).some((p) => perfis.includes(p));
@@ -356,6 +358,22 @@ function montarApp() {
 }
 
 // ---------- Login / sessão ----------
+// Painel da marca (CTT) ao lado do formulário com a logo da empresa (CRV Industrial)
+function painelMarca() {
+  return h('aside', { class: 'login-marca' },
+    h('img', { class: 'login-ctt', src: '/img/ctt-branca.svg', alt: 'CTT — Transporte', width: 230, height: 50 }),
+    h('h1', {}, 'CTT - TRANSPORTE'),
+    h('p', { class: 'login-desc' }, 'Controle do transporte em um só lugar.'),
+    h('ul', { class: 'login-modulos' },
+      [['viagem', 'Viagens, adiantamentos e despesas'], ['carteira', 'Gratificação rescisória'], ['documento', 'Contratação'], ['calendario', 'Treinamento prático'], ['onibus', 'Acompanhamento de ônibus'], ['caminhao', 'Documentação da frota']]
+        .map(([ic, t]) => h('li', {}, icone(ic), t))),
+    h('div', { class: 'login-empresa' },
+      h('img', { src: '/img/crv-industrial-branca.png?v=2', alt: 'CRV Industrial', width: 170, height: 53 }),
+      h('span', {}, 'Açúcar, Etanol e Energia')));
+}
+
+let senhaDoLogin = ''; // a senha provisória digitada no login (para não pedir de novo na troca obrigatória)
+
 function telaLogin(aviso) {
   usuario = null;
   tokenRender += 1;
@@ -373,17 +391,7 @@ function telaLogin(aviso) {
   });
   const capsLock = h('small', { class: 'caps-lock', role: 'status' });
   senha.addEventListener('keyup', (e) => { capsLock.textContent = e.getModifierState?.('CapsLock') ? 'Caps Lock ligado' : ''; });
-  // Painel da marca (CTT) ao lado do formulário com a logo da empresa (CRV Industrial)
-  const marca = h('aside', { class: 'login-marca' },
-    h('img', { class: 'login-ctt', src: '/img/ctt-branca.svg', alt: 'CTT — Transporte', width: 230, height: 50 }),
-    h('h1', {}, 'CTT - TRANSPORTE'),
-    h('p', { class: 'login-desc' }, 'Controle do transporte em um só lugar.'),
-    h('ul', { class: 'login-modulos' },
-      [['viagem', 'Viagens, adiantamentos e despesas'], ['carteira', 'Gratificação rescisória'], ['documento', 'Contratação'], ['calendario', 'Treinamento prático'], ['onibus', 'Acompanhamento de ônibus'], ['caminhao', 'Documentação da frota']]
-        .map(([ic, t]) => h('li', {}, icone(ic), t))),
-    h('div', { class: 'login-empresa' },
-      h('img', { src: '/img/crv-industrial-branca.png?v=2', alt: 'CRV Industrial', width: 170, height: 53 }),
-      h('span', {}, 'Açúcar, Etanol e Energia')));
+  const marca = painelMarca();
   const form = h('form', { class: 'login-form', 'aria-labelledby': 'login-titulo' },
     h('img', { class: 'logo logo-claro', src: '/img/crv-industrial-azul.png?v=2', alt: 'CRV Industrial — Açúcar, Etanol e Energia', width: 220, height: 69 }),
     h('img', { class: 'logo logo-escuro', src: '/img/crv-industrial-branca.png?v=2', alt: 'CRV Industrial — Açúcar, Etanol e Energia', width: 220, height: 69 }),
@@ -400,6 +408,7 @@ function telaLogin(aviso) {
     erro.textContent = '';
     try {
       await post('/login', { usuario: f.get('usuario'), senha: f.get('senha') });
+      senhaDoLogin = String(f.get('senha') || '');
       await iniciar();
     } catch (err) {
       erro.textContent = err.message;
@@ -416,23 +425,70 @@ async function sair() {
   telaLogin();
 }
 
+const CAMPOS_SENHA = [
+  { nome: 'atual', rotulo: 'Senha atual', tipo: 'password', obrigatorio: true, cheio: true },
+  { nome: 'nova', rotulo: 'Nova senha', tipo: 'password', obrigatorio: true, cheio: true, dica: 'Mínimo de 8 caracteres, diferente da atual.' },
+  { nome: 'confirma', rotulo: 'Repita a nova senha', tipo: 'password', obrigatorio: true, cheio: true },
+];
+const salvarSenha = async (v) => {
+  if (v.nova !== v.confirma) throw new Error('A confirmação não confere com a nova senha.');
+  await post('/me/senha', { atual: v.atual, nova: v.nova });
+};
 function alterarSenha() {
-  dialogo({
-    titulo: 'Alterar senha',
-    campos: [
-      { nome: 'atual', rotulo: 'Senha atual', tipo: 'password', obrigatorio: true, cheio: true },
-      { nome: 'nova', rotulo: 'Nova senha', tipo: 'password', obrigatorio: true, cheio: true, dica: 'Mínimo de 8 caracteres.' },
-      { nome: 'confirma', rotulo: 'Repita a nova senha', tipo: 'password', obrigatorio: true, cheio: true },
-    ],
-    aoSalvar: async (v) => {
-      if (v.nova !== v.confirma) throw new Error('A confirmação não confere com a nova senha.');
-      await post('/me/senha', { atual: v.atual, nova: v.nova });
-    },
-  }).then((s) => { if (s) telaLogin('Senha alterada. Entre novamente com a nova senha.'); });
+  dialogo({ titulo: 'Alterar senha', campos: CAMPOS_SENHA, aoSalvar: salvarSenha })
+    .then((s) => { if (s) telaLogin('Senha alterada. Entre novamente com a nova senha.'); });
+}
+// Menu "Alterar minha senha" (todos os perfis)
+function paginaSenha() {
+  const form = formulario({
+    campos: CAMPOS_SENHA, confirmar: 'Alterar senha',
+    aoSalvar: async (v) => { await salvarSenha(v); telaLogin('Senha alterada. Entre novamente com a nova senha.'); },
+  });
+  return [
+    cabecalhoPagina({ migalhas: [['Configurações'], ['Alterar minha senha']], titulo: 'Alterar minha senha', sub: `${usuario.nome} · ${usuario.login}` }),
+    h('section', { class: 'card form-estreito' }, h('p', { class: 'muted' }, 'Depois de alterar, entre de novo com a nova senha. Esqueceu a senha atual? Peça ao administrador para redefinir para a senha provisória.'), form),
+  ];
+}
+
+// Senha provisória: antes de usar o sistema, a pessoa cria a própria senha
+function telaTrocarSenha() {
+  const erro = h('div', { class: 'erro', role: 'alert' });
+  const salvar = h('button', { type: 'submit' }, 'Salvar minha senha');
+  const campo = (nome, rotuloTxt, extra = {}) => h('label', {}, rotuloTxt, h('input', { name: nome, type: 'password', required: true, autocomplete: 'new-password', ...extra }));
+  const form = h('form', { class: 'login-form', 'aria-labelledby': 'troca-titulo' },
+    h('img', { class: 'logo logo-claro', src: '/img/crv-industrial-azul.png?v=2', alt: 'CRV Industrial — Açúcar, Etanol e Energia', width: 220, height: 69 }),
+    h('img', { class: 'logo logo-escuro', src: '/img/crv-industrial-branca.png?v=2', alt: 'CRV Industrial — Açúcar, Etanol e Energia', width: 220, height: 69 }),
+    h('h2', { id: 'troca-titulo' }, 'Crie sua senha'),
+    h('p', { class: 'muted' }, `Olá, ${usuario.nome.split(' ')[0]}! Você entrou com a senha provisória. Para continuar, escolha uma senha só sua.`),
+    senhaDoLogin ? null : campo('atual', 'Senha provisória (a que você usou para entrar)', { autocomplete: 'current-password' }),
+    campo('nova', 'Nova senha', { minlength: 8, autofocus: true }),
+    h('small', { class: 'muted' }, 'Mínimo de 8 caracteres. Não use a senha provisória.'),
+    campo('confirma', 'Repita a nova senha', { minlength: 8 }),
+    erro, salvar,
+    h('button', { type: 'button', class: 'sec', onclick: sair }, 'Sair'));
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const f = new FormData(form);
+    erro.textContent = '';
+    if (f.get('nova') !== f.get('confirma')) { erro.textContent = 'A confirmação não confere com a nova senha.'; return; }
+    salvar.disabled = true;
+    try {
+      await post('/me/senha', { atual: senhaDoLogin || f.get('atual'), nova: f.get('nova') });
+      senhaDoLogin = '';
+      telaLogin('Senha criada. Entre com o seu usuário e a nova senha.');
+    } catch (err) {
+      erro.textContent = err.message;
+      salvar.disabled = false;
+    }
+  });
+  document.title = 'Crie sua senha · CTT - TRANSPORTE';
+  raiz.replaceChildren(h('div', { class: 'login' }, botaoTema('icone-btn login-tema'), h('div', { class: 'login-painel' }, painelMarca(), form)));
 }
 
 async function iniciar() {
   usuario = await get('/me');
+  if (usuario.trocar_senha) { telaTrocarSenha(); return; }
+  senhaDoLogin = '';
   montarApp();
   if (!location.hash || location.hash === '#') location.hash = '#/dashboard';
   await renderizar();

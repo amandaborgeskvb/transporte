@@ -45,7 +45,7 @@ function parseCookies(header) {
   return out;
 }
 
-const COLUNAS_USUARIO = 'id, nome, login, perfil, perfis_extras, funcionario_id, ativo, token_versao';
+const COLUNAS_USUARIO = 'id, nome, login, perfil, perfis_extras, funcionario_id, ativo, token_versao, trocar_senha';
 
 // Cria o primeiro administrador a partir das variáveis de ambiente, só se ainda não houver usuários.
 async function garantirAdminInicial(pool, { login, senha }) {
@@ -121,6 +121,6 @@ function criarAuth({ pool, secret, secure }) {
   return { autenticar, login, logout };
 }
 
-const publico = (u) => ({ id: u.id, nome: u.nome, login: u.login, perfil: u.perfil, perfis_extras: u.perfis_extras || [], perfis: perfisDe(u), funcionario_id: u.funcionario_id });
+const publico = (u) => ({ id: u.id, nome: u.nome, login: u.login, perfil: u.perfil, perfis_extras: u.perfis_extras || [], perfis: perfisDe(u), funcionario_id: u.funcionario_id, trocar_senha: !!u.trocar_senha });
 
 module.exports = { criarAuth, garantirAdminInicial, hashSenha, verificarSenha, validarSenhaNova, publico };

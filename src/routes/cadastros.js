@@ -62,7 +62,7 @@ const CADASTROS = {
   },
 };
 
-function criarCadastros({ pool }) {
+function criarCadastros({ pool, senhaProvisoria = '' }) {
   const router = express.Router();
 
   // Status: o código é fixo (o fluxo da viagem depende dele); nome e cor são editáveis.
@@ -131,7 +131,7 @@ function criarCadastros({ pool }) {
   const usuarios = express.Router();
   usuarios.use(exigirPerfil(ADM));
 
-  const COLS = 'u.id, u.nome, u.login, u.perfil, u.perfis_extras, u.funcionario_id, u.ativo, u.criado_em, f.nome AS funcionario_nome';
+  const COLS = 'u.id, u.nome, u.login, u.perfil, u.perfis_extras, u.trocar_senha, u.funcionario_id, u.ativo, u.criado_em, f.nome AS funcionario_nome';
   const listar = (where = '', params = []) =>
     pool.query(`SELECT ${COLS} FROM usuarios u LEFT JOIN funcionarios f ON f.id = u.funcionario_id ${where} ORDER BY u.nome`, params);
 
@@ -161,13 +161,20 @@ function criarCadastros({ pool }) {
   }
 
   usuarios.get('/', wrap(async (_req, res) => res.json((await listar()).rows)));
+  // a tela só precisa saber se existe senha provisória configurada (o valor fica na variável de ambiente)
+  usuarios.get('/config', (_req, res) => res.json({ senha_provisoria: !!senhaProvisoria }));
 
   usuarios.post('/', wrap(async (req, res) => {
     const d = lerUsuario(req.body, { novo: true });
-    validarSenhaNova(req.body.senha);
+    // sem senha digitada: a senha provisória; o usuário troca no primeiro acesso
+    const provisoria = !req.body.senha;
+    if (provisoria && !senhaProvisoria) throw erro400('Informe a senha inicial (a senha provisória não está configurada no servidor).');
+    const senha = provisoria ? senhaProvisoria : req.body.senha;
+    validarSenhaNova(senha);
+    const trocar = provisoria || bool(req.body.trocar_senha);
     const { rows } = await pool.query(
-      `INSERT INTO usuarios (nome, login, senha_hash, perfil, perfis_extras, funcionario_id, ativo) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
-      [d.nome, d.login, await hashSenha(req.body.senha), d.perfil, d.perfis_extras, d.funcionario_id, d.ativo],
+      `INSERT INTO usuarios (nome, login, senha_hash, perfil, perfis_extras, funcionario_id, ativo, trocar_senha) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+      [d.nome, d.login, await hashSenha(senha), d.perfil, d.perfis_extras, d.funcionario_id, d.ativo, trocar],
     );
     await auditar(pool, req.usuario, 'criar', 'usuarios', rows[0].id, { login: d.login, perfil: d.perfil, ...(d.perfis_extras.length ? { perfis_extras: d.perfis_extras.join(', ') } : {}) });
     res.status(201).json((await listar('WHERE u.id = $1', [rows[0].id])).rows[0]);
@@ -187,11 +194,18 @@ function criarCadastros({ pool }) {
     const params = [d.nome, d.perfil, d.funcionario_id, d.ativo, d.perfis_extras];
     const mudouExtras = [...(antes.perfis_extras || [])].sort().join(',') !== [...d.perfis_extras].sort().join(',');
     let trocouSenha = false;
-    if (req.body.senha) {
-      validarSenhaNova(req.body.senha);
-      params.push(await hashSenha(req.body.senha));
+    // redefinir para a senha provisória (ou uma senha digitada): o usuário troca no próximo acesso
+    const novaSenha = bool(req.body.redefinir_provisoria) ? senhaProvisoria : req.body.senha;
+    if (bool(req.body.redefinir_provisoria) && !senhaProvisoria) throw erro400('A senha provisória não está configurada no servidor: digite uma nova senha.');
+    if (novaSenha) {
+      validarSenhaNova(novaSenha);
+      params.push(await hashSenha(novaSenha));
       sets.push(`senha_hash=$${params.length}`);
       trocouSenha = true;
+    }
+    if (bool(req.body.redefinir_provisoria) || req.body.trocar_senha !== undefined) {
+      params.push(bool(req.body.redefinir_provisoria) || bool(req.body.trocar_senha));
+      sets.push(`trocar_senha=$${params.length}`);
     }
     // Mudar perfil, desativar ou trocar senha derruba as sessões abertas do usuário
     if (trocouSenha || d.perfil !== antes.perfil || mudouExtras || !d.ativo) sets.push('token_versao = token_versao + 1');
@@ -199,7 +213,7 @@ function criarCadastros({ pool }) {
     await pool.query(`UPDATE usuarios SET ${sets.join(', ')} WHERE id=$${params.length}`, params);
     await auditar(pool, req.usuario, 'editar', 'usuarios', id, {
       ...diff(antes, d, ['nome', 'perfil', 'funcionario_id', 'ativo']), ...(mudouExtras ? { perfis_extras: { de: (antes.perfis_extras || []).join(', '), para: d.perfis_extras.join(', ') } } : {}),
-      ...(trocouSenha ? { senha: 'redefinida' } : {}),
+      ...(trocouSenha ? { senha: bool(req.body.redefinir_provisoria) ? 'redefinida para a provisória' : 'redefinida' } : {}),
     });
     res.json((await listar('WHERE u.id = $1', [id])).rows[0]);
   }));
@@ -217,7 +231,9 @@ function criarCadastros({ pool }) {
     const { rows } = await pool.query('SELECT senha_hash FROM usuarios WHERE id=$1', [req.usuario.id]);
     if (!(await verificarSenha(String(atual ?? ''), rows[0].senha_hash))) throw erro403('Senha atual incorreta.');
     validarSenhaNova(nova);
-    await pool.query('UPDATE usuarios SET senha_hash=$1, token_versao = token_versao + 1 WHERE id=$2', [await hashSenha(nova), req.usuario.id]);
+    if (nova === atual) throw erro400('A nova senha precisa ser diferente da atual.');
+    if (senhaProvisoria && nova === senhaProvisoria) throw erro400('Escolha uma senha sua, diferente da senha provisória.');
+    await pool.query('UPDATE usuarios SET senha_hash=$1, trocar_senha=false, token_versao = token_versao + 1 WHERE id=$2', [await hashSenha(nova), req.usuario.id]);
     await auditar(pool, req.usuario, 'trocar_senha', 'usuarios', req.usuario.id);
     res.json({ ok: true, relogar: true });
   }));

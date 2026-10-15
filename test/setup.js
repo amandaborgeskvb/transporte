@@ -14,7 +14,7 @@ async function iniciar({ antesDaMigracao } = {}) {
   await migrate(pool);
   await garantirAdminInicial(pool, { login: 'admin', senha: SENHA });
 
-  const app = criarApp({ pool, secret: 'segredo-de-teste' });
+  const app = criarApp({ pool, secret: 'segredo-de-teste', senhaProvisoria: 'Provisoria#Teste1' });
   const server = await new Promise((ok) => { const s = app.listen(0, () => ok(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
 
@@ -49,9 +49,9 @@ async function iniciar({ antesDaMigracao } = {}) {
     return c;
   }
 
-  async function logado(login) {
+  async function logado(login, senha) {
     const c = cliente();
-    const r = await c.login(login);
+    const r = await c.login(login, senha);
     if (r.status !== 200) throw new Error(`login ${login} falhou: ${JSON.stringify(r.corpo)}`);
     return c;
   }

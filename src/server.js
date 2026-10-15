@@ -32,7 +32,8 @@ async function main() {
     await garantirAdminInicial(pool, { login: APP_USER, senha: APP_PASSWORD || 'administrador' });
   }
 
-  const app = criarApp({ pool, secret: SESSION_SECRET || 'dev-secret', secure: isProd });
+  // SENHA_PROVISORIA (variável de ambiente do Render): senha inicial/redefinida dos usuários, trocada no primeiro acesso
+  const app = criarApp({ pool, secret: SESSION_SECRET || 'dev-secret', secure: isProd, senhaProvisoria: process.env.SENHA_PROVISORIA || '' });
   const port = Number(process.env.PORT) || 3000;
   app.listen(port, () => console.log(`Servidor rodando na porta ${port}`));
 }

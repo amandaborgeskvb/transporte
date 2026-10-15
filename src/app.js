@@ -18,7 +18,7 @@ const { criarOperacional } = require('./routes/operacional');
 const { criarAets } = require('./routes/aets');
 const { criarPainel } = require('./routes/painel');
 
-function criarApp({ pool, secret, secure = false }) {
+function criarApp({ pool, secret, secure = false, senhaProvisoria = '' }) {
   const app = express();
   app.set('trust proxy', 1); // atrás do proxy do Render
   app.disable('x-powered-by');
@@ -60,8 +60,11 @@ function criarApp({ pool, secret, secure = false }) {
 
   const api = express.Router();
   api.use(auth.autenticar);
+  // senha provisória: até trocar a senha, só a sessão (/me) e a troca de senha
+  api.use((req, _res, next) => (req.usuario.trocar_senha && !['/me', '/me/senha'].includes(req.path)
+    ? next(new ErroHttp(403, 'Troque a senha provisória para continuar.')) : next()));
   api.use(restringirModulo); // perfis de um módulo só não usam as outras rotas
-  api.use(criarCadastros({ pool }));
+  api.use(criarCadastros({ pool, senhaProvisoria }));
   api.use(criarViagens({ pool }));
   api.use(criarLancamentos({ pool }));
   api.use(criarAnexos({ pool }));

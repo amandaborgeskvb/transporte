@@ -70,3 +70,29 @@ test('mais de um perfil: perfil principal + módulos adicionais', async () => {
   r = await admin.put(`/api/usuarios/${ana.id}`, { nome: ana.nome, perfil: 'financeiro', ativo: true, perfis_extras: ['onibus'] });
   assert.deepEqual(r.corpo.perfis_extras, []);
 });
+
+test('senha provisória: criar sem senha, troca obrigatória no primeiro acesso e redefinir', async () => {
+  const PROV = 'Provisoria#Teste1'; // a de teste (em produção vem da variável SENHA_PROVISORIA)
+  assert.deepEqual((await admin.get('/api/usuarios/config')).corpo, { senha_provisoria: true });
+  let r = await admin.post('/api/usuarios', { nome: 'Nova Pessoa', login: 'nova', perfil: 'onibus' });
+  assert.equal(r.status, 201, JSON.stringify(r.corpo));
+  assert.equal(r.corpo.trocar_senha, true);
+  const id = r.corpo.id;
+  const nova = await t.logado('nova', PROV);
+  assert.equal((await nova.get('/api/me')).corpo.trocar_senha, true);
+  assert.equal((await nova.get('/api/onibus/painel')).status, 403); // bloqueado até trocar a senha
+  assert.equal((await nova.post('/api/me/senha', { atual: PROV, nova: PROV })).status, 400); // não pode repetir a provisória
+  assert.equal((await nova.post('/api/me/senha', { atual: 'errada123', nova: 'MinhaSenha#2026' })).status, 403);
+  assert.equal((await nova.post('/api/me/senha', { atual: PROV, nova: 'MinhaSenha#2026' })).status, 200);
+  const nova2 = await t.logado('nova', 'MinhaSenha#2026');
+  assert.equal((await nova2.get('/api/me')).corpo.trocar_senha, false);
+  assert.equal((await nova2.get('/api/onibus/painel')).status, 200);
+  // esqueceu a senha: o administrador redefine para a provisória
+  r = await admin.put(`/api/usuarios/${id}`, { nome: 'Nova Pessoa', perfil: 'onibus', ativo: true, redefinir_provisoria: true });
+  assert.equal(r.corpo.trocar_senha, true);
+  assert.equal((await nova2.get('/api/me')).status, 401); // sessão antiga encerrada
+  const nova3 = await t.logado('nova', PROV);
+  assert.equal((await nova3.get('/api/onibus/painel')).status, 403);
+  // a senha provisória não aparece em nenhuma resposta
+  assert.doesNotMatch(JSON.stringify((await admin.get('/api/usuarios')).corpo), /Provisoria#Teste1/);
+});
