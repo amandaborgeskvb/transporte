@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
 -- Módulos adicionais do usuário (além do perfil principal): Treinamento, Gratificação, Contratação, Ônibus, Operacional
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS perfis_extras TEXT[] NOT NULL DEFAULT '{}';
 -- Senha provisória: o usuário tem de trocar a senha no próximo acesso
+CREATE TABLE IF NOT EXISTS config_sistema (chave TEXT PRIMARY KEY, valor TEXT NOT NULL, atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now());
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS trocar_senha BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE usuarios DROP CONSTRAINT IF EXISTS usuarios_perfil_check;
 ALTER TABLE usuarios ADD CONSTRAINT usuarios_perfil_check CHECK (perfil IN (${PERFIS.map((p) => `'${p}'`).join(', ')}));

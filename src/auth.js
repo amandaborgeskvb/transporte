@@ -21,6 +21,11 @@ async function verificarSenha(senha, armazenado) {
   return crypto.timingSafeEqual(esperado, obtido);
 }
 
+// Senha provisória padrão dos usuários novos ou redefinidos (trocada no primeiro acesso). Aqui fica só o hash
+// (scrypt); a senha em si não está no código. O administrador troca em Usuários e perfis (fica no banco),
+// e a variável de ambiente SENHA_PROVISORIA, se existir, vale mais que as duas.
+const HASH_PROVISORIA_PADRAO = 'scrypt:ofb2cj6BBi3r1Nymid/yOw==:/8P0OJpGCfaUcKa3XWPBZDqiJSxUAGK8yd+FNN2sgQotiJjI5FGNZ34eZa/JyCRYE4uYLk1C8kE/2Tfzt55B/g==';
+
 function validarSenhaNova(s) {
   if (typeof s !== 'string' || s.length < 8) throw new ErroHttp(400, 'A senha deve ter pelo menos 8 caracteres.');
   if (s.length > 200) throw new ErroHttp(400, 'Senha muito longa.');
@@ -123,4 +128,4 @@ function criarAuth({ pool, secret, secure }) {
 
 const publico = (u) => ({ id: u.id, nome: u.nome, login: u.login, perfil: u.perfil, perfis_extras: u.perfis_extras || [], perfis: perfisDe(u), funcionario_id: u.funcionario_id, trocar_senha: !!u.trocar_senha });
 
-module.exports = { criarAuth, garantirAdminInicial, hashSenha, verificarSenha, validarSenhaNova, publico };
+module.exports = { criarAuth, garantirAdminInicial, hashSenha, verificarSenha, validarSenhaNova, publico, HASH_PROVISORIA_PADRAO };

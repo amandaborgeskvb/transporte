@@ -1,7 +1,7 @@
 const express = require('express');
 const { wrap, texto, data, idParam, inteiro, opcaoDe, erro400, erro403, erro404, erro409, auditar, diff } = require('../util');
 const { exigirPerfil, ADM, FIN, MODULOS } = require('../workflow');
-const { hashSenha, verificarSenha, validarSenhaNova, publico } = require('../auth');
+const { hashSenha, verificarSenha, validarSenhaNova, publico, HASH_PROVISORIA_PADRAO } = require('../auth');
 const { PERFIS } = require('../schema');
 
 const bool = (v) => v === true || v === 'true' || v === 1 || v === '1';
@@ -162,19 +162,34 @@ function criarCadastros({ pool, senhaProvisoria = '' }) {
 
   usuarios.get('/', wrap(async (_req, res) => res.json((await listar()).rows)));
   // a tela só precisa saber se existe senha provisória configurada (o valor fica na variável de ambiente)
-  usuarios.get('/config', (_req, res) => res.json({ senha_provisoria: !!senhaProvisoria }));
+  // Senha provisória: variável de ambiente > a definida aqui pelo administrador (banco) > a padrão do sistema.
+  // Só o hash é guardado e copiado para o usuário; a senha nunca volta numa resposta.
+  let hashDaVariavel = null;
+  const provisoria = async () => {
+    if (senhaProvisoria) return { hash: (hashDaVariavel ||= await hashSenha(senhaProvisoria)), origem: 'servidor' };
+    const r = (await pool.query("SELECT valor FROM config_sistema WHERE chave = 'senha_provisoria_hash'")).rows[0];
+    return r ? { hash: r.valor, origem: 'sistema' } : { hash: HASH_PROVISORIA_PADRAO, origem: 'padrao' };
+  };
+  usuarios.get('/config', wrap(async (_req, res) => res.json({ senha_provisoria: true, origem: (await provisoria()).origem })));
+  usuarios.put('/config/senha-provisoria', wrap(async (req, res) => {
+    if (senhaProvisoria) throw erro409('A senha provisória está definida no servidor (variável SENHA_PROVISORIA).');
+    validarSenhaNova(req.body?.senha);
+    await pool.query(`INSERT INTO config_sistema (chave, valor) VALUES ('senha_provisoria_hash', $1)
+                      ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = now()`, [await hashSenha(req.body.senha)]);
+    await auditar(pool, req.usuario, 'alterar_senha_provisoria', 'usuarios', null, {});
+    res.json({ ok: true });
+  }));
 
   usuarios.post('/', wrap(async (req, res) => {
     const d = lerUsuario(req.body, { novo: true });
     // sem senha digitada: a senha provisória; o usuário troca no primeiro acesso
-    const provisoria = !req.body.senha;
-    if (provisoria && !senhaProvisoria) throw erro400('Informe a senha inicial (a senha provisória não está configurada no servidor).');
-    const senha = provisoria ? senhaProvisoria : req.body.senha;
-    validarSenhaNova(senha);
-    const trocar = provisoria || bool(req.body.trocar_senha);
+    const usaProvisoria = !req.body.senha;
+    if (!usaProvisoria) validarSenhaNova(req.body.senha);
+    const hash = usaProvisoria ? (await provisoria()).hash : await hashSenha(req.body.senha);
+    const trocar = usaProvisoria || bool(req.body.trocar_senha);
     const { rows } = await pool.query(
       `INSERT INTO usuarios (nome, login, senha_hash, perfil, perfis_extras, funcionario_id, ativo, trocar_senha) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
-      [d.nome, d.login, await hashSenha(senha), d.perfil, d.perfis_extras, d.funcionario_id, d.ativo, trocar],
+      [d.nome, d.login, hash, d.perfil, d.perfis_extras, d.funcionario_id, d.ativo, trocar],
     );
     await auditar(pool, req.usuario, 'criar', 'usuarios', rows[0].id, { login: d.login, perfil: d.perfil, ...(d.perfis_extras.length ? { perfis_extras: d.perfis_extras.join(', ') } : {}) });
     res.status(201).json((await listar('WHERE u.id = $1', [rows[0].id])).rows[0]);
@@ -195,11 +210,9 @@ function criarCadastros({ pool, senhaProvisoria = '' }) {
     const mudouExtras = [...(antes.perfis_extras || [])].sort().join(',') !== [...d.perfis_extras].sort().join(',');
     let trocouSenha = false;
     // redefinir para a senha provisória (ou uma senha digitada): o usuário troca no próximo acesso
-    const novaSenha = bool(req.body.redefinir_provisoria) ? senhaProvisoria : req.body.senha;
-    if (bool(req.body.redefinir_provisoria) && !senhaProvisoria) throw erro400('A senha provisória não está configurada no servidor: digite uma nova senha.');
-    if (novaSenha) {
-      validarSenhaNova(novaSenha);
-      params.push(await hashSenha(novaSenha));
+    if (bool(req.body.redefinir_provisoria) || req.body.senha) {
+      if (!bool(req.body.redefinir_provisoria)) validarSenhaNova(req.body.senha);
+      params.push(bool(req.body.redefinir_provisoria) ? (await provisoria()).hash : await hashSenha(req.body.senha));
       sets.push(`senha_hash=$${params.length}`);
       trocouSenha = true;
     }
@@ -232,7 +245,7 @@ function criarCadastros({ pool, senhaProvisoria = '' }) {
     if (!(await verificarSenha(String(atual ?? ''), rows[0].senha_hash))) throw erro403('Senha atual incorreta.');
     validarSenhaNova(nova);
     if (nova === atual) throw erro400('A nova senha precisa ser diferente da atual.');
-    if (senhaProvisoria && nova === senhaProvisoria) throw erro400('Escolha uma senha sua, diferente da senha provisória.');
+    if (await verificarSenha(nova, (await provisoria()).hash)) throw erro400('Escolha uma senha sua, diferente da senha provisória.');
     await pool.query('UPDATE usuarios SET senha_hash=$1, trocar_senha=false, token_versao = token_versao + 1 WHERE id=$2', [await hashSenha(nova), req.usuario.id]);
     await auditar(pool, req.usuario, 'trocar_senha', 'usuarios', req.usuario.id);
     res.json({ ok: true, relogar: true });

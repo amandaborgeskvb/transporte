@@ -6,7 +6,7 @@ const { garantirAdminInicial } = require('../src/auth');
 const URL_DB = process.env.TEST_DATABASE_URL || 'postgres://postgres:postgres@localhost:5432/despesas_test';
 const SENHA = 'senha-de-teste-123';
 
-async function iniciar({ antesDaMigracao } = {}) {
+async function iniciar({ antesDaMigracao, senhaProvisoria = 'Provisoria#Teste1' } = {}) {
   if (!/_test(\?|$)/.test(URL_DB)) throw new Error('Por segurança, o banco de testes deve terminar com _test.');
   const pool = createPool(URL_DB);
   await pool.query('DROP SCHEMA public CASCADE; CREATE SCHEMA public;');
@@ -14,7 +14,7 @@ async function iniciar({ antesDaMigracao } = {}) {
   await migrate(pool);
   await garantirAdminInicial(pool, { login: 'admin', senha: SENHA });
 
-  const app = criarApp({ pool, secret: 'segredo-de-teste', senhaProvisoria: 'Provisoria#Teste1' });
+  const app = criarApp({ pool, secret: 'segredo-de-teste', senhaProvisoria });
   const server = await new Promise((ok) => { const s = app.listen(0, () => ok(s)); });
   const base = `http://127.0.0.1:${server.address().port}`;
 

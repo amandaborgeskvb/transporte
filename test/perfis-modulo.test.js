@@ -73,7 +73,8 @@ test('mais de um perfil: perfil principal + módulos adicionais', async () => {
 
 test('senha provisória: criar sem senha, troca obrigatória no primeiro acesso e redefinir', async () => {
   const PROV = 'Provisoria#Teste1'; // a de teste (em produção vem da variável SENHA_PROVISORIA)
-  assert.deepEqual((await admin.get('/api/usuarios/config')).corpo, { senha_provisoria: true });
+  assert.deepEqual((await admin.get('/api/usuarios/config')).corpo, { senha_provisoria: true, origem: 'servidor' });
+  assert.equal((await admin.put('/api/usuarios/config/senha-provisoria', { senha: 'Qualquer#1' })).status, 409); // definida na variável
   let r = await admin.post('/api/usuarios', { nome: 'Nova Pessoa', login: 'nova', perfil: 'onibus' });
   assert.equal(r.status, 201, JSON.stringify(r.corpo));
   assert.equal(r.corpo.trocar_senha, true);

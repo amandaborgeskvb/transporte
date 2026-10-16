@@ -2,7 +2,7 @@
 import { get, post, put, cadastros } from '../api.js';
 import {
   h, tabela, botao, formulario, toast, secao, badgeTom, rotulo, dataHoraBR, barraFiltros, descreverEvento,
-  resumirDetalhes, entidadeRotulo, cabecalhoPagina, vazio, confirmar, icone,
+  resumirDetalhes, entidadeRotulo, cabecalhoPagina, vazio, confirmar, icone, dialogo,
 } from '../ui.js';
 
 const PERFIS = ['administrador', 'solicitante', 'aprovador', 'financeiro', 'treinamento', 'gratificacao', 'contratacao', 'onibus', 'operacional'];
@@ -24,7 +24,7 @@ const TOM_PERFIL = { administrador: 'ok', solicitante: 'mute', aprovador: 'info'
 
 export async function usuarios({ params = [] } = {}) {
   const [dados, c, cfg] = await Promise.all([get('/usuarios'), cadastros(true), get('/usuarios/config').catch(() => ({}))]);
-  const temProvisoria = !!cfg.senha_provisoria; // senha provisória configurada no servidor (variável SENHA_PROVISORIA)
+  const temProvisoria = cfg.senha_provisoria !== false; // a senha provisória já vem cadastrada no sistema (padrão)
   let lista = dados;
   let selecionado = params[0] === 'novo' ? 'novo' : lista[0] || 'novo'; // #/usuarios/novo abre direto o cadastro
   let filtro = '';
@@ -104,6 +104,26 @@ export async function usuarios({ params = [] } = {}) {
   busca.addEventListener('input', () => { filtro = busca.value; desenharLista(); });
   desenhar();
 
+  // senha provisória padrão (já vem cadastrada no sistema; o administrador pode trocar)
+  const ORIGEM = { padrao: 'a senha provisória padrão do sistema', sistema: 'a senha provisória definida aqui', servidor: 'definida no servidor (variável SENHA_PROVISORIA)' };
+  const senhaCard = h('section', { class: 'card' }, h('div', { class: 'card-topo' }, h('h2', {}, 'Senha provisória')),
+    h('p', { class: 'muted pequeno' }, `Usuário criado sem senha (ou redefinido) entra com ${ORIGEM[cfg.origem] || 'a senha provisória'} e cria a própria senha no primeiro acesso.`),
+    cfg.origem === 'servidor' ? null : botao('Alterar senha provisória', async () => {
+      const ok = await dialogo({
+        titulo: 'Alterar a senha provisória',
+        descricao: 'Vale para os próximos usuários criados ou redefinidos (quem já recebeu a senha provisória continua com a anterior até trocar).',
+        campos: [
+          { nome: 'senha', rotulo: 'Nova senha provisória', tipo: 'password', obrigatorio: true, cheio: true, dica: 'Mínimo de 8 caracteres.' },
+          { nome: 'confirma', rotulo: 'Repita', tipo: 'password', obrigatorio: true, cheio: true },
+        ],
+        aoSalvar: async (v) => {
+          if (v.senha !== v.confirma) throw new Error('A confirmação não confere.');
+          await put('/usuarios/config/senha-provisoria', { senha: v.senha });
+        },
+      });
+      if (ok) toast('Senha provisória alterada.');
+    }, { tom: 'sec', pequeno: true, icone: 'chave' }));
+
   const perfisCard = h('section', { class: 'card' }, h('div', { class: 'card-topo' }, h('h2', {}, 'Perfis')),
     h('dl', { class: 'perfis' }, PERFIS.flatMap((p) => [h('dt', {}, badgeTom(rotulo(p), TOM_PERFIL[p])), h('dd', {}, DESCRICAO_PERFIL[p])])));
 
@@ -113,7 +133,7 @@ export async function usuarios({ params = [] } = {}) {
       acoes: botao('Novo usuário', () => { selecionado = 'novo'; desenhar(); }, { icone: 'mais' }),
     }),
     h('div', { class: 'split' },
-      h('div', { class: 'lateral-col' }, h('section', { class: 'card' }, busca, listaEl), perfisCard),
+      h('div', { class: 'lateral-col' }, h('section', { class: 'card' }, busca, listaEl), senhaCard, perfisCard),
       detalhe),
   ];
 }
