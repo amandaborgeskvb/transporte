@@ -233,7 +233,7 @@ function criarCadastros({ pool, senhaProvisoria = '' }) {
   }));
 
   // lista dos logins (Excel), para passar a cada pessoa o seu login
-  const NOME_PERFIL = { administrador: 'Administrador', solicitante: 'Solicitante', aprovador: 'Aprovador', financeiro: 'Financeiro', treinamento: 'Treinamento', gratificacao: 'Gratificação', contratacao: 'Contratação', onibus: 'Ônibus', operacional: 'Operacional', viagem: 'Viagem' };
+  const NOME_PERFIL = { administrador: 'Administrador', solicitante: 'Solicitante', aprovador: 'Aprovador', financeiro: 'Financeiro', treinamento: 'Treinamento', gratificacao: 'Gratificação', contratacao: 'Contratação', onibus: 'Ônibus', operacional: 'Operacional', ferias: 'Férias', viagem: 'Viagem' };
   router.get('/usuarios.csv', exigirPerfil(ADM), wrap(async (_req, res) => {
     const { rows } = await listar();
     enviarCsv(res, 'usuarios-logins.csv', [

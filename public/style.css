@@ -1024,6 +1024,12 @@ html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
 .aet-previa td, .aet-previa th { padding: 4px 8px; font-size: .82rem; }
 @media (max-width: 1100px) { .aet-tempo { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .aet-tempo { grid-template-columns: repeat(4, minmax(0, 1fr)); } .aet-tipos { grid-template-columns: minmax(0, 1fr); } }
+/* Férias CTT */
+.fer-tempo { grid-template-columns: repeat(13, minmax(0, 1fr)); }
+.fer-n { font-weight: 700; font-variant-numeric: tabular-nums; } .fer-n.bad { color: var(--bad); } .fer-n.warn { color: var(--warn); }
+.fer-prazo { font-weight: 650; white-space: nowrap; color: var(--muted); } .fer-prazo.estourado { color: var(--bad); } .fer-prazo.limite_proximo { color: var(--warn); } .fer-prazo.no_prazo { color: var(--ok); }
+@media (max-width: 1100px) { .fer-tempo { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .fer-tempo { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .aet-previa-res { margin: 4px 0 10px; padding-left: 18px; font-size: .88rem; }
 .aet-previa-res li { margin: 2px 0; }
 /* AETs agrupadas por veículo: uma linha por AET dentro da linha do veículo */

@@ -14,6 +14,7 @@ import treino from './pages/treino.js';
 import gratificacao from './pages/gratificacao.js';
 import onibus from './pages/onibus.js';
 import operacional from './pages/operacional.js';
+import ferias from './pages/ferias.js';
 
 const raiz = document.getElementById('raiz');
 const MARCA = 'CRV Industrial';
@@ -48,6 +49,7 @@ const ROTAS = {
   gratificacao: { titulo: 'Gratificação rescisória', pagina: gratificacao, perfis: [...GESTAO, 'gratificacao'], voltar: (c) => (c.params.length > 1 ? `#/gratificacao/${c.params[0]}` : null) },
   treino: { titulo: 'Treinamento prático', pagina: treino, perfis: [...GESTAO, 'treinamento'], voltar: (c) => (c.params[0] === 'registros' && c.params.length > 1 ? '#/treino/registros' : null) },
   onibus: { titulo: 'Acompanhamento de ônibus', pagina: onibus, perfis: [...GESTAO, 'onibus'], voltar: (c) => (c.params[0] === 'imprimir' ? `#/onibus/resumo${c.query.data ? `?data=${c.query.data}` : ''}` : null) },
+  ferias: { titulo: 'Férias CTT', pagina: ferias, perfis: [...GESTAO, 'ferias'] },
   operacional: { titulo: 'Controle operacional', pagina: operacional, perfis: [...GESTAO, 'operacional'], voltar: (c) => (['veiculos', 'pastas'].includes(c.params[0]) && c.params.length > 1 ? `#/operacional/${c.params[0]}` : null) },
   treinamento: { titulo: 'Guia do sistema', pagina: treinamento },
   senha: { titulo: 'Alterar minha senha', pagina: () => paginaSenha() },
@@ -125,6 +127,7 @@ const MENU = [
       { href: '#/operacional/tipos', titulo: 'Tipos de documento', prefixo: true },
     ],
   },
+  { rota: 'ferias', titulo: 'Férias CTT', icone: 'calendario', perfis: [...GESTAO, 'ferias'] },
   { grupo: 'Configurações' },
   { rota: 'cadastros', titulo: 'Cadastros', icone: 'cadastros', perfis: ADMIN, filhos: Object.entries(TIPOS_CADASTRO).map(([k, t]) => ({ href: `#/cadastros/${k}`, titulo: t.titulo })) },
   { rota: 'importacao', titulo: 'Importação', icone: 'upload', perfis: ADMIN },
@@ -365,7 +368,7 @@ function painelMarca() {
     h('h1', {}, 'CTT - TRANSPORTE'),
     h('p', { class: 'login-desc' }, 'Controle do transporte em um só lugar.'),
     h('ul', { class: 'login-modulos' },
-      [['viagem', 'Viagens, adiantamentos e despesas'], ['carteira', 'Gratificação rescisória'], ['documento', 'Contratação'], ['calendario', 'Treinamento prático'], ['onibus', 'Acompanhamento de ônibus'], ['caminhao', 'Documentação da frota']]
+      [['viagem', 'Viagens, adiantamentos e despesas'], ['carteira', 'Gratificação rescisória'], ['documento', 'Contratação'], ['calendario', 'Treinamento prático'], ['onibus', 'Acompanhamento de ônibus'], ['caminhao', 'Documentação da frota'], ['calendario', 'Férias CTT']]
         .map(([ic, t]) => h('li', {}, icone(ic), t))),
     h('div', { class: 'login-empresa' },
       h('img', { src: '/img/crv-industrial-branca.png?v=2', alt: 'CRV Industrial', width: 170, height: 53 }),

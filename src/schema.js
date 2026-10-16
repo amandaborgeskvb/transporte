@@ -2,7 +2,7 @@
 // Tabelas da v1 (viagens/despesas simples) são renomeadas para *_legado em db.js, sem perder dados.
 
 // treinamento, gratificacao, contratacao e onibus: perfis de um módulo só (veem apenas o próprio módulo e o resumo dele no Início)
-const PERFIS = ['administrador', 'solicitante', 'aprovador', 'financeiro', 'treinamento', 'gratificacao', 'contratacao', 'onibus', 'operacional'];
+const PERFIS = ['administrador', 'solicitante', 'aprovador', 'financeiro', 'treinamento', 'gratificacao', 'contratacao', 'onibus', 'operacional', 'ferias'];
 
 // Numera, na ordem de lançamento, os treinamentos ainda sem Nº DOC (ano da data do crachá ou, sem ela, do início da vigência)
 const SQL_NUMERAR_TREINO = `
@@ -903,6 +903,23 @@ CREATE INDEX IF NOT EXISTS op_aets_cat_idx ON op_aets (categoria, vencimento);
 -- validade da AET em dias: o vencimento conta da data de realização (realização + validade)
 ALTER TABLE op_aets ADD COLUMN IF NOT EXISTS validade_dias INTEGER;
 UPDATE op_aets SET validade_dias = vencimento - realizacao WHERE validade_dias IS NULL AND realizacao IS NOT NULL AND vencimento > realizacao;
+
+-- Férias CTT: a base de férias (aba Base_Férias da BASE GERAL), só ativos e afastados e só as colunas usadas
+CREATE TABLE IF NOT EXISTS ferias_colab (
+  matricula      TEXT PRIMARY KEY,
+  nome           TEXT NOT NULL,
+  funcao         TEXT NOT NULL DEFAULT '',
+  cidade         TEXT NOT NULL DEFAULT '',
+  situacao       TEXT NOT NULL,
+  gerencia       TEXT NOT NULL DEFAULT '',
+  tipo_contrato  TEXT NOT NULL DEFAULT '',
+  setor          TEXT NOT NULL DEFAULT '',
+  venc_ferias    TEXT NOT NULL DEFAULT '',
+  inicio_pa      DATE,
+  final_pa       DATE,
+  dt_limite      DATE,
+  importado_em   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,

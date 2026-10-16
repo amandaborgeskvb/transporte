@@ -16,6 +16,7 @@ const { criarOnibus } = require('./routes/onibus');
 const { criarOnibusDiario } = require('./routes/onibusDiario');
 const { criarOperacional } = require('./routes/operacional');
 const { criarAets } = require('./routes/aets');
+const { criarFerias } = require('./routes/ferias');
 const { criarPainel } = require('./routes/painel');
 
 function criarApp({ pool, secret, secure = false, senhaProvisoria = '' }) {
@@ -77,6 +78,7 @@ function criarApp({ pool, secret, secure = false, senhaProvisoria = '' }) {
   api.use(criarOnibusDiario({ pool }));
   api.use(criarOperacional({ pool }));
   api.use(criarAets({ pool }));
+  api.use(criarFerias({ pool }));
   api.use(criarPainel({ pool }));
   app.use('/api', api);
   app.use('/api', (_req, res) => res.status(404).json({ erro: 'Rota não encontrada.' }));

@@ -250,22 +250,44 @@ function moduloOperacional(p) {
   });
 }
 
+// ---------- Férias CTT ----------
+function moduloFerias(p) {
+  const t = p.totais;
+  const series = [{ k: 'estourado', nome: 'Data limite estourada', cor: 'var(--st-venc)' }, { k: 'limite_proximo', nome: `Limite em até ${p.aviso} dias`, cor: 'var(--st-aviso)' }];
+  const corpo = () => [
+    kpis(
+      kpi('Data limite estourada', fmt(t.estourado), { icone: 'alerta', tom: t.estourado ? 'alerta' : 'ok', link: '#/ferias?prazo=estourado' }),
+      kpi(`Limite em até ${p.aviso} dias`, fmt(t.limite_proximo), { icone: 'relogio', tom: t.limite_proximo ? 'alerta' : 'neutro', link: '#/ferias?prazo=limite_proximo' }),
+      kpi('Férias vencidas', fmt(t.vencidas), { icone: 'calendario', tom: t.vencidas ? 'alerta' : 'neutro', link: '#/ferias?venc=vencidas' }),
+      kpi('Colaboradores', fmt(t.total), { icone: 'usuarios', sub: `${fmt(t.ativos)} ativos · ${fmt(t.afastados)} afastados`, link: '#/ferias' })),
+    secao('Gerências com mais pendências', null, legendaSeries(series),
+      barrasEmpilhadas(p.gerencias.map((g) => ({ nome: g.nome || '(sem gerência)', valores: { estourado: g.estourado, limite_proximo: g.limite_proximo }, total: g.estourado + g.limite_proximo })), series, { vazioMsg: 'Nenhuma pendência.' })),
+  ];
+  return cartao({
+    titulo: 'Férias CTT', nomeIcone: 'calendario', principal: fmt(t.estourado), rotulo: `colaborador${t.estourado === 1 ? '' : 'es'} com a data limite estourada`,
+    linhas: [['Colaboradores', `${fmt(t.total)} (${fmt(t.ativos)} ativos · ${fmt(t.afastados)} afastados)`], [`Limite em até ${p.aviso} dias`, fmt(t.limite_proximo)], ['Férias vencidas', fmt(t.vencidas)]],
+    serie: { valores: p.meses.map((m) => m.total), destaque: 0 }, legendaSerie: 'data limite nos próximos 12 meses',
+    tom: t.estourado || t.limite_proximo ? 'atencao' : '',
+    abrir: () => abrirModal({ titulo: 'Férias CTT', sub: 'Data limite das férias dos ativos e afastados', nomeIcone: 'calendario', corpo: corpo(), link: { href: '#/ferias', rotulo: 'Abrir Férias CTT' } }),
+  });
+}
+
 export default async function dashboard({ query, ir, usuario }) {
   const perfil = usuario?.perfil; // principal (viagens e financeiro)
   const tem = (p) => (usuario?.perfis || [perfil]).includes(p); // principal ou módulo adicional
   const gestor = GESTAO.includes(perfil);
   const viagens = ['administrador', 'solicitante', 'aprovador', 'financeiro'].includes(perfil);
   // perfis de um módulo só (e módulos adicionais) veem o resumo do próprio módulo
-  const ve = { descontos: gestor, gratificacao: gestor || tem('gratificacao'), contratacao: gestor || tem('contratacao'), treino: gestor || tem('treinamento'), onibus: gestor || tem('onibus'), operacional: gestor || tem('operacional') };
+  const ve = { descontos: gestor, gratificacao: gestor || tem('gratificacao'), contratacao: gestor || tem('contratacao'), treino: gestor || tem('treinamento'), onibus: gestor || tem('onibus'), operacional: gestor || tem('operacional'), ferias: gestor || tem('ferias') };
   const outros = ve.gratificacao || ve.contratacao || ve.treino || ve.onibus;
   const anoAtual = new Date().getFullYear();
   const ano = /^\d{4}$/.test(query.ano || '') ? query.ano : String(anoAtual);
   const qv = new URLSearchParams(Object.fromEntries(Object.entries(query).filter(([k]) => ['de', 'ate'].includes(k)))).toString();
   const se = (cond, url) => (cond ? get(url).catch(() => null) : null);
-  const [d, pendencias, c, desc, grat, contr, trein, oni, ope] = await Promise.all([
+  const [d, pendencias, c, desc, grat, contr, trein, oni, ope, fer] = await Promise.all([
     viagens ? get(`/dashboard${qv ? `?${qv}` : ''}`) : null, get('/pendencias').catch(() => []), viagens ? cadastros() : null,
     se(ve.descontos, `/descontos/painel?ano=${ano}`), se(ve.gratificacao, `/gratificacao/painel?ano=${ano}`), se(ve.contratacao, `/contratacao/painel?ano=${ano}`), se(ve.treino, `/treino/relatorio?ano=${ano}`),
-    se(ve.onibus, `/onibus/painel?ano=${ano}`), se(ve.operacional, '/operacional/painel'),
+    se(ve.onibus, `/onibus/painel?ano=${ano}`), se(ve.operacional, '/operacional/painel'), se(ve.ferias, '/ferias?resumo=1'),
   ]);
   const cartoes = [
     d ? moduloViagens(d, c, query) : null,
@@ -275,6 +297,7 @@ export default async function dashboard({ query, ir, usuario }) {
     trein ? moduloTreinamento(trein) : null,
     oni ? moduloOnibus(oni) : null,
     ope ? moduloOperacional(ope) : null,
+    fer?.totais.total ? moduloFerias(fer) : null,
   ].filter(Boolean);
   const sub = cartoes.length > 1 ? 'Resumo de cada módulo do sistema: clique em um cartão para ver os gráficos' : 'Clique no cartão para ver os gráficos do resumo';
 

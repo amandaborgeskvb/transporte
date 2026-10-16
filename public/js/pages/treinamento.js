@@ -106,6 +106,13 @@ const TOPICOS = [
     ],
   },
   {
+    titulo: 'Férias CTT', perfis: ['administrador', 'financeiro', 'ferias'], corpo: () => [
+      lista('Em **Férias CTT**, use **Importar planilha (Excel)** com a **BASE GERAL**: o sistema lê só a aba **Base_Férias** e só os colaboradores **ATIVOS** e **AFASTADOS** (os demitidos ficam de fora). A prévia mostra quantos entram, quantos são novos e quantos saem da base; a importação substitui a base anterior, então importe a planilha atualizada sempre que quiser.',
+        'Entram matrícula, nome, função, cidade de residência, situação, gerência, tipo de contrato, setor, vencimento das férias (Férias vencidas, à vencer ou sem férias, como na planilha), início e final do período aquisitivo e a **data limite das férias**.',
+        'A **data limite** é a data até quando as férias têm de ser concedidas: **vermelho** = já passou, **amarelo** = faltam até 60 dias, verde = no prazo. Clique num mês do quadro **Data limite das férias por mês** ou numa gerência para filtrar; os filtros e a busca (matrícula, nome, função, cidade) também valem para o **Exportar (Excel)**.'),
+    ],
+  },
+  {
     titulo: 'Gratificação rescisória', perfis: ['administrador', 'financeiro', 'gratificacao'], corpo: () => [
       lista('Todo mês, em **Gratificação rescisória → Valores mensais**, faça a carga do arquivo (Excel ou CSV) com **Matrícula, BPP, Produtividade e Mês** — pode ser a própria planilha (a aba GRAT abre sozinha). Sem a coluna Mês, escolha o mês de referência. Confira em **Médias (3 meses)**.',
         'Em **Ocorrências**, envie o arquivo exportado do controle de notificações (Data, Mat-Func, Penalid Notific…): a prévia mostra o que entra e reenviar não duplica. Também dá para lançar uma ocorrência à mão.',
@@ -128,7 +135,7 @@ const TOPICOS = [
 export default async function treinamento({ usuario }) {
   const perfis = usuario.perfis || [usuario.perfil]; // principal + módulos adicionais
   const meus = TOPICOS.filter((t) => t.perfis.some((p) => perfis.includes(p)));
-  const soModulos = perfis.every((p) => ['treinamento', 'gratificacao', 'contratacao', 'onibus', 'operacional'].includes(p)); // não usam os outros módulos
+  const soModulos = perfis.every((p) => ['treinamento', 'gratificacao', 'contratacao', 'onibus', 'operacional', 'ferias'].includes(p)); // não usam os outros módulos
   const outros = soModulos ? [] : TOPICOS.filter((t) => !t.perfis.some((p) => perfis.includes(p)));
   const bloco = (t, aberto) => h('details', { class: 'treino', open: aberto }, h('summary', {}, t.titulo), h('div', { class: 'treino-corpo' }, t.corpo()));
   return [

@@ -5,7 +5,7 @@ import {
   resumirDetalhes, entidadeRotulo, cabecalhoPagina, vazio, confirmar, icone, dialogo,
 } from '../ui.js';
 
-const PERFIS = ['administrador', 'solicitante', 'aprovador', 'financeiro', 'treinamento', 'gratificacao', 'contratacao', 'onibus', 'operacional'];
+const PERFIS = ['administrador', 'solicitante', 'aprovador', 'financeiro', 'treinamento', 'gratificacao', 'contratacao', 'onibus', 'operacional', 'ferias'];
 const DESCRICAO_PERFIL = {
   administrador: 'Acesso total: cadastros, usuários, auditoria e todas as etapas.',
   solicitante: 'Cadastra viagens, solicita adiantamentos e reembolsos, lança despesas e envia a prestação de contas — somente das próprias viagens.',
@@ -16,11 +16,12 @@ const DESCRICAO_PERFIL = {
   contratacao: 'Só o módulo Contratação: fichas (RE.0150.03), resumo do dia e parâmetros. O Início mostra o resumo das contratações. Não vê viagens nem os outros módulos.',
   onibus: 'Só o módulo Ônibus: RESUMO (planilha do dia), Disponibilidade e BASE. O Início mostra o resumo dos ônibus. Não vê viagens de despesa nem os outros módulos.',
   operacional: 'Só o módulo Controle Operacional: veículos leves e pesados, documentos, arquivos e vencimentos. O Início mostra o resumo dos vencimentos. Não vê viagens nem os outros módulos.',
+  ferias: 'Só o módulo Férias CTT: base de férias dos ativos e afastados, data limite, vencimentos por gerência, importação da BASE GERAL e exportação. Não vê viagens nem os outros módulos.',
 };
 // Módulos que podem ser dados a mais a um usuário (além do perfil principal)
-const MODULOS = ['viagem', 'treinamento', 'gratificacao', 'contratacao', 'onibus', 'operacional'];
+const MODULOS = ['viagem', 'treinamento', 'gratificacao', 'contratacao', 'onibus', 'operacional', 'ferias'];
 const nomesPerfis = (u) => [rotulo(u.perfil), ...(u.perfis_extras || []).map(rotulo)].join(' + ');
-const TOM_PERFIL = { administrador: 'ok', solicitante: 'mute', aprovador: 'info', financeiro: 'warn', treinamento: 'info', gratificacao: 'warn', contratacao: 'info', onibus: 'ok', operacional: 'warn' };
+const TOM_PERFIL = { administrador: 'ok', solicitante: 'mute', aprovador: 'info', financeiro: 'warn', treinamento: 'info', gratificacao: 'warn', contratacao: 'info', onibus: 'ok', operacional: 'warn', ferias: 'info' };
 
 export async function usuarios({ params = [] } = {}) {
   const [dados, c, cfg] = await Promise.all([get('/usuarios'), cadastros(true), get('/usuarios/config').catch(() => ({}))]);
