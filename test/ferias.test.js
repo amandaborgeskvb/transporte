@@ -138,6 +138,23 @@ test('programação: Férias, FAT ou Operação e a data de saída, mantida ao r
   assert.equal(audit.rows[3].detalhes.antes.status, 'Férias');
 });
 
+test('botão Salvar: grava várias alterações de uma vez; relatório traz todos', async () => {
+  const salvar = (cli, itens) => cli.put('/api/ferias/programacao', { itens });
+  let r = await salvar(fer, [{ matricula: '900001', status: 'fat' }, { matricula: '900004', status: 'ferias', data_saida: mais(5) }, { matricula: '900003', status: 'operacao', data_saida: mais(40) }]);
+  assert.equal(r.status, 200, JSON.stringify(r.corpo));
+  assert.equal(r.corpo.salvos, 2); // a 900003 já estava assim (operação, com a data): nada mudou
+  const d = (await fer.get('/api/ferias')).corpo;
+  assert.deepEqual([d.totais.em_ferias, d.totais.fat, d.totais.com_saida], [1, 1, 2]);
+  // tudo ou nada: um inválido não grava nenhum
+  assert.equal((await salvar(fer, [{ matricula: '900001', status: 'ferias' }, { matricula: '999999', status: 'ferias' }])).status, 404);
+  assert.equal((await salvar(fer, [{ matricula: '900001', status: 'ferias' }, { matricula: '900004', status: 'x' }])).status, 400);
+  assert.equal((await fer.get('/api/ferias?programacao=fat')).corpo.itens[0].matricula, '900001');
+  assert.equal((await salvar(fer, [])).status, 400);
+  assert.equal((await salvar(ana, [{ matricula: '900001', status: 'ferias' }])).status, 403);
+  // relatório: todos=1 traz a lista inteira
+  assert.equal((await fer.get('/api/ferias?todos=1')).corpo.itens.length, 3);
+});
+
 test('acesso: administrador e perfil Férias; os outros não', async () => {
   assert.equal((await admin.get('/api/ferias')).status, 200);
   assert.equal((await ope.get('/api/ferias')).status, 403);

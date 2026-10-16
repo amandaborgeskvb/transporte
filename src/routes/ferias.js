@@ -71,7 +71,7 @@ function criarFerias({ pool }) {
     res.json({
       ...base, gerencias,
       opcoes: { gerencias: unicos(itens, 'gerencia'), setores: unicos(itens, 'setor'), cidades: unicos(itens, 'cidade'), tipos: unicos(itens, 'tipo_contrato') },
-      total_filtrado: filtrados.length, itens: filtrados.slice(0, 500),
+      total_filtrado: filtrados.length, itens: req.query.todos === '1' ? filtrados : filtrados.slice(0, 500), // todos: para o relatório
     });
   }));
 
@@ -87,25 +87,48 @@ function criarFerias({ pool }) {
   }));
 
   // Programação do colaborador: em férias, FAT ou operação, e a data em que vai sair de férias
-  router.put('/ferias/:matricula/programacao', wrap(async (req, res) => {
-    const { matricula } = req.params;
-    const status = String(req.body?.status || 'operacao');
+  const validar = (item) => {
+    const matricula = String(item?.matricula || '').trim();
+    const status = String(item?.status || 'operacao');
     if (!PROGRAMACAO[status]) throw erro400('Escolha Férias, FAT ou Operação.');
-    const saida = req.body?.data_saida || null;
+    const saida = item?.data_saida || null;
     if (saida && !ehData(saida)) throw erro400('Data de saída inválida.');
-    const { rows: [c] } = await pool.query('SELECT nome FROM ferias_colab WHERE matricula = $1', [matricula]);
-    if (!c) throw new ErroHttp(404, 'Colaborador não encontrado na base de férias.');
-    await tx(pool, async (db) => {
-      const { rows: [antes] } = await db.query('SELECT status, data_saida FROM ferias_programacao WHERE matricula = $1', [matricula]);
-      await db.query(`INSERT INTO ferias_programacao (matricula, status, data_saida, atualizado_em, atualizado_por) VALUES ($1, $2, $3, now(), $4)
-        ON CONFLICT (matricula) DO UPDATE SET status = EXCLUDED.status, data_saida = EXCLUDED.data_saida, atualizado_em = now(), atualizado_por = EXCLUDED.atualizado_por`,
-      [matricula, status, saida, req.usuario.nome || '']);
-      await auditar(db, req.usuario, 'programar', 'ferias', null, {
-        matricula, nome: c.nome, status: PROGRAMACAO[status], data_saida: saida,
-        antes: antes ? { status: PROGRAMACAO[antes.status], data_saida: dataLocal(antes.data_saida) } : null,
-      });
+    return { matricula, status, saida };
+  };
+  const gravar = async (db, usuario, { matricula, status, saida }, nome) => {
+    const { rows: [antes] } = await db.query('SELECT status, data_saida FROM ferias_programacao WHERE matricula = $1', [matricula]);
+    if ((antes?.status || 'operacao') === status && (dataLocal(antes?.data_saida) || null) === saida) return false; // nada mudou
+    await db.query(`INSERT INTO ferias_programacao (matricula, status, data_saida, atualizado_em, atualizado_por) VALUES ($1, $2, $3, now(), $4)
+      ON CONFLICT (matricula) DO UPDATE SET status = EXCLUDED.status, data_saida = EXCLUDED.data_saida, atualizado_em = now(), atualizado_por = EXCLUDED.atualizado_por`,
+    [matricula, status, saida, usuario.nome || '']);
+    await auditar(db, usuario, 'programar', 'ferias', null, {
+      matricula, nome, status: PROGRAMACAO[status], data_saida: saida,
+      antes: antes ? { status: PROGRAMACAO[antes.status], data_saida: dataLocal(antes.data_saida) } : null,
     });
-    res.json({ matricula, programacao: status, data_saida: saida });
+    return true;
+  };
+
+  // Salvar várias de uma vez (botão Salvar da tela)
+  router.put('/ferias/programacao', wrap(async (req, res) => {
+    const lista = Array.isArray(req.body?.itens) ? req.body.itens : [];
+    if (!lista.length) throw erro400('Nada para salvar.');
+    if (lista.length > 2000) throw erro400('Salve no máximo 2.000 colaboradores de uma vez.');
+    const itens = lista.map(validar);
+    const { rows } = await pool.query('SELECT matricula, nome FROM ferias_colab WHERE matricula = ANY($1)', [itens.map((i) => i.matricula)]);
+    const nomes = new Map(rows.map((r) => [r.matricula, r.nome]));
+    const faltam = itens.filter((i) => !nomes.has(i.matricula)).map((i) => i.matricula);
+    if (faltam.length) throw new ErroHttp(404, `Não estão na base de férias: ${faltam.slice(0, 5).join(', ')}${faltam.length > 5 ? '…' : ''}`);
+    let salvos = 0;
+    await tx(pool, async (db) => { for (const i of itens) if (await gravar(db, req.usuario, i, nomes.get(i.matricula))) salvos += 1; });
+    res.json({ salvos, itens: itens.map((i) => ({ matricula: i.matricula, programacao: i.status, data_saida: i.saida })) });
+  }));
+
+  router.put('/ferias/:matricula/programacao', wrap(async (req, res) => {
+    const item = validar({ ...req.body, matricula: req.params.matricula });
+    const { rows: [c] } = await pool.query('SELECT nome FROM ferias_colab WHERE matricula = $1', [item.matricula]);
+    if (!c) throw new ErroHttp(404, 'Colaborador não encontrado na base de férias.');
+    await tx(pool, (db) => gravar(db, req.usuario, item, c.nome));
+    res.json({ matricula: item.matricula, programacao: item.status, data_saida: item.saida });
   }));
 
   // Importar a planilha: a base de férias é uma foto do sistema de RH — a importação substitui a base anterior

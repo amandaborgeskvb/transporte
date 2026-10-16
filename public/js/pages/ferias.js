@@ -10,27 +10,91 @@ const VENC = { vencidas: ['Férias vencidas', 'bad'], a_vencer: ['Férias à ven
 const PRAZO = { estourado: ['Limite estourado', 'bad'], limite_proximo: ['Limite próximo', 'warn'], no_prazo: ['No prazo', 'ok'], sem_limite: ['Sem data limite', 'mute'] };
 const PROG = { operacao: 'Operação', ferias: 'Férias', fat: 'FAT' };
 
-// Escolha do que o colaborador está fazendo (Férias, FAT ou Operação) e a data de saída de férias: grava ao alterar
-function programacao(c) {
+// Escolha do que o colaborador está fazendo (Férias, FAT ou Operação) e a data de saída de férias.
+// A alteração fica pendente (linha destacada) até clicar em Salvar.
+function programacao(c, painel) {
   const sel = h('select', { class: `fer-prog-sel ${c.programacao}`, 'aria-label': `Programação de ${c.nome}` },
     Object.entries(PROG).map(([v, t]) => h('option', { value: v, selected: v === c.programacao }, t)));
   const data = h('input', { type: 'date', value: c.data_saida || '', 'aria-label': `Data de saída de férias de ${c.nome}`, title: 'Data que vai sair de férias' });
-  const salvar = async () => {
-    const antes = { programacao: c.programacao, data_saida: c.data_saida };
-    sel.disabled = true; data.disabled = true;
-    try {
-      const r = await put(`/ferias/${encodeURIComponent(c.matricula)}/programacao`, { status: sel.value, data_saida: data.value || null });
-      Object.assign(c, { programacao: r.programacao, data_saida: r.data_saida });
-      sel.className = `fer-prog-sel ${c.programacao}`;
-      toast(`${c.nome}: ${PROG[c.programacao]}${c.data_saida ? ` · sai de férias em ${dataBR(c.data_saida)}` : ''}`);
-    } catch (e) {
-      sel.value = antes.programacao; data.value = antes.data_saida || '';
-      toast(e.message || 'Não foi possível salvar.', 'erro');
-    } finally { sel.disabled = false; data.disabled = false; }
+  const marcar = () => {
+    sel.className = `fer-prog-sel ${sel.value}`;
+    const mudou = sel.value !== c.programacao || (data.value || null) !== (c.data_saida || null);
+    if (mudou) painel.pendentes.set(c.matricula, { c, sel, data }); else painel.pendentes.delete(c.matricula);
+    sel.closest('tr')?.classList.toggle('fer-pendente', mudou);
+    painel.atualizar();
   };
-  sel.addEventListener('change', salvar);
-  data.addEventListener('change', salvar);
+  sel.addEventListener('change', marcar);
+  data.addEventListener('change', marcar);
   return h('div', { class: 'fer-prog' }, sel, h('label', { class: 'fer-prog-data' }, h('small', {}, 'Saída de férias'), data));
+}
+
+// Barra "Salvar" das alterações da lista (fica presa embaixo da tela enquanto houver alteração)
+function painelSalvar() {
+  const pendentes = new Map();
+  const texto = h('span', {});
+  const btSalvar = h('button', { type: 'button', class: 'primario' }, 'Salvar');
+  const btDescartar = h('button', { type: 'button', class: 'sec' }, 'Descartar');
+  const barra = h('div', { class: 'fer-salvar', hidden: true, role: 'region', 'aria-label': 'Alterações não salvas' }, texto, h('div', { class: 'fer-salvar-acoes' }, btDescartar, btSalvar));
+  const painel = { pendentes, barra };
+  painel.atualizar = () => {
+    barra.hidden = !pendentes.size;
+    texto.textContent = pendentes.size === 1 ? '1 alteração não salva' : `${fmt(pendentes.size)} alterações não salvas`;
+  };
+  painel.salvar = async ({ silencioso = false } = {}) => {
+    if (!pendentes.size) return true;
+    const lista = [...pendentes.values()];
+    btSalvar.disabled = true;
+    try {
+      const r = await put('/ferias/programacao', { itens: lista.map(({ c, sel, data }) => ({ matricula: c.matricula, status: sel.value, data_saida: data.value || null })) });
+      for (const { c, sel, data } of lista) {
+        Object.assign(c, { programacao: sel.value, data_saida: data.value || null });
+        sel.closest('tr')?.classList.remove('fer-pendente');
+      }
+      pendentes.clear();
+      painel.atualizar();
+      toast(`Salvo: ${fmt(r.itens.length)} colaborador${r.itens.length === 1 ? '' : 'es'}.`);
+      return true;
+    } catch (e) {
+      if (!silencioso) toast(e.message || 'Não foi possível salvar.', 'erro');
+      return false;
+    } finally { btSalvar.disabled = false; }
+  };
+  btSalvar.addEventListener('click', () => painel.salvar());
+  btDescartar.addEventListener('click', () => {
+    for (const { c, sel, data } of pendentes.values()) {
+      sel.value = c.programacao; sel.className = `fer-prog-sel ${c.programacao}`; data.value = c.data_saida || '';
+      sel.closest('tr')?.classList.remove('fer-pendente');
+    }
+    pendentes.clear();
+    painel.atualizar();
+  });
+  // sair da tela com alteração: avisa ao fechar a aba e salva ao trocar de tela
+  const avisoSair = (e) => { if (pendentes.size) { e.preventDefault(); e.returnValue = ''; } };
+  window.addEventListener('beforeunload', avisoSair);
+  window.addEventListener('hashchange', () => { window.removeEventListener('beforeunload', avisoSair); painel.salvar(); }, { once: true });
+  return painel;
+}
+
+const filtrosDef = (d) => [
+  { nome: 'q', rotulo: 'Busca', placeholder: 'Matrícula, nome, função, cidade…' },
+  { nome: 'gerencia', rotulo: 'Gerência', tipo: 'select', opcoes: d.opcoes.gerencias.map((x) => ({ valor: x, rotulo: x })) },
+  { nome: 'setor', rotulo: 'Setor', tipo: 'select', opcoes: d.opcoes.setores.map((x) => ({ valor: x, rotulo: x })) },
+  { nome: 'programacao', rotulo: 'Programação', tipo: 'select', opcoes: Object.entries(PROG).map(([valor, rotulo]) => ({ valor, rotulo })) },
+  { nome: 'saida', rotulo: 'Data de saída', tipo: 'select', opcoes: [{ valor: '1', rotulo: 'Com data de saída' }] },
+  { nome: 'situacao', rotulo: 'Situação', tipo: 'select', opcoes: [{ valor: 'ATIVO', rotulo: 'Ativo' }, { valor: 'AFASTADO', rotulo: 'Afastado' }] },
+  { nome: 'venc', rotulo: 'Venc. férias', tipo: 'select', opcoes: ['vencidas', 'a_vencer', 'sem_ferias'].map((k) => ({ valor: k, rotulo: VENC[k][0] })) },
+  { nome: 'prazo', rotulo: 'Data limite', tipo: 'select', opcoes: [['alerta', `Estourada ou em até ${d.aviso} dias`], ['estourado', 'Estourada'], ['limite_proximo', `Em até ${d.aviso} dias`], ['no_prazo', 'No prazo']].map(([valor, rotulo]) => ({ valor, rotulo })) },
+  { nome: 'tipo', rotulo: 'Tipo de contrato', tipo: 'select', opcoes: d.opcoes.tipos.map((x) => ({ valor: x, rotulo: x })) },
+  { nome: 'cidade', rotulo: 'Cidade', tipo: 'select', opcoes: d.opcoes.cidades.map((x) => ({ valor: x, rotulo: x })) },
+];
+// Texto dos filtros usados, para o cabeçalho do relatório
+function descreverFiltros(d, query) {
+  const partes = filtrosDef(d).filter((f) => query[f.nome]).map((f) => {
+    const op = f.opcoes?.find((o) => String(o.valor) === String(query[f.nome]));
+    return `${f.rotulo}: ${op ? op.rotulo : query[f.nome]}`;
+  });
+  if (/^\d{4}-\d{2}$/.test(query.mes || '')) partes.push(`Data limite em ${MESES_LONGOS[Number(query.mes.slice(5, 7)) - 1]} de ${query.mes.slice(0, 4)}`);
+  return partes.length ? partes.join(' · ') : 'Todos os colaboradores ativos e afastados';
 }
 
 function prazoTexto(c) {
@@ -80,13 +144,14 @@ function linhaDoTempo(d, query, ir) {
     })));
 }
 
-export default async function ferias({ query, ir, recarregarPagina }) {
+async function paginaFerias({ query, ir, recarregarPagina }) {
   const qs = new URLSearchParams(query).toString();
   const d = await get(`/ferias${qs ? `?${qs}` : ''}`);
   const t = d.totais;
   const semBase = !t.total;
   const filtroAtivo = Object.keys(query).length > 0;
   const csv = `/api/ferias.csv${qs ? `?${qs}` : ''}`;
+  const painel = painelSalvar();
   return [
     cabecalhoPagina({
       migalhas: [['Férias CTT']], titulo: 'Férias CTT',
@@ -95,6 +160,8 @@ export default async function ferias({ query, ir, recarregarPagina }) {
     }),
     barraComandos([
       { texto: 'Importar planilha (Excel)', icone: 'upload', tom: 'primario', aoClicar: async () => { if (await importar()) recarregarPagina(); } },
+      semBase ? null : { texto: 'Salvar', icone: 'ok', aoClicar: async () => { if (!painel.pendentes.size) toast('Nenhuma alteração para salvar.'); else await painel.salvar(); } },
+      semBase ? null : { texto: 'Gerar relatório', icone: 'impressora', aoClicar: () => ir('#/ferias/relatorio', query) },
       semBase ? null : { texto: 'Exportar (Excel)', icone: 'baixar', aoClicar: () => { location.href = csv; } },
     ]),
     semBase ? h('div', { class: 'card' }, h('p', { class: 'muted vazio' }, 'Nenhum colaborador ainda. Use "Importar planilha (Excel)" com a BASE GERAL: entram os ativos e afastados da aba Base_Férias.')) : [
@@ -125,24 +192,13 @@ export default async function ferias({ query, ir, recarregarPagina }) {
         ], d.gerencias.slice(0, query.gerencia ? 60 : 12), { aoClicar: (g) => ir('#/ferias', { ...query, gerencia: g.nome }) }),
         d.gerencias.length > 12 && !query.gerencia ? h('p', { class: 'muted pequeno' }, `Mostrando as 12 gerências com mais pendências de ${fmt(d.gerencias.length)}. Use o filtro Gerência para ver as outras.`) : null),
       h('h3', { class: 'grupo' }, `Colaboradores (${fmt(d.total_filtrado)})`),
-      barraFiltros([
-        { nome: 'q', rotulo: 'Busca', placeholder: 'Matrícula, nome, função, cidade…' },
-        { nome: 'gerencia', rotulo: 'Gerência', tipo: 'select', opcoes: d.opcoes.gerencias.map((x) => ({ valor: x, rotulo: x })) },
-        { nome: 'setor', rotulo: 'Setor', tipo: 'select', opcoes: d.opcoes.setores.map((x) => ({ valor: x, rotulo: x })) },
-        { nome: 'programacao', rotulo: 'Programação', tipo: 'select', opcoes: Object.entries(PROG).map(([valor, rotulo]) => ({ valor, rotulo })) },
-        { nome: 'saida', rotulo: 'Data de saída', tipo: 'select', opcoes: [{ valor: '1', rotulo: 'Com data de saída' }] },
-        { nome: 'situacao', rotulo: 'Situação', tipo: 'select', opcoes: [{ valor: 'ATIVO', rotulo: 'Ativo' }, { valor: 'AFASTADO', rotulo: 'Afastado' }] },
-        { nome: 'venc', rotulo: 'Venc. férias', tipo: 'select', opcoes: ['vencidas', 'a_vencer', 'sem_ferias'].map((k) => ({ valor: k, rotulo: VENC[k][0] })) },
-        { nome: 'prazo', rotulo: 'Data limite', tipo: 'select', opcoes: [['alerta', `Estourada ou em até ${d.aviso} dias`], ['estourado', 'Estourada'], ['limite_proximo', `Em até ${d.aviso} dias`], ['no_prazo', 'No prazo']].map(([valor, rotulo]) => ({ valor, rotulo })) },
-        { nome: 'tipo', rotulo: 'Tipo de contrato', tipo: 'select', opcoes: d.opcoes.tipos.map((x) => ({ valor: x, rotulo: x })) },
-        { nome: 'cidade', rotulo: 'Cidade', tipo: 'select', opcoes: d.opcoes.cidades.map((x) => ({ valor: x, rotulo: x })) },
-      ], query, (v) => ir('#/ferias', { ...v, ...(query.mes ? { mes: query.mes } : {}) })),
+      barraFiltros(filtrosDef(d), query, (v) => ir('#/ferias', { ...v, ...(query.mes ? { mes: query.mes } : {}) })),
       filtroAtivo ? h('p', { class: 'pequeno' }, h('a', { href: '#/ferias' }, '× limpar filtros'),
         query.mes ? h('span', { class: 'muted' }, ` · data limite em ${MESES_LONGOS[Number(query.mes.slice(5, 7)) - 1]} de ${query.mes.slice(0, 4)}`) : null) : null,
       h('div', { class: 'card' }, tabela([
         { t: 'Matrícula', f: (c) => h('strong', {}, c.matricula) },
         { t: 'Nome', f: (c) => [h('strong', {}, c.nome), h('div', { class: 'muted pequeno' }, c.funcao)] },
-        { t: 'Férias / FAT / Operação', f: programacao },
+        { t: 'Férias / FAT / Operação', f: (c) => programacao(c, painel) },
         { t: 'Cidade resid.', f: (c) => c.cidade || '—' },
         { t: 'Situação', f: (c) => badgeTom(c.situacao === 'AFASTADO' ? 'Afastado' : 'Ativo', c.situacao === 'AFASTADO' ? 'warn' : 'ok') },
         { t: 'Gerência / setor', f: (c) => [c.gerencia || '—', h('div', { class: 'muted pequeno' }, [c.setor, c.tipo_contrato].filter(Boolean).join(' · '))] },
@@ -151,8 +207,69 @@ export default async function ferias({ query, ir, recarregarPagina }) {
         { t: 'Dt limite férias', cls: 'nowrap', f: (c) => (c.dt_limite ? [h('strong', {}, dataBR(c.dt_limite)), h('div', { class: `pequeno fer-prazo ${c.prazo}` }, prazoTexto(c))] : '—') },
       ], d.itens, { vazioMsg: 'Nenhum colaborador com esses filtros.' })),
       d.total_filtrado > d.itens.length ? h('p', { class: 'muted pequeno' }, `Mostrando ${fmt(d.itens.length)} de ${fmt(d.total_filtrado)}: use os filtros (ou exporte para o Excel) para ver o resto.`) : null,
+      painel.barra,
     ],
   ];
+}
+
+// Relatório para imprimir (ou salvar em PDF): cabeçalho com a logo da empresa, resumo e os colaboradores por gerência.
+// Rota: #/ferias/relatorio com os mesmos filtros da lista
+async function paginaRelatorio({ query, ir, usuario }) {
+  const qs = new URLSearchParams({ ...query, todos: '1' }).toString();
+  const d = await get(`/ferias?${qs}`);
+  const itens = d.itens;
+  const grupos = new Map();
+  for (const c of itens) { const g = c.gerencia || '(sem gerência)'; if (!grupos.has(g)) grupos.set(g, []); grupos.get(g).push(c); }
+  const ordem = [...grupos.keys()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const conta = (campo, v) => itens.filter((c) => c[campo] === v).length;
+  const resumo = [
+    ['Colaboradores', itens.length], ['Limite estourado', conta('prazo', 'estourado')], [`Limite em até ${d.aviso} dias`, conta('prazo', 'limite_proximo')],
+    ['Férias vencidas', conta('venc', 'vencidas')], ['Em férias', conta('programacao', 'ferias')], ['FAT', conta('programacao', 'fat')],
+    ['Operação', conta('programacao', 'operacao')], ['Com data de saída', itens.filter((c) => c.data_saida).length],
+  ];
+  const COLS = ['Matrícula', 'Nome', 'Função', 'Setor', 'Cidade', 'Situação', 'Venc. férias', 'Período aquisitivo', 'Dt limite férias', 'Prazo', 'Férias / FAT / Operação', 'Saída de férias'];
+  const linha = (c) => h('tr', { class: c.prazo === 'estourado' ? 'fer-r-estourado' : c.prazo === 'limite_proximo' ? 'fer-r-proximo' : '' },
+    h('td', { class: 'c' }, c.matricula), h('td', {}, c.nome), h('td', {}, c.funcao), h('td', {}, c.setor), h('td', {}, c.cidade),
+    h('td', { class: 'c' }, c.situacao === 'AFASTADO' ? 'Afastado' : 'Ativo'), h('td', { class: 'c' }, c.venc_ferias ? VENC[c.venc][0] : '—'),
+    h('td', { class: 'c' }, c.inicio_pa ? `${dataBR(c.inicio_pa)} a ${dataBR(c.final_pa)}` : '—'), h('td', { class: 'c forte' }, c.dt_limite ? dataBR(c.dt_limite) : '—'),
+    h('td', { class: 'c' }, prazoTexto(c) || '—'), h('td', { class: 'c forte' }, PROG[c.programacao]), h('td', { class: 'c forte' }, c.data_saida ? dataBR(c.data_saida) : '—'));
+  const corpo = ordem.flatMap((g) => [
+    h('tr', { class: 'subtotal' }, h('td', { colspan: COLS.length }, `${g} — ${fmt(grupos.get(g).length)} colaborador${grupos.get(g).length === 1 ? '' : 'es'}`)),
+    ...grupos.get(g).map(linha)]);
+
+  const folha = h('section', { class: 'demo-folha fer-rel-folha' },
+    h('header', { class: 'fer-rel-cab' },
+      h('img', { src: '/img/crv-industrial-azul.png?v=2', alt: 'CRV Industrial', class: 'fer-rel-logo' }),
+      h('div', { class: 'fer-rel-tit' },
+        h('strong', {}, 'CRV INDUSTRIAL · CTT - TRANSPORTE'),
+        h('h1', {}, 'RELATÓRIO DE FÉRIAS — CTT'),
+        h('p', {}, descreverFiltros(d, query))),
+      h('div', { class: 'fer-rel-data' }, h('span', {}, 'Emitido em'), h('b', {}, new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })),
+        h('span', {}, `Base importada em ${dataHoraBR(d.importado_em)}`))),
+    h('div', { class: 'fer-rel-resumo' }, resumo.map(([t, n]) => h('div', {}, h('b', {}, fmt(n)), h('span', {}, t)))),
+    itens.length ? h('table', { class: 'demo-tab fer-rel-tab' },
+      h('thead', {}, h('tr', {}, COLS.map((t) => h('th', {}, t)))),
+      h('tbody', {}, corpo)) : h('p', { class: 'demo-vazio' }, 'Nenhum colaborador com esses filtros.'),
+    h('footer', { class: 'demo-rodape' }, `Prazo da data limite contado em ${dataBR(d.hoje)} · emitido por ${usuario?.nome || ''} em ${new Date().toLocaleString('pt-BR')}`));
+
+  return [
+    h('div', { class: 'nao-imprime' },
+      cabecalhoPagina({
+        migalhas: [['Férias CTT', '#/ferias'], ['Relatório']], titulo: 'Relatório de férias',
+        sub: `${fmt(itens.length)} colaborador${itens.length === 1 ? '' : 'es'} · ${descreverFiltros(d, query)} · use Imprimir e escolha "Salvar como PDF" para gerar o arquivo`,
+      }),
+      barraComandos([
+        { texto: 'Imprimir / salvar PDF', icone: 'impressora', tom: 'primario', aoClicar: () => window.print() },
+        { texto: 'Voltar à lista', icone: 'voltar', aoClicar: () => ir('#/ferias', query) },
+      ]),
+      barraFiltros(filtrosDef(d), query, (v) => ir('#/ferias/relatorio', { ...v, ...(query.mes ? { mes: query.mes } : {}) }))),
+    h('div', { class: 'demo-mesa' }, folha),
+  ];
+}
+
+export default async function ferias(ctx) {
+  if (ctx.params?.[0] === 'relatorio') return paginaRelatorio(ctx);
+  return paginaFerias(ctx);
 }
 
 export { PRAZO };

@@ -49,7 +49,7 @@ const ROTAS = {
   gratificacao: { titulo: 'Gratificação rescisória', pagina: gratificacao, perfis: [...GESTAO, 'gratificacao'], voltar: (c) => (c.params.length > 1 ? `#/gratificacao/${c.params[0]}` : null) },
   treino: { titulo: 'Treinamento prático', pagina: treino, perfis: [...GESTAO, 'treinamento'], voltar: (c) => (c.params[0] === 'registros' && c.params.length > 1 ? '#/treino/registros' : null) },
   onibus: { titulo: 'Acompanhamento de ônibus', pagina: onibus, perfis: [...GESTAO, 'onibus'], voltar: (c) => (c.params[0] === 'imprimir' ? `#/onibus/resumo${c.query.data ? `?data=${c.query.data}` : ''}` : null) },
-  ferias: { titulo: 'Férias CTT', pagina: ferias, perfis: [...GESTAO, 'ferias'] },
+  ferias: { titulo: 'Férias CTT', pagina: ferias, perfis: [...GESTAO, 'ferias'], voltar: (c) => (c.params[0] === 'relatorio' ? '#/ferias' : null) },
   operacional: { titulo: 'Controle operacional', pagina: operacional, perfis: [...GESTAO, 'operacional'], voltar: (c) => (['veiculos', 'pastas'].includes(c.params[0]) && c.params.length > 1 ? `#/operacional/${c.params[0]}` : null) },
   treinamento: { titulo: 'Guia do sistema', pagina: treinamento },
   senha: { titulo: 'Alterar minha senha', pagina: () => paginaSenha() },

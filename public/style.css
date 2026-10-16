@@ -1031,6 +1031,29 @@ html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
 .fer-prog-sel { font-weight: 650; border-left: 4px solid var(--st-ok); }
 .fer-prog-sel.ferias { border-left-color: var(--info); background: var(--info-bg); } .fer-prog-sel.fat { border-left-color: var(--st-aviso); background: color-mix(in srgb, var(--st-aviso) 14%, var(--card)); }
 .fer-prog-data { display: flex; flex-direction: column; gap: 1px; margin: 0; } .fer-prog-data small { font-size: .7rem; color: var(--muted); }
+.fer-pendente td { background: color-mix(in srgb, var(--st-aviso) 12%, transparent); }
+.fer-pendente td:first-child { box-shadow: inset 4px 0 0 var(--st-aviso); }
+.fer-salvar { position: sticky; bottom: 12px; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 10px; padding: 10px 14px; background: var(--card); border: 1px solid var(--st-aviso); border-left: 5px solid var(--st-aviso); border-radius: 10px; box-shadow: 0 6px 22px rgba(0, 0, 0, .18); font-weight: 650; }
+.fer-salvar[hidden] { display: none; }
+.fer-salvar-acoes { display: flex; gap: 8px; }
+/* Relatório de férias (folha A4 deitada, como o demonstrativo) */
+.fer-rel-cab { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; padding-bottom: 3mm; margin-bottom: 3mm; border-bottom: 2px solid #1f4e8c; }
+.fer-rel-logo { height: 16mm; width: auto; }
+.fer-rel-tit strong { font-size: 9pt; color: #1f3d7a; letter-spacing: .02em; }
+.fer-rel-tit h1 { font: 700 15pt Calibri, Arial, sans-serif; color: #1f3d7a; margin: 1px 0 3px; letter-spacing: 0; }
+.fer-rel-tit p { margin: 0; font-size: 8pt; color: #333; }
+.fer-rel-data { display: flex; flex-direction: column; align-items: flex-end; font-size: 7.5pt; color: #444; gap: 1px; }
+.fer-rel-data b { font-size: 10pt; color: #1f3d7a; }
+.fer-rel-resumo { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 2mm; margin-bottom: 3mm; }
+.fer-rel-resumo div { border: 1px solid #b7c3d4; border-top: 3px solid #1f4e8c; border-radius: 2px; padding: 1.5mm 2mm; display: flex; flex-direction: column; }
+.fer-rel-resumo b { font-size: 12pt; color: #1f3d7a; line-height: 1.1; }
+.fer-rel-resumo span { font-size: 6.8pt; color: #333; }
+.fer-rel-tab th, .fer-rel-tab th:nth-child(n) { background: #1f4e8c; font-size: 7pt; }
+.fer-rel-tab td { font-size: 7.4pt; }
+.fer-rel-tab tr.subtotal td { text-align: left; }
+.fer-rel-tab tr.fer-r-estourado td:nth-child(9), .fer-rel-tab tr.fer-r-estourado td:nth-child(10) { color: #b42318; }
+.fer-rel-tab tr.fer-r-proximo td:nth-child(9), .fer-rel-tab tr.fer-r-proximo td:nth-child(10) { color: #a15c00; }
+@media print { .fer-salvar { display: none !important; } .fer-rel-resumo div { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 .fer-prazo { font-weight: 650; white-space: nowrap; color: var(--muted); } .fer-prazo.estourado { color: var(--bad); } .fer-prazo.limite_proximo { color: var(--warn); } .fer-prazo.no_prazo { color: var(--ok); }
 @media (max-width: 1100px) { .fer-tempo { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .fer-tempo { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
