@@ -26,6 +26,9 @@ async function verificarSenha(senha, armazenado) {
 // e a variável de ambiente SENHA_PROVISORIA, se existir, vale mais que as duas.
 const HASH_PROVISORIA_PADRAO = 'scrypt:ofb2cj6BBi3r1Nymid/yOw==:/8P0OJpGCfaUcKa3XWPBZDqiJSxUAGK8yd+FNN2sgQotiJjI5FGNZ34eZa/JyCRYE4uYLk1C8kE/2Tfzt55B/g==';
 
+// Login sem acento e em minúsculas (JOÃO.EDUARDO → joao.eduardo); espaços viram ponto
+const normalizarLogin = (s) => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase().replace(/\s+/g, '.');
+
 function validarSenhaNova(s) {
   if (typeof s !== 'string' || s.length < 8) throw new ErroHttp(400, 'A senha deve ter pelo menos 8 caracteres.');
   if (s.length > 200) throw new ErroHttp(400, 'Senha muito longa.');
@@ -102,7 +105,7 @@ function criarAuth({ pool, secret, secure }) {
     const agora = Date.now();
     const t = (tentativas.get(req.ip) || []).filter((x) => agora - x < JANELA);
     if (t.length >= MAX) throw new ErroHttp(429, 'Muitas tentativas. Aguarde alguns minutos.');
-    const loginInformado = String(req.body?.usuario ?? '').trim().toLowerCase();
+    const loginInformado = normalizarLogin(req.body?.usuario);
     const senha = String(req.body?.senha ?? '');
     const { rows } = await pool.query(`SELECT ${COLUNAS_USUARIO}, senha_hash FROM usuarios WHERE login = $1`, [loginInformado]);
     const u = rows[0];
@@ -128,4 +131,4 @@ function criarAuth({ pool, secret, secure }) {
 
 const publico = (u) => ({ id: u.id, nome: u.nome, login: u.login, perfil: u.perfil, perfis_extras: u.perfis_extras || [], perfis: perfisDe(u), funcionario_id: u.funcionario_id, trocar_senha: !!u.trocar_senha });
 
-module.exports = { criarAuth, garantirAdminInicial, hashSenha, verificarSenha, validarSenhaNova, publico, HASH_PROVISORIA_PADRAO };
+module.exports = { criarAuth, garantirAdminInicial, hashSenha, verificarSenha, validarSenhaNova, publico, HASH_PROVISORIA_PADRAO, normalizarLogin };

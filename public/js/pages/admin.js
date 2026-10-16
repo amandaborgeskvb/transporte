@@ -59,7 +59,7 @@ export async function usuarios({ params = [] } = {}) {
       classeGrade: 'tres', confirmar: novo ? 'Criar usuário' : 'Salvar alterações',
       campos: [
         { nome: 'nome', rotulo: 'Nome', valor: u?.nome, obrigatorio: true, cheio: true },
-        novo ? { nome: 'login', rotulo: 'Login', obrigatorio: true, dica: 'Letras, números e . _ @ -' } : null,
+        novo ? { nome: 'login', rotulo: 'Login', obrigatorio: true, dica: 'Pode digitar com acento ou maiúscula: JOÃO.EDUARDO vira joao.eduardo. Sem espaço.' } : null,
         { nome: 'perfil', rotulo: 'Perfil de acesso', tipo: 'select', opcoes: PERFIS.map((p) => ({ valor: p, rotulo: rotulo(p) })), valor: u?.perfil || 'solicitante', obrigatorio: true },
         { nome: 'funcionario_id', rotulo: 'Funcionário vinculado (matrícula ou nome)', tipo: 'funcionario', funcionarios: c.funcionarios, valor: u?.funcionario_id, dica: 'Obrigatório para solicitantes; deixe em branco para os demais perfis.' },
         { nome: 'senha', rotulo: novo ? 'Senha inicial' : 'Nova senha', tipo: 'password', obrigatorio: novo && !temProvisoria,
@@ -71,7 +71,7 @@ export async function usuarios({ params = [] } = {}) {
         const corpo = { ...v, funcionario_id: v.funcionario_id || null, perfis_extras: [...caixaModulos.querySelectorAll('input:checked')].map((i) => i.value).filter((m) => m !== v.perfil) };
         if (!corpo.senha) delete corpo.senha;
         const salvo = novo ? await post('/usuarios', corpo) : await put(`/usuarios/${u.id}`, corpo);
-        toast('Usuário salvo.');
+        toast(novo ? `Usuário criado. Login: ${salvo.login}` : 'Usuário salvo.');
         await recarregar(salvo.id);
       },
       aoCancelar: novo && lista.length ? () => { selecionado = lista[0]; desenhar(); } : null,

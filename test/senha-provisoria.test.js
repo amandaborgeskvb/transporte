@@ -34,3 +34,13 @@ test('o administrador troca a senha provisória: vale para os próximos usuário
   assert.equal((await nova.post('/api/me/senha', { atual: 'Outra#Prov1', nova: SENHA })).status, 200);
   assert.equal((await (await t.logado('nova2', SENHA)).get('/api/onibus/painel')).status, 200);
 });
+
+test('login com acento ou maiúscula: vira sem acento e minúsculo, e entra digitando de qualquer jeito', async () => {
+  const r = await admin.post('/api/usuarios', { nome: 'João Eduardo', login: 'JOÃO.EDUARDO', perfil: 'operacional', senha: SENHA });
+  assert.equal(r.status, 201, JSON.stringify(r.corpo));
+  assert.equal(r.corpo.login, 'joao.eduardo');
+  for (const digitado of ['joão.eduardo', 'JOAO.EDUARDO', ' João.Eduardo ']) {
+    assert.equal((await t.cliente().login(digitado, SENHA)).status, 200, digitado);
+  }
+  assert.equal((await admin.post('/api/usuarios', { nome: 'X', login: 'joao/eduardo', perfil: 'operacional', senha: SENHA })).status, 400);
+});

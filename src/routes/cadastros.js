@@ -1,7 +1,7 @@
 const express = require('express');
 const { wrap, texto, data, idParam, inteiro, opcaoDe, erro400, erro403, erro404, erro409, auditar, diff } = require('../util');
 const { exigirPerfil, ADM, FIN, MODULOS } = require('../workflow');
-const { hashSenha, verificarSenha, validarSenhaNova, publico, HASH_PROVISORIA_PADRAO } = require('../auth');
+const { hashSenha, verificarSenha, validarSenhaNova, publico, HASH_PROVISORIA_PADRAO, normalizarLogin } = require('../auth');
 const { PERFIS } = require('../schema');
 
 const bool = (v) => v === true || v === 'true' || v === 1 || v === '1';
@@ -148,8 +148,8 @@ function criarCadastros({ pool, senhaProvisoria = '' }) {
     if (invalido) throw erro400(`Módulo adicional inválido: ${invalido}.`);
     d.perfis_extras = [ADM, FIN].includes(d.perfil) ? [] : MODULOS.filter((m) => m !== d.perfil && extras.map((x) => String(x).trim()).includes(m));
     if (novo) {
-      d.login = texto(b.login, 40, { obrigatorio: true, rotulo: 'Login' }).toLowerCase();
-      if (!/^[a-z0-9._@-]+$/.test(d.login)) throw erro400('Login: use apenas letras, números e . _ @ -');
+      d.login = normalizarLogin(texto(b.login, 40, { obrigatorio: true, rotulo: 'Login' })); // sem acento e em minúsculas
+      if (!/^[a-z0-9._@-]+$/.test(d.login)) throw erro400('Login: use apenas letras, números e . _ @ - (sem espaço e sem símbolos como / ou ,).');
     }
     return d;
   }
