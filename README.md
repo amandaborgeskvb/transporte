@@ -28,6 +28,8 @@ PostgreSQL como banco. Sem etapa de build e sem frameworks de interface.
 
 ## Identidade visual e interface
 
+**Rodapé dos relatórios:** toda folha impressa ou salva em PDF (relatórios, demonstrativos, fichas, formulários, ônibus, férias…) sai com o rodapé **Departamento de Transporte / Amanda Borges** à esquerda e, à direita, **a data e a hora em que foi gerada** e o número da página (*Gerado em 16/10/2026 às 14:30 · página 1 de 2*). Vale também para os PDFs gerados no servidor (Ônibus e Situação dos treinamentos). O texto fica em `public/js/ui.js` (`RODAPE_RELATORIO`) e `src/rodape.js`.
+
 Layout no padrão dos sistemas corporativos da CRV Industrial (referência: a tela de Usuários do sistema agrícola), com
 conceitos de ERPs e plataformas de operação agrícola:
 

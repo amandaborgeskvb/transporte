@@ -3,6 +3,7 @@
 const path = require('path');
 const fs = require('fs');
 const PDFDocument = require('pdfkit');
+const { RODAPE_RELATORIO, geradoEm } = require('./rodape');
 
 const LOGO = path.join(__dirname, '..', 'public', 'img', 're-logo-unidade-capinopolis.jpeg');
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -189,8 +190,8 @@ function gerarPdfSituacao({ itens, agrupar = 'situacao', filtros = [], emitidoPo
     doc.page.margins.bottom = 0;
     const y = doc.page.height - 22;
     doc.font('Helvetica').fontSize(7).fillColor(COR.muda)
-      .text(`TRANSPORTE - CTT · Situação dos treinamentos práticos · emitido em ${emitido}`, x0, y, { width: L / 2, lineBreak: false })
-      .text(`Página ${i + 1} de ${paginas.count}`, x0 + L / 2, y, { width: L / 2, align: 'right', lineBreak: false });
+      .text(RODAPE_RELATORIO, x0, y, { width: L / 2, lineBreak: false })
+      .text(`${geradoEm(agora)} · Situação dos treinamentos práticos · página ${i + 1} de ${paginas.count}`, x0 + L / 2, y, { width: L / 2, align: 'right', lineBreak: false });
     doc.page.margins.bottom = m;
   }
   doc.end();

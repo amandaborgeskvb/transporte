@@ -1,7 +1,7 @@
 // Férias CTT: base de férias dos colaboradores ativos e afastados (aba Base_Férias da BASE GERAL).
 // Rota: #/ferias?gerencia&setor&cidade&tipo&situacao&venc&prazo&mes&q
 import { get, put, enviarArquivo } from '../api.js';
-import { h, dataBR, dataHoraBR, tabela, cabecalhoPagina, barraComandos, barraFiltros, kpi, toast, confirmar, dialogo, badgeTom } from '../ui.js';
+import { h, dataBR, dataHoraBR, tabela, cabecalhoPagina, barraComandos, barraFiltros, kpi, toast, confirmar, dialogo, badgeTom, rodapeRelatorio } from '../ui.js';
 
 const fmt = (n) => Number(n || 0).toLocaleString('pt-BR');
 const MESES = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
@@ -245,12 +245,12 @@ async function paginaRelatorio({ query, ir, usuario }) {
         h('h1', {}, 'RELATÓRIO DE FÉRIAS — CTT'),
         h('p', {}, descreverFiltros(d, query))),
       h('div', { class: 'fer-rel-data' }, h('span', {}, 'Emitido em'), h('b', {}, new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })),
-        h('span', {}, `Base importada em ${dataHoraBR(d.importado_em)}`))),
+        h('span', {}, `Base importada em ${dataHoraBR(d.importado_em)}`), h('span', {}, `Prazos contados em ${dataBR(d.hoje)}${usuario?.nome ? ` · por ${usuario.nome}` : ''}`))),
     h('div', { class: 'fer-rel-resumo' }, resumo.map(([t, n]) => h('div', {}, h('b', {}, fmt(n)), h('span', {}, t)))),
     itens.length ? h('table', { class: 'demo-tab fer-rel-tab' },
       h('thead', {}, h('tr', {}, COLS.map((t) => h('th', {}, t)))),
       h('tbody', {}, corpo)) : h('p', { class: 'demo-vazio' }, 'Nenhum colaborador com esses filtros.'),
-    h('footer', { class: 'demo-rodape' }, `Prazo da data limite contado em ${dataBR(d.hoje)} · emitido por ${usuario?.nome || ''} em ${new Date().toLocaleString('pt-BR')}`));
+    h('footer', { class: 'demo-rodape' }, rodapeRelatorio()));
 
   return [
     h('div', { class: 'nao-imprime' },

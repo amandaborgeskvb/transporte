@@ -3,6 +3,7 @@
 import { get, post, put, del, enviarArquivo, cadastros } from '../api.js';
 import {
   h, brl, dataBR, tabela, botao, cabecalhoPagina, barraComandos, barraFiltros, secao, kpi, vazio, toast, confirmar, dialogo, badgeTom, icone,
+  rodapeRelatorio,
 } from '../ui.js';
 
 const fmt = (n) => Number(n || 0).toLocaleString('pt-BR');
@@ -657,7 +658,7 @@ async function paginaCartaoGold({ query, ir }) {
         h('td', { class: 'c' }, k + 1), h('td', { class: 'c' }, i.matricula), h('td', {}, i.nome), h('td', { class: 'n' }, n2(i.valor)), h('td', { class: 'c' }, dataBR(i.dt_rescisao)),
         h('td', { class: 'c' }, i.centro_custo || ''), h('td', {}, i.descricao || ''), h('td', { class: 'c' }, parte ?? ''))),
       h('tr', { class: 'total' }, h('td', { colspan: 3 }, `Total - ${itens.length}`), h('td', { class: 'n forte' }, n2(total)), h('td', { colspan: 4 })))) : h('p', { class: 'demo-vazio' }, 'Nenhum valor de Cartão Gold a depositar para o filtro selecionado.'),
-    h('footer', { class: 'demo-rodape' }, `Emitido em ${new Date().toLocaleString('pt-BR')}`));
+    h('footer', { class: 'demo-rodape' }, rodapeRelatorio()));
   return [
     h('div', { class: 'nao-imprime' },
       cabecalhoPagina({
@@ -758,7 +759,7 @@ async function paginaDemonstrativo({ query, ir }) {
       h('tbody', {}, corpo, linhaTotal('Total / VALORES', itens, 'total'))) : h('p', { class: 'demo-vazio' }, 'Nenhuma apuração para o filtro selecionado.'),
     itens.some((r) => r.calculo.cartao_gold > 0) ? h('p', { class: 'demo-nota' }, `Cartão Gold: depósito no cartão (lista à parte) — R$ ${n2(soma(itens, (c) => c.cartao_gold))}.`) : null,
     h('div', { class: 'demo-assin' }, assinaturas.map((x) => h('div', {}, h('span', { class: 'linha' }), h('span', { class: 'nome' }, x.nome || ' '), h('span', { class: 'cargo' }, x.cargo)))),
-    h('footer', { class: 'demo-rodape' }, `Emitido em ${new Date().toLocaleString('pt-BR')}`));
+    h('footer', { class: 'demo-rodape' }, rodapeRelatorio()));
 
   return [
     h('div', { class: 'nao-imprime' },

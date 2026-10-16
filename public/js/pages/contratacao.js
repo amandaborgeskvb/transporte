@@ -4,6 +4,7 @@
 import { get, post, put, del, enviarArquivo } from '../api.js';
 import {
   h, brl, dataBR, hojeISO, tabela, botao, cabecalhoPagina, barraComandos, barraFiltros, secao, kpi, vazio, toast, confirmar, dialogo, icone,
+  rodapeRelatorio,
 } from '../ui.js';
 import { ajustarEscala } from '../re.js';
 
@@ -445,7 +446,7 @@ async function resumoDia({ query, ir, recarregarPagina }) {
       r.total ? h('table', { class: 'demo-tab' },
         h('thead', {}, h('tr', {}, ['Função', 'Depto/Seção', 'Desc-Depto', 'Nome do Candidato', 'Cidade', 'Celular-1', 'Qtde'].map((t) => h('th', {}, t)))),
         h('tbody', {}, linhas, h('tr', { class: 'total' }, h('td', { colspan: 6 }, 'Total'), h('td', { class: 'c' }, r.total)))) : h('p', { class: 'demo-vazio' }, 'Nenhuma ficha neste dia.'),
-      h('footer', { class: 'demo-rodape' }, `Emitido em ${new Date().toLocaleString('pt-BR')}`))),
+      h('footer', { class: 'demo-rodape' }, rodapeRelatorio()))),
   ];
 }
 

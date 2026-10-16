@@ -79,6 +79,10 @@ export function icone(nome, classe = '') {
 export const brl = (n) => Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 export const dataBR = (s) => (s ? String(s).slice(0, 10).split('-').reverse().join('/') : '—');
 export const dataHoraBR = (s) => (s ? new Date(s).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+// Rodapé de todos os relatórios impressos ou salvos em PDF: quem emite e quando (o mesmo texto dos PDFs do servidor, src/rodape.js)
+export const RODAPE_RELATORIO = 'Departamento de Transporte / Amanda Borges';
+export const geradoEm = (d = new Date()) => `Gerado em ${d.toLocaleDateString('pt-BR')} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+export const rodapeRelatorio = (d = new Date()) => `${RODAPE_RELATORIO} · ${geradoEm(d)}`;
 export const hojeISO = () => new Date().toLocaleDateString('sv-SE');
 export const mesBR = (ym) => { const [a, m] = ym.split('-'); return `${m}/${a}`; };
 

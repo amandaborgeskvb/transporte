@@ -1,5 +1,5 @@
 import { get, post } from './api.js';
-import { h, icone, dialogo, rotulo, formulario, cabecalhoPagina } from './ui.js';
+import { h, icone, dialogo, rotulo, formulario, cabecalhoPagina, RODAPE_RELATORIO, geradoEm } from './ui.js';
 import dashboard from './pages/dashboard.js';
 import { lista as listaViagens, detalhe as detalheViagem } from './pages/viagens.js';
 import { adiantamentos, despesas, reembolsos } from './pages/filas.js';
@@ -17,6 +17,28 @@ import operacional from './pages/operacional.js';
 import ferias from './pages/ferias.js';
 
 const raiz = document.getElementById('raiz');
+
+// Rodapé de toda folha impressa ou salva em PDF: "Departamento de Transporte / Amanda Borges", data e hora em que foi gerado
+// e a página. Vai nas margens da folha (@page); no navegador que não tem esse recurso, uma linha fixa no pé da folha.
+let regraRodape = null;
+let rodapeFixo = null;
+function atualizarRodapeImpressao() {
+  const quando = geradoEm();
+  const aspas = (t) => `"${t.replace(/["\\]/g, '\\$&')}"`;
+  const fonte = 'font-family: Arial, Helvetica, sans-serif; font-size: 7pt; color: #444;';
+  const folha = [...document.styleSheets].find((s) => (s.href || '').includes('/style.css'));
+  try {
+    if (regraRodape) { const i = [...folha.cssRules].indexOf(regraRodape); if (i >= 0) folha.deleteRule(i); }
+    const i = folha.insertRule(`@page { @bottom-left { content: ${aspas(RODAPE_RELATORIO)}; ${fonte} } @bottom-right { content: ${aspas(`${quando} · página `)} counter(page) " de " counter(pages); ${fonte} } }`, folha.cssRules.length);
+    regraRodape = folha.cssRules[i];
+    if (regraRodape.cssText.includes('bottom-left')) { document.documentElement.classList.add('rodape-margem'); return; }
+  } catch { /* sem caixas de margem no @page: usa a linha fixa */ }
+  document.documentElement.classList.remove('rodape-margem');
+  rodapeFixo ||= document.body.appendChild(h('div', { class: 'rodape-impressao', 'aria-hidden': 'true' }));
+  rodapeFixo.textContent = `${RODAPE_RELATORIO} · ${quando}`;
+}
+window.addEventListener('beforeprint', atualizarRodapeImpressao);
+atualizarRodapeImpressao();
 const MARCA = 'CRV Industrial';
 let usuario = null;
 let app = null;

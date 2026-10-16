@@ -4,6 +4,7 @@
 const path = require('path');
 const fs = require('fs');
 const PDFDocument = require('pdfkit');
+const { RODAPE_RELATORIO, geradoEm } = require('./rodape');
 
 const LOGO = path.join(__dirname, '..', 'public', 'img', 'crv-industrial-azul.png');
 const TINTA = '#111111';
@@ -34,7 +35,6 @@ function gerarPdfOnibus({ resumo = null, disp = null, emitidoPor = '', agora = n
     info: { Title: 'RESUMO + Disponibilidade — Transporte Funcionários', Author: 'TRANSPORTE - CTT', Subject: 'Acompanhamento Diário - Ônibus' } });
   const x0 = 20;
   const L = doc.page.width - 40;
-  const emitido = agora.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' });
   const corte = (txt, larg) => {
     let t = String(txt ?? '');
     if (doc.widthOfString(t) <= larg) return t;
@@ -357,13 +357,14 @@ function gerarPdfOnibus({ resumo = null, disp = null, emitidoPor = '', agora = n
     folhaResumo();
   }
 
-  // rodapé em todas as folhas
+  // rodapé em todas as folhas: quem emite (Departamento de Transporte), data e hora em que foi gerado e a folha
   const paginas = doc.bufferedPageRange();
   for (let i = 0; i < paginas.count; i++) {
     doc.switchToPage(i);
     doc.font('Helvetica').fontSize(6.5).fillColor(MUDA)
-      .text(`TRANSPORTE - CTT · Acompanhamento Diário - Ônibus · emitido em ${emitido}${emitidoPor ? ` por ${emitidoPor}` : ''} · folha ${i + 1} de ${paginas.count}`,
-        x0, doc.page.height - 16, { width: L, align: 'right', lineBreak: false });
+      .text(RODAPE_RELATORIO, x0, doc.page.height - 16, { width: L / 2, lineBreak: false })
+      .text(`${geradoEm(agora)}${emitidoPor ? ` por ${emitidoPor}` : ''} · Acompanhamento Diário - Ônibus · folha ${i + 1} de ${paginas.count}`,
+        x0 + L / 2, doc.page.height - 16, { width: L / 2, align: 'right', lineBreak: false });
   }
   doc.end();
   return doc;
