@@ -18,7 +18,7 @@ const DESCRICAO_PERFIL = {
   operacional: 'Só o módulo Controle Operacional: veículos leves e pesados, documentos, arquivos e vencimentos. O Início mostra o resumo dos vencimentos. Não vê viagens nem os outros módulos.',
 };
 // Módulos que podem ser dados a mais a um usuário (além do perfil principal)
-const MODULOS = ['treinamento', 'gratificacao', 'contratacao', 'onibus', 'operacional'];
+const MODULOS = ['viagem', 'treinamento', 'gratificacao', 'contratacao', 'onibus', 'operacional'];
 const nomesPerfis = (u) => [rotulo(u.perfil), ...(u.perfis_extras || []).map(rotulo)].join(' + ');
 const TOM_PERFIL = { administrador: 'ok', solicitante: 'mute', aprovador: 'info', financeiro: 'warn', treinamento: 'info', gratificacao: 'warn', contratacao: 'info', onibus: 'ok', operacional: 'warn' };
 
@@ -87,10 +87,11 @@ export async function usuarios({ params = [] } = {}) {
     const caixaModulos = h('fieldset', { class: 'cheio modulos-extra' }, h('legend', {}, 'Módulos adicionais (além do perfil principal)'),
       h('div', { class: 'modulos-op' }, MODULOS.map((m) => h('label', { class: 'check', 'data-mod': m },
         h('input', { type: 'checkbox', value: m, checked: (u?.perfis_extras || []).includes(m) }), ' ', rotulo(m)))),
-      h('small', { class: 'dica' }, 'Marque os módulos que este usuário também usa (ex.: perfil Ônibus + Operacional). Administrador e financeiro já veem todos os módulos.'));
+      h('small', { class: 'dica' }, 'Marque os módulos que este usuário também usa (ex.: perfil Ônibus + Operacional). Viagem: solicita as próprias viagens, adiantamentos e despesas, como o Solicitante (precisa do funcionário vinculado). Administrador e financeiro já veem todos os módulos.'));
     const atualizarModulos = (perfil) => {
       caixaModulos.style.display = ['administrador', 'financeiro'].includes(perfil) ? 'none' : '';
-      caixaModulos.querySelectorAll('label').forEach((l) => { l.style.display = l.dataset.mod === perfil ? 'none' : ''; }); // o principal não aparece de novo
+      // o principal não aparece de novo; Viagem só para os perfis de um módulo só (solicitante e aprovador já usam as viagens)
+      caixaModulos.querySelectorAll('label').forEach((l) => { l.style.display = l.dataset.mod === perfil || (l.dataset.mod === 'viagem' && ['solicitante', 'aprovador'].includes(perfil)) ? 'none' : ''; });
     };
     form.querySelector('.form-grid').append(caixaModulos);
     atualizarModulos(u?.perfil || 'solicitante');

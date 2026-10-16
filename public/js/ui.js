@@ -85,7 +85,7 @@ export const mesBR = (ym) => { const [a, m] = ym.split('-'); return `${m}/${a}`;
 export const ROTULOS = {
   administrador: 'Administrador', solicitante: 'Solicitante', aprovador: 'Aprovador', financeiro: 'Financeiro',
   treinamento: 'Treinamento', gratificacao: 'Gratificação', contratacao: 'Contratação', onibus: 'Ônibus',
-  operacional: 'Operacional',
+  operacional: 'Operacional', viagem: 'Viagem',
 };
 export const rotulo = (k) => ROTULOS[k] || k;
 

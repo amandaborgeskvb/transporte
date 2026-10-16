@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const { promisify } = require('util');
 const { ErroHttp, wrap } = require('./util');
-const { perfisDe } = require('./workflow');
+const { perfisDe, perfilEfetivo } = require('./workflow');
 
 const scrypt = promisify(crypto.scrypt);
 const COOKIE = 'sessao';
@@ -85,7 +85,7 @@ function criarAuth({ pool, secret, secure }) {
     const { rows } = await pool.query(`SELECT ${COLUNAS_USUARIO} FROM usuarios WHERE id = $1`, [Number(id)]);
     const u = rows[0];
     if (!u || !u.ativo || u.token_versao !== Number(versao)) return null;
-    return u;
+    return perfilEfetivo(u);
   }
 
   const autenticar = wrap(async (req, _res, next) => {
@@ -118,7 +118,7 @@ function criarAuth({ pool, secret, secure }) {
     }
     tentativas.delete(req.ip);
     res.cookie(COOKIE, assinar(u, agora + DURACAO_MS), { httpOnly: true, sameSite: 'lax', secure, maxAge: DURACAO_MS });
-    res.json(publico(u));
+    res.json(publico(perfilEfetivo(u)));
   });
 
   const logout = (_req, res) => {

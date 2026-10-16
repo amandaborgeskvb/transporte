@@ -15,10 +15,20 @@ const OPE = 'operacional';
 const MODULO_DO_PERFIL = { [TRE]: '/treino', [GRA]: '/gratificacao', [CON]: '/contratacao', [ONI]: '/onibus', [OPE]: '/operacional' };
 const VE_TUDO = [ADM, APR, FIN];
 
-const MODULOS = Object.keys(MODULO_DO_PERFIL); // perfis que podem ser dados como "módulo adicional"
+const MODULOS = Object.keys(MODULO_DO_PERFIL); // perfis de um módulo só
+// "Viagem" como módulo adicional: o usuário de um módulo só (ex.: Ônibus) também solicita as próprias viagens,
+// adiantamentos e despesas, com as mesmas regras do Solicitante
+const VIA = 'viagem';
+const EXTRAS = [...MODULOS, VIA]; // o que pode ser dado como "módulo adicional"
 // Todos os perfis do usuário: o principal (regras de viagem, financeiro) + os módulos adicionais
 const perfisDe = (u) => [...new Set([u?.perfil, ...(u?.perfis_extras || [])].filter(Boolean))];
 const temPerfil = (u, ...perfis) => perfisDe(u).some((p) => perfis.includes(p));
+// Perfil em uso: perfil de módulo + módulo Viagem age como Solicitante (o módulo continua como adicional)
+function perfilEfetivo(u) {
+  const extras = u?.perfis_extras || [];
+  if (!u || !MODULO_DO_PERFIL[u.perfil] || !extras.includes(VIA)) return u;
+  return { ...u, perfil: SOL, perfis_extras: [u.perfil, ...extras.filter((x) => x !== VIA && x !== u.perfil)], perfil_cadastro: u.perfil };
+}
 
 const exigirPerfil = (...perfis) => (req, _res, next) =>
   temPerfil(req.usuario, ...perfis) ? next() : next(erro403());
@@ -139,7 +149,7 @@ function restringirModulo(req, _res, next) {
 }
 
 module.exports = {
-  ADM, SOL, APR, FIN, TRE, GRA, CON, ONI, OPE, MODULO_DO_PERFIL, MODULOS, perfisDe, temPerfil, restringirModulo, VE_TUDO, TRANSICOES, STATUS_FINANCEIRO,
+  ADM, SOL, APR, FIN, TRE, GRA, CON, ONI, OPE, VIA, MODULO_DO_PERFIL, MODULOS, EXTRAS, perfisDe, temPerfil, perfilEfetivo, restringirModulo, VE_TUDO, TRANSICOES, STATUS_FINANCEIRO,
   exigirPerfil, escopoSql, ehDono, carregarViagem, podeTransicao, podeLancar, podeAnalisar, prestacaoAberta,
   acoesViagem, acoesAdiantamento, acoesDespesa, acoesReembolso,
 };

@@ -1,6 +1,6 @@
 const express = require('express');
 const { wrap, texto, data, idParam, inteiro, opcaoDe, erro400, erro403, erro404, erro409, auditar, diff, enviarCsv } = require('../util');
-const { exigirPerfil, ADM, FIN, MODULOS } = require('../workflow');
+const { exigirPerfil, ADM, FIN, SOL, APR, EXTRAS, VIA } = require('../workflow');
 const { hashSenha, verificarSenha, validarSenhaNova, publico, HASH_PROVISORIA_PADRAO, normalizarLogin } = require('../auth');
 const { PERFIS } = require('../schema');
 
@@ -144,9 +144,10 @@ function criarCadastros({ pool, senhaProvisoria = '' }) {
     };
     // módulos adicionais (além do perfil principal); administrador e financeiro já veem todos os módulos
     const extras = Array.isArray(b.perfis_extras) ? b.perfis_extras : String(b.perfis_extras ?? '').split(',');
-    const invalido = extras.map((x) => String(x).trim()).find((x) => x && !MODULOS.includes(x));
+    const invalido = extras.map((x) => String(x).trim()).find((x) => x && !EXTRAS.includes(x));
     if (invalido) throw erro400(`Módulo adicional inválido: ${invalido}.`);
-    d.perfis_extras = [ADM, FIN].includes(d.perfil) ? [] : MODULOS.filter((m) => m !== d.perfil && extras.map((x) => String(x).trim()).includes(m));
+    // Viagem só faz sentido para quem ainda não usa as viagens (perfis de um módulo só)
+    d.perfis_extras = [ADM, FIN].includes(d.perfil) ? [] : EXTRAS.filter((m) => m !== d.perfil && !(m === VIA && [SOL, APR].includes(d.perfil)) && extras.map((x) => String(x).trim()).includes(m));
     if (novo) {
       d.login = normalizarLogin(texto(b.login, 40, { obrigatorio: true, rotulo: 'Login' })); // sem acento e em minúsculas
       if (!/^[a-z0-9._@-]+$/.test(d.login)) throw erro400('Login: use apenas letras, números e . _ @ - (sem espaço e sem símbolos como / ou ,).');
@@ -232,7 +233,7 @@ function criarCadastros({ pool, senhaProvisoria = '' }) {
   }));
 
   // lista dos logins (Excel), para passar a cada pessoa o seu login
-  const NOME_PERFIL = { administrador: 'Administrador', solicitante: 'Solicitante', aprovador: 'Aprovador', financeiro: 'Financeiro', treinamento: 'Treinamento', gratificacao: 'Gratificação', contratacao: 'Contratação', onibus: 'Ônibus', operacional: 'Operacional' };
+  const NOME_PERFIL = { administrador: 'Administrador', solicitante: 'Solicitante', aprovador: 'Aprovador', financeiro: 'Financeiro', treinamento: 'Treinamento', gratificacao: 'Gratificação', contratacao: 'Contratação', onibus: 'Ônibus', operacional: 'Operacional', viagem: 'Viagem' };
   router.get('/usuarios.csv', exigirPerfil(ADM), wrap(async (_req, res) => {
     const { rows } = await listar();
     enviarCsv(res, 'usuarios-logins.csv', [

@@ -97,3 +97,25 @@ test('senha provisória: criar sem senha, troca obrigatória no primeiro acesso 
   // a senha provisória não aparece em nenhuma resposta
   assert.doesNotMatch(JSON.stringify((await admin.get('/api/usuarios')).corpo), /Provisoria#Teste1/);
 });
+
+test('módulo adicional Viagem: perfil de um módulo também solicita as próprias viagens', async () => {
+  const func = (await admin.get('/api/cadastros/funcionarios')).corpo.find((f) => f.ativo);
+  const ana = { funcionario_id: func.id }; // funcionário vinculado ao novo usuário
+  let r = await admin.post('/api/usuarios', { nome: 'Oni Viagem', login: 'oniv', senha: SENHA, perfil: 'onibus', perfis_extras: ['viagem'], funcionario_id: ana.funcionario_id });
+  assert.equal(r.status, 201, JSON.stringify(r.corpo));
+  assert.deepEqual(r.corpo.perfis_extras, ['viagem']);
+  const oniv = await t.logado('oniv');
+  const me = (await oniv.get('/api/me')).corpo;
+  assert.deepEqual([me.perfil, me.perfis], ['solicitante', ['solicitante', 'onibus']]);
+  assert.equal((await oniv.get('/api/onibus/painel')).status, 200); // continua no módulo dele
+  const lista = await oniv.get('/api/viagens');
+  assert.equal(lista.status, 200);
+  assert.ok(lista.corpo.every((v) => v.funcionario_id === ana.funcionario_id)); // só as do funcionário dele
+  const c = (await admin.get('/api/cadastros/motivos')).corpo;
+  r = await oniv.post('/api/viagens', { destino: 'Uberlândia', motivo_id: c[0].id, data_saida: '2026-12-01', data_retorno: '2026-12-02' });
+  assert.equal(r.status, 201, JSON.stringify(r.corpo));
+  for (const u of ['/api/usuarios', '/api/treino/relatorio', '/api/gratificacao/painel']) assert.equal((await oniv.get(u)).status, 403, u);
+  // para solicitante e aprovador o módulo Viagem não se aplica (já usam as viagens)
+  r = await admin.post('/api/usuarios', { nome: 'Sol V', login: 'solv', senha: SENHA, perfil: 'solicitante', perfis_extras: ['viagem', 'onibus'] });
+  assert.deepEqual(r.corpo.perfis_extras, ['onibus']);
+});
