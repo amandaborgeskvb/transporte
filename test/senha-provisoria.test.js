@@ -44,3 +44,12 @@ test('login com acento ou maiúscula: vira sem acento e minúsculo, e entra digi
   }
   assert.equal((await admin.post('/api/usuarios', { nome: 'X', login: 'joao/eduardo', perfil: 'operacional', senha: SENHA })).status, 400);
 });
+
+test('lista de logins (Excel): só o administrador', async () => {
+  const csv = await admin.get('/api/usuarios.csv');
+  assert.equal(csv.status, 200);
+  assert.match(String(csv.corpo), /Nome;Login;Perfil/);
+  assert.match(String(csv.corpo), /joao\.eduardo/);
+  assert.doesNotMatch(String(csv.corpo), /scrypt:/); // nunca a senha
+  assert.equal((await (await t.logado('ana')).get('/api/usuarios.csv')).status, 403);
+});

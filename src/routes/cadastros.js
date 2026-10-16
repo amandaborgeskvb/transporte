@@ -1,5 +1,5 @@
 const express = require('express');
-const { wrap, texto, data, idParam, inteiro, opcaoDe, erro400, erro403, erro404, erro409, auditar, diff } = require('../util');
+const { wrap, texto, data, idParam, inteiro, opcaoDe, erro400, erro403, erro404, erro409, auditar, diff, enviarCsv } = require('../util');
 const { exigirPerfil, ADM, FIN, MODULOS } = require('../workflow');
 const { hashSenha, verificarSenha, validarSenhaNova, publico, HASH_PROVISORIA_PADRAO, normalizarLogin } = require('../auth');
 const { PERFIS } = require('../schema');
@@ -231,6 +231,16 @@ function criarCadastros({ pool, senhaProvisoria = '' }) {
     res.json((await listar('WHERE u.id = $1', [id])).rows[0]);
   }));
 
+  // lista dos logins (Excel), para passar a cada pessoa o seu login
+  const NOME_PERFIL = { administrador: 'Administrador', solicitante: 'Solicitante', aprovador: 'Aprovador', financeiro: 'Financeiro', treinamento: 'Treinamento', gratificacao: 'Gratificação', contratacao: 'Contratação', onibus: 'Ônibus', operacional: 'Operacional' };
+  router.get('/usuarios.csv', exigirPerfil(ADM), wrap(async (_req, res) => {
+    const { rows } = await listar();
+    enviarCsv(res, 'usuarios-logins.csv', [
+      ['Nome', 'Login', 'Perfil', 'Módulos adicionais', 'Funcionário vinculado', 'Situação', 'Senha'],
+      ...rows.map((u) => [u.nome, u.login, NOME_PERFIL[u.perfil] || u.perfil, (u.perfis_extras || []).map((m) => NOME_PERFIL[m] || m).join(', '),
+        u.funcionario_nome || '', u.ativo ? 'Ativo' : 'Inativo', u.trocar_senha ? 'Provisória (troca no próximo acesso)' : 'Própria']),
+    ]);
+  }));
   router.use('/usuarios', usuarios);
 
   // ---- Dados do próprio usuário ----

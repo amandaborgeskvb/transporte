@@ -1053,3 +1053,7 @@ th.rf-sel, td.rf-sel { width: 32px; text-align: center; }
 .rf-x .ico { width: 14px; height: 14px; }
 .rf-auto { display: block; margin: 0 0 12px; padding: 6px 10px; border-radius: 6px; background: var(--card-2); font-size: .82rem; color: var(--muted); }
 .rf-auto.ok { color: var(--ok); font-weight: 600; }
+/* usuários: login à vista */
+.login-linha b { font-weight: 650; color: var(--txt); }
+.login-caixa { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 12px; padding: 10px 12px; border: 1px solid var(--linha); border-radius: 8px; background: var(--card-2); }
+.login-caixa strong { font-size: 1.05rem; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }

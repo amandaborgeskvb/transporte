@@ -40,7 +40,7 @@ export async function usuarios({ params = [] } = {}) {
     listaEl.replaceChildren(...(visiveis.length ? visiveis.map((u) => h('div', {
       class: `item-lista ${selecionado !== 'novo' && selecionado.id === u.id ? 'ativo' : ''} ${u.ativo ? '' : 'inativo'}`, tabindex: 0, role: 'button',
       onclick: () => { selecionado = u; desenhar(); }, onkeydown: (e) => { if (e.key === 'Enter') { selecionado = u; desenhar(); } },
-    }, h('div', {}, h('strong', {}, u.nome), h('small', {}, `${u.login}${u.funcionario_nome ? ` · ${u.funcionario_nome}` : ''}`)),
+    }, h('div', {}, h('strong', {}, u.nome), h('small', { class: 'login-linha' }, 'Login: ', h('b', {}, u.login), u.funcionario_nome ? ` · ${u.funcionario_nome}` : '')),
     u.ativo ? h('span', { class: 'perfis-badges', title: nomesPerfis(u) }, badgeTom(rotulo(u.perfil), TOM_PERFIL[u.perfil]), u.perfis_extras?.length ? badgeTom(`+${u.perfis_extras.length}`, 'mute') : null)
       : badgeTom('Inativo', 'mute'))) : [vazio('Nenhum usuário encontrado.')]));
   }
@@ -95,9 +95,17 @@ export async function usuarios({ params = [] } = {}) {
     form.querySelector('.form-grid').append(caixaModulos);
     atualizarModulos(u?.perfil || 'solicitante');
     form.querySelector('select[name=perfil]')?.addEventListener('change', (e) => { caixaPerfil.textContent = DESCRICAO_PERFIL[e.target.value]; atualizarModulos(e.target.value); });
+    // login do usuário (não muda depois de criado): à vista, com botão de copiar
+    const caixaLogin = novo ? null : h('div', { class: 'login-caixa' },
+      h('span', { class: 'muted pequeno' }, 'Login para entrar no sistema'),
+      h('strong', {}, u.login),
+      h('button', { type: 'button', class: 'sec mini', onclick: async () => {
+        try { await navigator.clipboard.writeText(u.login); toast('Login copiado.'); } catch { toast(`Login: ${u.login}`); }
+      } }, icone('lista'), 'Copiar'),
+      u.trocar_senha ? h('span', { class: 'badge tom-warn' }, 'senha provisória') : null);
     detalhe.replaceChildren(
       h('div', { class: 'detalhe-cab' }, h('div', {}, h('h2', {}, novo ? 'Novo usuário' : u.nome), h('div', { class: 'muted' }, novo ? 'Defina o perfil, os módulos adicionais e a senha inicial.' : `${u.login} · ${nomesPerfis(u)}${u.trocar_senha ? ' · com senha provisória (troca no próximo acesso)' : ''}`))),
-      caixaPerfil, h('div', { class: 'espaco' }), form);
+      caixaLogin, caixaPerfil, h('div', { class: 'espaco' }), form);
   }
 
   function desenhar() { desenharLista(); desenharDetalhe(); }
@@ -130,7 +138,7 @@ export async function usuarios({ params = [] } = {}) {
   return [
     cabecalhoPagina({
       migalhas: [['Configurações'], ['Usuários e perfis']], titulo: 'Usuários e perfis', sub: 'Quem acessa o sistema e o que cada perfil pode fazer',
-      acoes: botao('Novo usuário', () => { selecionado = 'novo'; desenhar(); }, { icone: 'mais' }),
+      acoes: [h('a', { class: 'btn sec', href: '/api/usuarios.csv', download: '' }, icone('baixar'), 'Lista de logins (Excel)'), botao('Novo usuário', () => { selecionado = 'novo'; desenhar(); }, { icone: 'mais' })],
     }),
     h('div', { class: 'split' },
       h('div', { class: 'lateral-col' }, h('section', { class: 'card' }, busca, listaEl), senhaCard, perfisCard),
