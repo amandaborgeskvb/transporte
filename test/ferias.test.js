@@ -53,7 +53,7 @@ test('importa a aba Base_Férias: só ativos e afastados, prévia antes de grava
   assert.equal(r.corpo.importado, true);
 
   const d = (await fer.get('/api/ferias')).corpo;
-  assert.deepEqual(d.totais, { total: 4, vencidas: 1, a_vencer: 1, sem_ferias: 1, estourado: 1, limite_proximo: 1, ativos: 3, afastados: 1 });
+  assert.deepEqual(d.totais, { total: 4, vencidas: 1, a_vencer: 1, sem_ferias: 1, estourado: 1, limite_proximo: 1, em_ferias: 0, fat: 0, operacao: 4, com_saida: 0, ativos: 3, afastados: 1 });
   assert.deepEqual(d.itens.map((c) => [c.matricula, c.prazo]), [['900001', 'estourado'], ['900002', 'limite_proximo'], ['900004', 'no_prazo'], ['900003', 'sem_limite']]);
   const um = d.itens[0];
   assert.equal(um.nome, 'PESSOA TESTE UM');
@@ -99,6 +99,43 @@ test('reimportar substitui a base: quem saiu some, sem duplicar', async () => {
   assert.equal((await enviar(fer, criarXlsx([{ nome: 'X', linhas: [['A', 'B']] }]), false)).status, 400);
   const audit = await t.pool.query("SELECT count(*)::int AS n FROM auditoria WHERE entidade = 'ferias' AND acao = 'importar'");
   assert.equal(audit.rows[0].n, 2);
+});
+
+test('programação: Férias, FAT ou Operação e a data de saída, mantida ao reimportar', async () => {
+  const prog = (cli, mat, corpo) => cli.put(`/api/ferias/${mat}/programacao`, corpo);
+  let d = (await fer.get('/api/ferias')).corpo;
+  assert.ok(d.itens.every((c) => c.programacao === 'operacao' && c.data_saida === null)); // sem escolha = operação
+  let r = await prog(fer, '900001', { status: 'ferias', data_saida: mais(10) });
+  assert.equal(r.status, 200, JSON.stringify(r.corpo));
+  assert.deepEqual(r.corpo, { matricula: '900001', programacao: 'ferias', data_saida: mais(10) });
+  assert.equal((await prog(fer, '900004', { status: 'fat' })).status, 200);
+  assert.equal((await prog(fer, '900003', { status: 'operacao', data_saida: mais(40) })).status, 200); // data de saída já programada
+  assert.equal((await prog(fer, '900001', { status: 'xyz' })).status, 400);
+  assert.equal((await prog(fer, '900001', { status: 'ferias', data_saida: '31/12/2026' })).status, 400);
+  assert.equal((await prog(fer, '999999', { status: 'ferias' })).status, 404);
+  assert.equal((await prog(ana, '900001', { status: 'fat' })).status, 403);
+
+  d = (await fer.get('/api/ferias')).corpo;
+  assert.deepEqual([d.totais.em_ferias, d.totais.fat, d.totais.operacao, d.totais.com_saida], [1, 1, 1, 2]);
+  const lista = async (qs) => (await fer.get(`/api/ferias?${qs}`)).corpo.itens.map((c) => c.matricula);
+  assert.deepEqual(await lista('programacao=ferias'), ['900001']);
+  assert.deepEqual(await lista('programacao=fat'), ['900004']);
+  assert.deepEqual(await lista('programacao=operacao'), ['900003']);
+  assert.deepEqual((await lista('saida=1')).sort(), ['900001', '900003']);
+  const csv = String((await fer.req('GET', '/api/ferias.csv?programacao=ferias')).corpo);
+  assert.match(csv, /Programação/);
+  assert.match(csv, new RegExp(`Férias.*${mais(10).split('-').reverse().join('/')}`));
+
+  // reimportar a planilha não apaga a programação
+  await enviar(fer, planilha({ sem: [900002] }), true);
+  const um = (await fer.get('/api/ferias?q=900001')).corpo.itens[0];
+  assert.deepEqual([um.programacao, um.data_saida], ['ferias', mais(10)]);
+  // voltar para operação e limpar a data
+  await prog(fer, '900001', { status: 'operacao', data_saida: null });
+  assert.equal((await fer.get('/api/ferias')).corpo.totais.em_ferias, 0);
+  const audit = await t.pool.query("SELECT detalhes FROM auditoria WHERE entidade = 'ferias' AND acao = 'programar' ORDER BY id");
+  assert.equal(audit.rows.length, 4);
+  assert.equal(audit.rows[3].detalhes.antes.status, 'Férias');
 });
 
 test('acesso: administrador e perfil Férias; os outros não', async () => {

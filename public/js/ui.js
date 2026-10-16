@@ -389,7 +389,7 @@ const EVENTOS = {
   'iniciar_dia:onibus_diario': 'começou a planilha diária de ônibus', 'incluir:onibus_diario': 'incluiu ônibus na planilha diária',
   'editar:onibus_diario': 'alterou a planilha diária de ônibus', 'excluir:onibus_diario': 'tirou um ônibus da planilha diária',
   'importar:onibus_diario': 'importou a planilha do acompanhamento diário de ônibus', 'salvar_base:onibus_diario': 'salvou o RESUMO de ônibus na BASE',
-  'anexar:op_documento': 'anexou arquivo ao documento do veículo', 'remover_anexo:op_pasta': 'excluiu arquivo da pasta de documentos', 'renovar:op_aet': 'renovou a AET', 'importar:op_aet': 'importou a planilha de AETs', 'importar:ferias': 'importou a base de férias (BASE GERAL)', 'remover_anexo:op_documento': 'removeu arquivo do documento do veículo',
+  'anexar:op_documento': 'anexou arquivo ao documento do veículo', 'remover_anexo:op_pasta': 'excluiu arquivo da pasta de documentos', 'renovar:op_aet': 'renovou a AET', 'importar:op_aet': 'importou a planilha de AETs', 'importar:ferias': 'importou a base de férias (BASE GERAL)', 'programar:ferias': 'alterou a programação de férias (Férias, FAT ou Operação)', 'remover_anexo:op_documento': 'removeu arquivo do documento do veículo',
   'importar:importacao_funcionarios': 'importou funcionários de arquivos do ERP',
   'emitir:autorizacao_desconto': 'emitiu a autorização de desconto', 'editar:autorizacao_desconto': 'editou a autorização de desconto',
   'assinar:autorizacao_desconto': 'registrou a assinatura da autorização de desconto', 'concluir:autorizacao_desconto': 'concluiu o desconto em folha',

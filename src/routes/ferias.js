@@ -2,7 +2,7 @@
 // Acesso: administrador, financeiro e o perfil Férias.
 const express = require('express');
 const { tx } = require('../db');
-const { wrap, ehData, hojeSP, enviarCsv, erro400, auditar } = require('../util');
+const { wrap, ehData, hojeSP, enviarCsv, erro400, auditar, ErroHttp } = require('../util');
 const { exigirPerfil, ADM, FIN, FER } = require('../workflow');
 const MAX_BYTES = 40 * 1024 * 1024; // a BASE GERAL inteira (muitas abas) passa de 15 MB
 const { lerPlanilhaFerias, prazoLimite, AVISO_LIMITE } = require('../ferias');
@@ -16,6 +16,7 @@ const VENC = (t) => { const n = norm(t); return n.includes('VENCIDA') ? 'vencida
 const mesDe = (iso) => iso.slice(0, 7);
 const somarMeses = (ym, n) => { const [a, m] = ym.split('-').map(Number); return new Date(Date.UTC(a, m - 1 + n, 1)).toISOString().slice(0, 7); };
 const PRAZO_ORDEM = { estourado: 0, limite_proximo: 1, no_prazo: 2, sem_limite: 3 };
+const PROGRAMACAO = { ferias: 'Férias', fat: 'FAT', operacao: 'Operação' }; // sem escolha = operação
 
 function criarFerias({ pool }) {
   const router = express.Router();
@@ -23,9 +24,10 @@ function criarFerias({ pool }) {
 
   const carregar = async () => {
     const hoje = hojeSP();
-    const { rows } = await pool.query('SELECT *, (SELECT max(importado_em) FROM ferias_colab) AS ultima FROM ferias_colab');
+    const { rows } = await pool.query(`SELECT f.*, p.status AS programacao, p.data_saida, (SELECT max(importado_em) FROM ferias_colab) AS ultima
+      FROM ferias_colab f LEFT JOIN ferias_programacao p USING (matricula)`);
     const itens = rows.map((r) => {
-      const c = { ...r, inicio_pa: dataLocal(r.inicio_pa), final_pa: dataLocal(r.final_pa), dt_limite: dataLocal(r.dt_limite) };
+      const c = { ...r, inicio_pa: dataLocal(r.inicio_pa), final_pa: dataLocal(r.final_pa), dt_limite: dataLocal(r.dt_limite), programacao: r.programacao || 'operacao', data_saida: dataLocal(r.data_saida) };
       delete c.ultima; delete c.importado_em;
       return { ...c, venc: VENC(c.venc_ferias), ...prazoLimite(c, hoje) };
     });
@@ -35,7 +37,8 @@ function criarFerias({ pool }) {
     const busca = norm(q.q);
     return itens.filter((c) => (!q.gerencia || c.gerencia === q.gerencia)
       && (!q.setor || c.setor === q.setor) && (!q.cidade || c.cidade === q.cidade) && (!q.tipo || c.tipo_contrato === q.tipo)
-      && (!q.situacao || c.situacao === q.situacao) && (!q.venc || c.venc === q.venc)
+      && (!q.situacao || c.situacao === q.situacao) && (!q.venc || c.venc === q.venc) && (!q.programacao || c.programacao === q.programacao)
+      && (q.saida !== '1' || c.data_saida)
       && (!q.prazo || (q.prazo === 'alerta' ? ['estourado', 'limite_proximo'].includes(c.prazo) : c.prazo === q.prazo))
       && (!/^\d{4}-\d{2}$/.test(q.mes || '') || (c.dt_limite && c.dt_limite >= hoje && c.dt_limite.startsWith(q.mes)))
       && (!ehData(q.ate) || (c.dt_limite && c.dt_limite <= q.ate))
@@ -50,6 +53,8 @@ function criarFerias({ pool }) {
     const resumo = (lista) => ({
       total: lista.length, vencidas: conta(lista, 'venc', 'vencidas'), a_vencer: conta(lista, 'venc', 'a_vencer'), sem_ferias: conta(lista, 'venc', 'sem_ferias'),
       estourado: conta(lista, 'prazo', 'estourado'), limite_proximo: conta(lista, 'prazo', 'limite_proximo'),
+      em_ferias: conta(lista, 'programacao', 'ferias'), fat: conta(lista, 'programacao', 'fat'), operacao: conta(lista, 'programacao', 'operacao'),
+      com_saida: lista.filter((c) => c.data_saida).length,
     });
     const mes0 = mesDe(hoje);
     const meses = Array.from({ length: 12 }, (_, i) => somarMeses(mes0, i)).map((mes) => {
@@ -75,10 +80,32 @@ function criarFerias({ pool }) {
     const br = (d) => (d ? d.split('-').reverse().join('/') : '');
     const PRAZO = { estourado: 'Data limite estourada', limite_proximo: `Limite em até ${AVISO_LIMITE} dias`, no_prazo: 'No prazo', sem_limite: '' };
     enviarCsv(res, 'ferias-ctt.csv', [
-      ['Matrícula', 'Nome', 'Função', 'Cidade resid.', 'Situação', 'Gerência', 'Tipo de contrato', 'Setor', 'Venc. férias', 'Início per. aq.', 'Final per. aq.', 'Dt limite férias', 'Dias até o limite', 'Prazo do limite'],
+      ['Matrícula', 'Nome', 'Função', 'Cidade resid.', 'Situação', 'Gerência', 'Tipo de contrato', 'Setor', 'Venc. férias', 'Início per. aq.', 'Final per. aq.', 'Dt limite férias', 'Dias até o limite', 'Prazo do limite', 'Programação', 'Data de saída (férias)'],
       ...filtrar(itens, req.query, hoje).map((c) => [c.matricula, c.nome, c.funcao, c.cidade, c.situacao, c.gerencia, c.tipo_contrato, c.setor, c.venc_ferias,
-        br(c.inicio_pa), br(c.final_pa), br(c.dt_limite), c.dias ?? '', PRAZO[c.prazo]]),
+        br(c.inicio_pa), br(c.final_pa), br(c.dt_limite), c.dias ?? '', PRAZO[c.prazo], PROGRAMACAO[c.programacao], br(c.data_saida)]),
     ]);
+  }));
+
+  // Programação do colaborador: em férias, FAT ou operação, e a data em que vai sair de férias
+  router.put('/ferias/:matricula/programacao', wrap(async (req, res) => {
+    const { matricula } = req.params;
+    const status = String(req.body?.status || 'operacao');
+    if (!PROGRAMACAO[status]) throw erro400('Escolha Férias, FAT ou Operação.');
+    const saida = req.body?.data_saida || null;
+    if (saida && !ehData(saida)) throw erro400('Data de saída inválida.');
+    const { rows: [c] } = await pool.query('SELECT nome FROM ferias_colab WHERE matricula = $1', [matricula]);
+    if (!c) throw new ErroHttp(404, 'Colaborador não encontrado na base de férias.');
+    await tx(pool, async (db) => {
+      const { rows: [antes] } = await db.query('SELECT status, data_saida FROM ferias_programacao WHERE matricula = $1', [matricula]);
+      await db.query(`INSERT INTO ferias_programacao (matricula, status, data_saida, atualizado_em, atualizado_por) VALUES ($1, $2, $3, now(), $4)
+        ON CONFLICT (matricula) DO UPDATE SET status = EXCLUDED.status, data_saida = EXCLUDED.data_saida, atualizado_em = now(), atualizado_por = EXCLUDED.atualizado_por`,
+      [matricula, status, saida, req.usuario.nome || '']);
+      await auditar(db, req.usuario, 'programar', 'ferias', null, {
+        matricula, nome: c.nome, status: PROGRAMACAO[status], data_saida: saida,
+        antes: antes ? { status: PROGRAMACAO[antes.status], data_saida: dataLocal(antes.data_saida) } : null,
+      });
+    });
+    res.json({ matricula, programacao: status, data_saida: saida });
   }));
 
   // Importar a planilha: a base de férias é uma foto do sistema de RH — a importação substitui a base anterior

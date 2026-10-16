@@ -109,7 +109,8 @@ const TOPICOS = [
     titulo: 'Férias CTT', perfis: ['administrador', 'financeiro', 'ferias'], corpo: () => [
       lista('Em **Férias CTT**, use **Importar planilha (Excel)** com a **BASE GERAL**: o sistema lê só a aba **Base_Férias** e só os colaboradores **ATIVOS** e **AFASTADOS** (os demitidos ficam de fora). A prévia mostra quantos entram, quantos são novos e quantos saem da base; a importação substitui a base anterior, então importe a planilha atualizada sempre que quiser.',
         'Entram matrícula, nome, função, cidade de residência, situação, gerência, tipo de contrato, setor, vencimento das férias (Férias vencidas, à vencer ou sem férias, como na planilha), início e final do período aquisitivo e a **data limite das férias**.',
-        'A **data limite** é a data até quando as férias têm de ser concedidas: **vermelho** = já passou, **amarelo** = faltam até 60 dias, verde = no prazo. Clique num mês do quadro **Data limite das férias por mês** ou numa gerência para filtrar; os filtros e a busca (matrícula, nome, função, cidade) também valem para o **Exportar (Excel)**.'),
+        'A **data limite** é a data até quando as férias têm de ser concedidas: **vermelho** = já passou, **amarelo** = faltam até 60 dias, verde = no prazo. Clique num mês do quadro **Data limite das férias por mês** ou numa gerência para filtrar; os filtros e a busca (matrícula, nome, função, cidade) também valem para o **Exportar (Excel)**.',
+        'Na lista, a coluna **Férias / FAT / Operação** marca o que cada colaborador está fazendo (sem escolha = Operação) e o campo **Saída de férias** guarda a data em que ele vai sair de férias: grava na hora, ao alterar. Reimportar a planilha não apaga essas marcações. Os quadros **Em férias**, **FAT**, **Operação** e **Com data de saída** (e os filtros Programação e Data de saída) mostram quem está em cada um.'),
     ],
   },
   {

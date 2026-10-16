@@ -1027,6 +1027,10 @@ html[data-tema="escuro"] .demo-mesa { background: #0a1120; }
 /* Férias CTT */
 .fer-tempo { grid-template-columns: repeat(13, minmax(0, 1fr)); }
 .fer-n { font-weight: 700; font-variant-numeric: tabular-nums; } .fer-n.bad { color: var(--bad); } .fer-n.warn { color: var(--warn); }
+.fer-prog { display: flex; flex-direction: column; gap: 4px; min-width: 150px; }
+.fer-prog-sel { font-weight: 650; border-left: 4px solid var(--st-ok); }
+.fer-prog-sel.ferias { border-left-color: var(--info); background: var(--info-bg); } .fer-prog-sel.fat { border-left-color: var(--st-aviso); background: color-mix(in srgb, var(--st-aviso) 14%, var(--card)); }
+.fer-prog-data { display: flex; flex-direction: column; gap: 1px; margin: 0; } .fer-prog-data small { font-size: .7rem; color: var(--muted); }
 .fer-prazo { font-weight: 650; white-space: nowrap; color: var(--muted); } .fer-prazo.estourado { color: var(--bad); } .fer-prazo.limite_proximo { color: var(--warn); } .fer-prazo.no_prazo { color: var(--ok); }
 @media (max-width: 1100px) { .fer-tempo { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .fer-tempo { grid-template-columns: repeat(4, minmax(0, 1fr)); } }

@@ -920,6 +920,15 @@ CREATE TABLE IF NOT EXISTS ferias_colab (
   dt_limite      DATE,
   importado_em   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- O que cada colaborador está fazendo (férias, FAT ou operação) e a data de saída de férias:
+-- fica fora da ferias_colab para não se perder quando a base é reimportada
+CREATE TABLE IF NOT EXISTS ferias_programacao (
+  matricula       TEXT PRIMARY KEY,
+  status          TEXT NOT NULL DEFAULT 'operacao' CHECK (status IN ('ferias', 'fat', 'operacao')),
+  data_saida      DATE,
+  atualizado_em   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_por  TEXT NOT NULL DEFAULT ''
+);
 
 CREATE TABLE IF NOT EXISTS importacoes (
   id           SERIAL PRIMARY KEY,
